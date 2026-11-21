@@ -133,8 +133,8 @@ edges:
 
 | 模板 | scope | 节点序列（带门禁的标 ◆） |
 | --- | --- | --- |
-| 全生命周期（默认） | iteration | 竞品调研◆ → 关键技术调研◆ → 产品规划◆ → 研发 → 测评◆ → 发布◆ → 总结◆ |
-| 轻量交付周期 | iteration | 规划◆ → 研发 → 测试验证◆ → 发布◆ → 总结◆ |
+| 全生命周期（默认） | iteration | 竞品调研◆ → 关键技术调研◆ → 产品规划◆ → 任务拆解◆ → 研发 → 测评◆ → 发布◆ → 总结◆ |
+| 轻量交付周期 | iteration | 规划◆ → 任务拆解 → 研发 → 测试验证◆ → 发布◆ → 总结◆ |
 | 标准开发任务 | task | 澄清 → 规格◆ → 实现 → 测试设计◆ → 测试执行◆ → 完成 |
 | 调研任务 | task | 调研提纲 → 信息收集 → 分析 → 调研报告◆ → 完成 |
 | 测试任务 | task | 测试设计◆ → 用例评审◆ → 测试执行 → 缺陷回归 → 测试报告◆ → 完成 |
@@ -148,6 +148,7 @@ edges:
 | 竞品调研 | `research_report` | Outline |
 | 关键技术调研 | `research_report` + `tech_spike` | Outline + Git |
 | 产品规划 | `spec` | Outline / inline |
+| 任务拆解 | 无（人工确认任务树） | 控制台 |
 | 测评 | `test_report` | Outline / 附件 |
 | 发布 | `test_report` + `pr` | Outline + Git |
 | 总结（迭代/任务） | `summary` | Outline / inline |
@@ -173,6 +174,8 @@ nodes:
       gate: { approvals: 1, roles: [reviewer], artifacts: [{ kind: research_report, required: true }, { kind: tech_spike, required: true }] } }
   - { id: planning, name: 产品规划, type: normal,
       gate: { approvals: 1, roles: [pm], artifacts: [{ kind: spec, required: true }] } }
+  - { id: breakdown, name: 任务拆解, type: normal, allows_task_creation: true,
+      gate: { approvals: 1, roles: [pm, reviewer] } }
   - { id: build, name: 研发, type: normal, allows_task_creation: true }
   - { id: assess, name: 测评, type: normal,
       gate: { approvals: 1, roles: [qa, reviewer], artifacts: [{ kind: test_report, required: true }] } }
@@ -184,18 +187,23 @@ nodes:
 edges:
   - { from: research_market, to: research_tech }
   - { from: research_tech,   to: planning }
-  - { from: planning,        to: build }
+  - { from: planning,        to: breakdown }
+  - { from: breakdown,       to: build }
   - { from: build,           to: assess }
   - { from: assess,          to: release }
   - { from: release,         to: summary }
   - { from: summary,         to: closed }
 ```
 
-关键点：`build` 节点带 `allows_task_creation: true`，所以任务只能在「研发」阶段建——调研和规划没通过时，任何人都无法开工建任务。
+关键点：
+
+- `breakdown` 与 `build` 都带 `allows_task_creation: true`，所以任务只能在「任务拆解」之后创建——调研和规划没通过时，任何人都无法建任务。
+- 「任务拆解」门禁不要求新材料，只需一名评审人确认任务树：一级任务是否覆盖了规格、粒度是否适合分派、跨模块任务是否标注清楚。轻量模板可关掉这道门禁。
+- 拆解在「任务拆解」节点完成一级任务，二级任务可在拆解时或研发过程中继续拆，规则见 [model.md](model.md#任务拆解规则)。
 
 ## 迭代与任务的关系
 
-- 迭代进入「研发」阶段后，团队才在迭代下建任务；任务跑自己的任务流（开发/调研/测试各选模板）。
+- 迭代进入「任务拆解」后，团队才在迭代下建任务；一级任务在拆解节点建立，较大的任务再拆成二级、三级子任务，每个任务跑自己的任务流（开发/调研/测试各选模板）。
 - 迭代的「测评」门禁看的是本轮整体测试报告，任务流里的测试节点管单个任务的验证，两者不重复但互为证据。
 - 迭代「总结」门禁必交 `summary`，用于沉淀本轮的经验与下一轮输入。
 
