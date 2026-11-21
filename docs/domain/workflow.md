@@ -143,17 +143,19 @@ edges:
 
 对应必填材料：
 
-| 门禁 | 必需材料 |
-| --- | --- |
-| 竞品调研 | `research_report` |
-| 关键技术调研 | `research_report` + `tech_spike` |
-| 产品规划 | `spec` |
-| 测评 | `test_report` |
-| 发布 | `test_report` + `pr` |
-| 总结（迭代/任务） | `summary` |
-| 测试设计 | `test_plan` |
-| 用例评审 | `test_cases` |
-| 测试执行 | `test_execution` |
+| 门禁 | 必需材料 | 默认载体 |
+| --- | --- | --- |
+| 竞品调研 | `research_report` | Outline |
+| 关键技术调研 | `research_report` + `tech_spike` | Outline + Git |
+| 产品规划 | `spec` | Outline / inline |
+| 测评 | `test_report` | Outline / 附件 |
+| 发布 | `test_report` + `pr` | Outline + Git |
+| 总结（迭代/任务） | `summary` | Outline / inline |
+| 测试设计 | `test_plan` | Outline / inline |
+| 用例评审 | `test_cases` | Outline / 附件 |
+| 测试执行 | `test_execution` | 附件 / CI 链接 |
+
+门禁只校验**材料引用存在且格式合法**，不要求外部系统实时可访问——Outline 挂了不应导致评审无法通过。引用模型与集成方式见 [integrations.md](integrations.md)。
 
 ## 生命周期模板示例
 

@@ -9,7 +9,8 @@
 | identity | 成员、角色、PAT、会话与鉴权 | `internal/domain/identity` `internal/auth` | 待写 | M1 |
 | catalog | 产品、模块树、产品文档 | `internal/domain/product` | 待写 | M1 |
 | planning | 迭代、任务、子任务、指派、跨模块关联 | `internal/domain/planning` | 待写 | M1 |
-| workflow | 工作流模板、实例、节点状态、门禁裁决、材料 | `internal/workflow` | 待写 | M1 |
+| workflow | 工作流模板、实例、节点状态、门禁裁决、材料引用 | `internal/workflow` | 待写 | M1 |
+| integration | 外部系统适配：Git/SVN、Outline、Redmine、邮件、Webhook | `internal/integration` | 待写 | M2 |
 | mcp-gateway | MCP 服务、工具注册、PAT 鉴权 | `internal/mcp` | 待写 | M1 |
 | console | 控制台：产品总览、迭代看板、任务树、审批队列 | `web/src/features` | 待写 | M2 |
 | platform | 配置、日志、迁移、部署脚本 | `internal/platform` `deploy` | 待写 | M0 |
@@ -22,9 +23,10 @@ identity  ──> 所有需要鉴权的模块
 catalog   ──> planning（产品与模块约束）
 workflow  ──> planning（任务/迭代跑工作流）
 planning + workflow ──> mcp-gateway / console
+integration ──> workflow（事件投递）、planning（外部关联回写）
 ```
 
-实现顺序：**platform → identity → workflow（引擎纯函数）→ catalog → planning → mcp-gateway → console**。
+实现顺序：**platform → identity → workflow（引擎纯函数）→ catalog → planning → mcp-gateway → console → integration**。
 
 ## 模块文档模板
 

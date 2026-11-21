@@ -26,7 +26,7 @@ Chalkline 是面向研发团队的规格驱动开发（SDD）协作平台。它�
 | 任务 Task | 工作项，挂在迭代下、关联模块，支持多级子任务拆解，有唯一负责人 |
 | 工作流 Workflow | 可定制的节点图，节点之间可挂门禁；迭代与任务各自选模板 |
 | 门禁 Gate | 节点上的准入条件：需 N 名指定角色确认 + 指定材料上传，缺一不可 |
-| 材料 Artifact | 门禁所需证据：调研报告、规格、设计稿、测试计划与报告、PR 链接、总结 |
+| 材料 Artifact | 门禁所需证据的**引用**：Outline 文档、Git/SVN 变更、测试报告、附件 |
 
 ## 生命周期
 
@@ -51,6 +51,20 @@ Chalkline 是面向研发团队的规格驱动开发（SDD）协作平台。它�
 
 阶段之间还有硬约束：只有「研发」阶段允许创建任务，所以调研与规划的门禁没通过时，任何人都无法开工。内置模板只是默认配置，可随时编辑或复制。详见 [docs/domain/workflow.md](docs/domain/workflow.md)。
 
+## 与外围系统的边界
+
+Chalkline 不做代码托管、不做文档库、不做通知中心。它只保存**引用**和**事件**，能力交给团队已在用的工具：
+
+| 能力 | 由谁承担 | Chalkline 保存 |
+| --- | --- | --- |
+| 代码 | Git / GitLab / Gitea / SVN | 分支、commit / MR 链接 |
+| 文档与知识库 | Outline | 文档 URL、`docId`、标题快照 |
+| 进度说明 | Redmine | issue id 与链接（单向导出） |
+| 通知 | 邮件（SMTP）、Webhook | 事件内容与投递记录 |
+| 附件 | 本地 / 对象存储 | 文件元数据 |
+
+好处是团队不用搬家：已有工具继续用，Chalkline 只补上流程与门禁这一层。详见 [docs/domain/integrations.md](docs/domain/integrations.md)。
+
 ## 关键机制
 
 **工作流即配置。** 迭代与任务两层的工作流都以 YAML 定义：节点、连线、门禁条件全部可改。内置模板只是初始化数据，与自建模板完全等价。
@@ -58,6 +72,8 @@ Chalkline 是面向研发团队的规格驱动开发（SDD）协作平台。它�
 **门禁即服务端裁决。** 门禁通过与否由服务端判定，不由对话上下文决定。Agent 在聊天里说「已通过评审」无效——没有评审人在平台上点确认、没有材料上传记录，状态就不会前进，接口直接返回 `409 GATE_BLOCKED` 并说明缺什么。
 
 **询问下一步，而不是猜下一步。** Agent 调 `get_next_action` 得到结构化的 `{step, status, blockers[]}`：`ready` 才能开工，`blocked` 会明确告诉它卡在哪个门禁、缺哪份材料、该找谁批。
+
+**只做流程，成果物外置。** 门禁只校验材料引用存在且格式合法，不要求 Outline 或 Git 实时在线——外围系统挂了不该阻断评审。通知走 outbox 异步投递，失败重试但不影响状态流转。
 
 **全员一个实例。** 服务端部署（docker compose），MCP 走 HTTP 原生支持多人并发，不需要 supergateway 之类的桥接，也不靠 git 同步规格。
 
@@ -126,6 +142,7 @@ docker compose -f deploy/docker-compose.yml up -d
 | [docs/structure.md](docs/structure.md) | 目录职责、放置规则、命名约定、分层边界 |
 | [docs/domain/model.md](docs/domain/model.md) | 领域模型、实体关系、不变量 |
 | [docs/domain/workflow.md](docs/domain/workflow.md) | 工作流定义格式、门禁语义、状态判定 |
+| [docs/domain/integrations.md](docs/domain/integrations.md) | 外部系统集成契约、同步方向、降级策略 |
 | [docs/domain/mcp.md](docs/domain/mcp.md) | MCP 工具清单、返回契约、错误码 |
 | [docs/modules/README.md](docs/modules/README.md) | 功能模块索引，一块对应一批开发任务 |
 
@@ -133,8 +150,8 @@ docker compose -f deploy/docker-compose.yml up -d
 
 - **M0 · 骨架**（进行中）：仓库结构、领域模型、工作流引擎核心判定、docker compose 起服务
 - **M1 · 单产品跑通**：成员与角色、产品/模块/迭代/任务 CRUD、迭代生命周期 + 任务两层工作流与预置模板、门禁审批、MCP 工具全集、控制台基础视图
-- **M2 · 协作深化**：任务跨模块与多级拆解看板、迭代燃尽与进度总览、审批队列、审计留痕检索
-- **M3 · 规模化**：多产品、工作流模板市场（导入导出）、开放 API 与 Webhook
+- **M2 · 协作深化**：任务跨模块与多级拆解看板、迭代燃尽与进度总览、审批队列、审计留痕检索、邮件通知与 outbox 投递
+- **M3 · 规模化**：Outline / Redmine / Git 适配器、多产品、工作流模板市场（导入导出）、开放 API 与 Webhook
 
 ## 参与开发
 

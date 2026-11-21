@@ -23,6 +23,9 @@ Chalkline/
 │   ├── api/                   REST handler、DTO、路由注册
 │   ├── mcp/                   MCP 工具定义与协议转换
 │   ├── auth/                  会话、PAT、权限判定
+│   ├── integration/           外部系统适配器（只做协议转换与引用校验）
+│   │   ├── git/ svn/ outline/ redmine/
+│   │   └── notify/            SMTP 与 Webhook 投递
 │   └── platform/              日志、配置、时钟、ID 生成、事务工具
 ├── migrations/                goose SQL 迁移，只增不改
 ├── web/                       React 前端
@@ -50,6 +53,8 @@ Chalkline/
 | 新 MCP 工具 | `internal/mcp/`，内部调用 `internal/app/`，不写业务规则 |
 | 新表或改表 | 新增 `migrations/` 文件，同步 `store/query/` 与 `sqlc.yaml` |
 | 新前端页面 | `web/src/features/<功能>/`，路由在 `web/src/app/routes.tsx` 注册 |
+| 新的外部系统（Jira、飞书等） | `internal/integration/<provider>/`，实现 Provider 接口 |
+| 新的通知渠道 | `internal/integration/notify/` |
 | 新的部署单元 | `deploy/` |
 
 规则一句话：**业务规则在 domain，流程判定在 workflow，事务编排在 app，协议转换在 api/mcp，SQL 在 store。越界即为错误。**
@@ -63,13 +68,14 @@ api ──┐
       ├──> app ──> domain
 mcp ──┘        └──> workflow ──> domain
 app ──> store（经接口）
+app ──> integration（经 Provider 接口）
 api/mcp ──> auth（只做鉴权）
 platform 可被以上所有层使用，但 platform 不得反向 import 业务包
 ```
 
 禁止：
 
-- `domain` 与 `workflow` 不得 import `store`、`api`、`mcp`、`database/sql`、`net/http`
+- `domain` 与 `workflow` 不得 import `store`、`api`、`mcp`、`integration`、`database/sql`、`net/http`
 - `api` 与 `mcp` 不得直接调用 `store`
 - `mcp` 与 `api` 之间不得互相调用
 - 任何包不得直接 `UPDATE` 工作项状态，必须走 `workflow` 的裁决入口
@@ -102,6 +108,7 @@ docs/
 ├── domain/
 │   ├── model.md            领域模型与不变量
 │   ├── workflow.md         工作流定义与门禁语义
+│   ├── integrations.md     外部系统集成契约与边界
 │   └── mcp.md              MCP 工具契约
 └── modules/
     ├── README.md           模块索引

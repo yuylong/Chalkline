@@ -46,7 +46,7 @@ Agent 每轮先调 `chalkline_get_next_action`，服务端返回结构化结论�
 | `chalkline_link_module` | 增删任务与模块的关联 | pm / 任务负责人 |
 | `chalkline_start_step` | 开始当前可执行节点 | 任务负责人 |
 | `chalkline_submit_step` | 提交节点，携带材料与说明 | 任务负责人 |
-| `chalkline_upload_artifact` | 上传材料（URL 或文件） | 任务负责人 |
+| `chalkline_attach_artifact` | 挂接材料引用：`provider` + `url`/`externalId`，或 `inline` 内容 | 任务负责人 |
 | `chalkline_review_step` | 门禁确认或驳回 | reviewer / qa |
 
 ## 返回契约
@@ -66,7 +66,7 @@ Agent 每轮先调 `chalkline_get_next_action`，服务端返回结构化结论�
       { "type": "approval_missing", "required": 1, "current": 0, "roles": ["reviewer"] }
     ]
   },
-  "allowedActions": ["chalkline_upload_artifact"]
+  "allowedActions": ["chalkline_attach_artifact"]
 }
 ```
 
@@ -97,6 +97,8 @@ Agent 每轮先调 `chalkline_get_next_action`，服务端返回结构化结论�
 | `GATE_BLOCKED` | 409 | 门禁未满足时调 `submit_step` |
 | `INVALID_TRANSITION` | 409 | 节点状态不允许该操作 |
 | `ARTIFACT_MISSING` | 422 | 提交时缺必需材料 |
+| `INVALID_ARTIFACT_REF` | 422 | 材料引用格式非法，或 provider 与 kind 不匹配 |
+| `INTEGRATION_UNAVAILABLE` | 503 | 模板要求外部校验，但对应适配器未连通 |
 | `TREE_DEPTH_EXCEEDED` | 422 | 模块 > 5 层或任务 > 3 层 |
 | `SELF_REVIEW_FORBIDDEN` | 403 | 评审自己提交的节点 |
 | `ROLE_REQUIRED` | 403 | 角色不满足 |
@@ -112,7 +114,7 @@ Agent: chalkline_get_next_action(taskId=tsk_7f3a)
 Agent: chalkline_start_step(taskId=tsk_7f3a)
    → 节点进入 in_progress
 Agent: （编写规格，落库到 Document）
-Agent: chalkline_submit_step(taskId=tsk_7f3a, artifacts=[{kind:"spec", documentId:"doc_91"}])
+Agent: chalkline_submit_step(taskId=tsk_7f3a, artifacts=[{kind:"spec", provider:"outline", url:"https://outline.example.com/doc/spec-91"}])
    → status=awaiting_review, 需 1 名 reviewer
 Agent: 向人报告「规格已提交，等待 <姓名> 审批」
 --- 人在控制台确认 ---

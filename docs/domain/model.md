@@ -17,6 +17,9 @@ Workflow（模板）──实例化──> WorkflowInstance ──> NodeState
                                                   └── Artifact
 
 AuditLog（全量留痕）
+
+外部系统：Git/SVN（代码）、Outline（文档）、Redmine（进度）、SMTP/Webhook（通知）
+          ▲ 只存引用与事件，不复制内容
 ```
 
 ## 两层工作流
@@ -146,27 +149,42 @@ AuditLog（全量留痕）
 
 同一位评审人在同一节点只计一次有效意见，以其最近一次决策为准。
 
-### Artifact（材料）
+### Artifact（材料引用）
 
-门禁证据。材料与「提交人 + 提交节点」绑定，不可跨节点复用。
+门禁证据。**材料是引用而非内容**，可指向外部系统（见 [integrations.md](integrations.md)）。材料与「提交人 + 提交节点」绑定，不可跨节点复用。
 
-| `kind` | 用于 | 形态 |
+| `kind` | 用于 | 典型来源 |
 | --- | --- | --- |
-| `research_report` | 竞品调研、技术调研 | 文档 |
-| `tech_spike` | 关键技术验证 | 文档 + 代码链接 |
-| `spec` | 需求规格 | 文档 |
-| `design` | 技术设计 | 文档 |
-| `test_plan` | 测试设计 | 文档 |
-| `test_cases` | 用例集 | 文档/附件 |
-| `test_execution` | 测试执行记录 | 附件/链接 |
-| `test_report` | 测试报告 | 文档/附件 |
-| `pr` | 代码改动 | URL |
-| `summary` | 迭代/任务总结 | 文档 |
+| `research_report` | 竞品调研、技术调研 | Outline / inline |
+| `tech_spike` | 关键技术验证 | Outline + Git |
+| `spec` | 需求规格 | Outline / inline |
+| `design` | 技术设计 | Outline / inline |
+| `test_plan` | 测试设计 | Outline / inline |
+| `test_cases` | 用例集 | Outline / 附件 |
+| `test_execution` | 测试执行记录 | 附件 / CI 链接 |
+| `test_report` | 测试报告 | Outline / 附件 |
+| `pr` | 代码改动 | Git / SVN |
+| `summary` | 迭代/任务总结 | Outline / inline |
 | `file` | 其他证据 | 附件 |
 
-### Document（文档）
+| 字段 | 说明 |
+| --- | --- |
+| `kind` | 材料类型 |
+| `provider` | `git` / `svn` / `outline` / `redmine` / `file` / `url` / `inline` |
+| `url` / `externalId` | 外部定位；`inline` 时为空 |
+| `snapshot` | 标题、版本、状态等快照，仅用于展示与审计，不回写 |
 
-Markdown 文档，`owner_type` 为 `product` / `iteration` / `task`，`kind` 与材料类型一致。每次保存产生新 `version`，历史可查。
+### Document（轻量内联文档）
+
+平台内的 Markdown，`owner_type` 为 `product` / `iteration` / `task`，仅供没有对应外部工具时使用。**Chalkline 不是知识库**：成规模文档放 Outline，平台只保留门禁必需的最小说明。每次保存产生新 `version`。
+
+### ExternalLink（对外关联）
+
+记录工作项与外部系统的稳定关联：`subject_type` / `subject_id` / `provider` / `externalId` / `url`。用于 Redmine issue 回写、Outline 文档归属等场景。
+
+### OutboxEvent（投递）
+
+状态流转产生的领域事件写入 outbox，由投递器异步发送到邮件与 Webhook。`status` 为 `pending` / `sent` / `failed`，含重试次数与最后错误。投递失败不影响流程推进。
 
 ### AuditLog（审计）
 
@@ -189,6 +207,8 @@ Markdown 文档，`owner_type` 为 `product` / `iteration` / `task`，`kind` 与
 11. 迭代进入终态后不可回退。需要新一轮交付时**新建迭代**，历史迭代完整保留。
 12. 同一产品可同时存在多个 `active` 迭代，互不阻塞。
 13. 所有写操作必须在事务中携带 `actor_id`，并写审计日志。
+14. 材料的 `provider` 必须与 `kind` 匹配（如 `pr` 只能来自 `git` / `svn`），引用需通过格式校验。
+15. 集成投递失败不改变门禁判定与工作项状态；外部系统不可用时流程照常推进。
 
 ## 状态投影
 
