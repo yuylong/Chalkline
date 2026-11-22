@@ -161,7 +161,7 @@ func info(d Deps) http.HandlerFunc {
 			"name":      "chalkline",
 			"version":   d.Version,
 			"api":       "v1",
-			"milestone": "M1",
+			"milestone": "M2",
 		})
 	}
 }

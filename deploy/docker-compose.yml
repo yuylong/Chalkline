@@ -31,6 +31,21 @@ services:
       CHALKLINE_JWT_SECRET: ${CHALKLINE_JWT_SECRET:-}
       CHALKLINE_ADMIN_USERNAME: ${CHALKLINE_ADMIN_USERNAME:-}
       CHALKLINE_ADMIN_PASSWORD: ${CHALKLINE_ADMIN_PASSWORD:-}
+      # ---- 集成（integration 模块，M2）：全部可选 ----
+      CHALKLINE_OUTBOUND_ALLOWLIST: ${CHALKLINE_OUTBOUND_ALLOWLIST:-}
+      CHALKLINE_OUTLINE_BASE_URL: ${CHALKLINE_OUTLINE_BASE_URL:-}
+      CHALKLINE_OUTLINE_TOKEN: ${CHALKLINE_OUTLINE_TOKEN:-}
+      CHALKLINE_REDMINE_BASE_URL: ${CHALKLINE_REDMINE_BASE_URL:-}
+      CHALKLINE_REDMINE_TOKEN: ${CHALKLINE_REDMINE_TOKEN:-}
+      CHALKLINE_WEBHOOK_URL: ${CHALKLINE_WEBHOOK_URL:-}
+      CHALKLINE_WEBHOOK_SECRET: ${CHALKLINE_WEBHOOK_SECRET:-}
+      CHALKLINE_SMTP_HOST: ${CHALKLINE_SMTP_HOST:-}
+      CHALKLINE_SMTP_PORT: ${CHALKLINE_SMTP_PORT:-25}
+      CHALKLINE_SMTP_USERNAME: ${CHALKLINE_SMTP_USERNAME:-}
+      CHALKLINE_SMTP_PASSWORD: ${CHALKLINE_SMTP_PASSWORD:-}
+      CHALKLINE_SMTP_FROM: ${CHALKLINE_SMTP_FROM:-}
+      CHALKLINE_NOTIFY_EMAILS: ${CHALKLINE_NOTIFY_EMAILS:-}
+      CHALKLINE_OUTBOX_INTERVAL: ${CHALKLINE_OUTBOX_INTERVAL:-5s}
     depends_on:
       postgres:
         condition: service_healthy
@@ -42,10 +57,10 @@ services:
     restart: unless-stopped
 
   web:
-    # 控制台（console 模块，M2 交付）将以 React SPA 落地；M0 提供静态占位页。
-    image: nginx:1.27-alpine
-    volumes:
-      - ../web:/usr/share/nginx/html:ro
+    # 控制台（console 模块，M2）：Vite 构建产物由本容器 nginx 托管（SPA try_files 回退）。
+    build:
+      context: ..
+      dockerfile: deploy/web.Dockerfile
     restart: unless-stopped
 
   nginx:

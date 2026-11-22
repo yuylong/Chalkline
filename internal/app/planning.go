@@ -583,13 +583,38 @@ type TaskDetail struct {
 	Workflow  *InstanceView `json:"workflow,omitempty"`
 }
 
-// InstanceView 是实例视图：模板 + 各节点状态 + 终态。
+// InstanceView 是实例视图：模板 + 各节点状态 + 终态 + 材料/审批投影
+//（console.md「任务详情：节点状态/材料/审批时间线」——M2 起随实例查询返回）。
 type InstanceView struct {
 	WorkflowID string          `json:"workflowId"`
 	Scope       string         `json:"scope"`
 	Nodes       []NodeStateView `json:"nodes"`
 	Terminal    string         `json:"terminal,omitempty"` // done / cancelled
 	ProgressPct int            `json:"progressPct"`
+	Artifacts   []ArtifactView `json:"artifacts,omitempty"`
+	Approvals   []ApprovalView `json:"approvals,omitempty"`
+}
+
+// ArtifactView 材料投影：引用元数据，inline 附带内容。
+type ArtifactView struct {
+	Kind        string `json:"kind"`
+	Provider    string `json:"provider"`
+	URL         string `json:"url,omitempty"`
+	ExternalID  string `json:"externalId,omitempty"`
+	Title       string `json:"title,omitempty"`
+	Content     string `json:"content,omitempty"`
+	NodeID      string `json:"nodeId"`
+	SubmittedBy string `json:"submittedBy"`
+}
+
+// ApprovalView 审批决策投影（按时间升序即审批时间线）。
+type ApprovalView struct {
+	NodeID    string   `json:"nodeId"`
+	Reviewer  string   `json:"reviewerId"`
+	Decision  string   `json:"decision"`
+	Comment   string   `json:"comment,omitempty"`
+	Roles     []string `json:"roles,omitempty"`
+	CreatedAt string   `json:"createdAt"`
 }
 
 // GetTask 任务详情：产品成员或 admin；含工作流状态与材料/审批（workflow 视图）。
@@ -661,6 +686,33 @@ func (s *Service) instanceView(ctx context.Context, q store.Querier, instRow sto
 	passed, total := inst.Progress()
 	if total > 0 {
 		view.ProgressPct = passed * 100 / total
+	}
+
+	// 材料/审批投影：控制台任务详情的审批时间线（M2 console.md 验收项）。
+	artifacts, err := store.ListArtifacts(ctx, q, instRow.ID)
+	if err != nil {
+		return InstanceView{}, err
+	}
+	for _, a := range artifacts {
+		view.Artifacts = append(view.Artifacts, ArtifactView{
+			Kind: string(a.Ref.Kind), Provider: string(a.Ref.Provider),
+			URL: a.Ref.URL, ExternalID: a.Ref.ExternalID, Title: a.Ref.Title,
+			Content: a.Ref.Content, NodeID: a.Ref.NodeID, SubmittedBy: a.Ref.SubmittedBy,
+		})
+	}
+	approvals, err := store.ListApprovals(ctx, q, instRow.ID)
+	if err != nil {
+		return InstanceView{}, err
+	}
+	for _, d := range approvals {
+		roles := make([]string, 0, len(d.Roles))
+		for _, r := range d.Roles {
+			roles = append(roles, string(r))
+		}
+		view.Approvals = append(view.Approvals, ApprovalView{
+			NodeID: d.NodeID, Reviewer: d.ReviewerID, Decision: string(d.Decision),
+			Comment: d.Comment, Roles: roles, CreatedAt: d.CreatedAt.UTC().Format(time.RFC3339),
+		})
 	}
 	return view, nil
 }

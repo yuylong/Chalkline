@@ -13,11 +13,20 @@ import (
 	"github.com/yuylong/Chalkline/internal/auth"
 	"github.com/yuylong/Chalkline/internal/domain/identity"
 	"github.com/yuylong/Chalkline/internal/domain/product"
+	"github.com/yuylong/Chalkline/internal/domain/workitem"
 	"github.com/yuylong/Chalkline/internal/store"
 )
 
 // Actor 复用 auth 的请求身份（actor_id 一路进事务与审计）。
 type Actor = auth.Actor
+
+// ArtifactGate 是材料引用的外部校验器（依赖倒置：integration 适配器实现，
+// docs/modules/integration.md「对外接口」）。nil 时跳过外部校验（单测与无集成部署）。
+// 实现只做引用可达性与格式校验 + 尽力快照，不得写领域状态。
+type ArtifactGate interface {
+	Validate(ctx context.Context, ref workitem.ArtifactRef) error
+	Snapshot(ctx context.Context, ref workitem.ArtifactRef) (workitem.ArtifactMeta, error)
+}
 
 // Service 是全部用例的承载：事务、审计、权限、事件。
 type Service struct {
@@ -25,11 +34,13 @@ type Service struct {
 	Log *slog.Logger
 	JWT *auth.JWTManager
 	Now func() time.Time
+	// Gate 材料外部校验（M2 集成接入点，integration.md「材料挂接时」）。
+	Gate ArtifactGate
 }
 
-// NewService 组装服务。
-func NewService(db *store.DB, log *slog.Logger, jwt *auth.JWTManager) *Service {
-	return &Service{DB: db, Log: log, JWT: jwt, Now: time.Now}
+// NewService 组装服务。gate 可为 nil：此时材料只做 domain 格式校验。
+func NewService(db *store.DB, log *slog.Logger, jwt *auth.JWTManager, gate ArtifactGate) *Service {
+	return &Service{DB: db, Log: log, JWT: jwt, Now: time.Now, Gate: gate}
 }
 
 // newID 生成带类型前缀的短 id（mcp.md：所有 ID 带类型前缀）。

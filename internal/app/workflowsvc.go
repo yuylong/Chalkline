@@ -284,10 +284,15 @@ func (s *Service) SubmitStep(ctx context.Context, actor Actor, wtype workitem.Sc
 			return err
 		}
 
-		// 材料引用校验（不变量 14：provider 与 kind 匹配）。
+		// 材料引用校验（不变量 14：provider 与 kind 匹配 + 外部校验器复核）。
+		before := readySet(li.Inst) // 推进前快照：用于 node.ready 事件 diff
 		inRefs := make([]workitem.ArtifactRef, 0, len(artifacts))
 		for _, a := range artifacts {
 			ref, err := a.toRef(nodeID, actor.UserID)
+			if err != nil {
+				return err
+			}
+			ref, err = s.gateRef(ctx, ref)
 			if err != nil {
 				return err
 			}
@@ -358,7 +363,7 @@ func (s *Service) SubmitStep(ctx context.Context, actor Actor, wtype workitem.Sc
 			return err
 		}
 
-		// 事件：passed → node.passed；awaiting → gate.pending。
+		// 事件：passed → node.passed；awaiting → gate.pending；新就绪节点 → node.ready。
 		st, _ := li.Inst.State(nodeID)
 		switch st.Status {
 		case workitem.StatusPassed:
@@ -371,6 +376,9 @@ func (s *Service) SubmitStep(ctx context.Context, actor Actor, wtype workitem.Sc
 				map[string]any{"node": nodeID}); err != nil {
 				return err
 			}
+		}
+		if err := emitReadyEvents(ctx, q, wtype, workItemID, before, li.Inst); err != nil {
+			return err
 		}
 		if err := s.syncIterationStatus(ctx, q, wtype, workItemID, li.Inst); err != nil {
 			return err
@@ -404,6 +412,10 @@ func (s *Service) AttachArtifact(ctx context.Context, actor Actor, wtype workite
 		if err != nil {
 			return err
 		}
+		ref, err = s.gateRef(ctx, ref)
+		if err != nil {
+			return err
+		}
 		// 已进入评审的材料被替换 → 作废审批；提交前替换不涉及既有审批。
 		reset := st.Status == workitem.StatusAwaitingReview
 		existing := li.Inputs[nodeID].Artifacts
@@ -434,6 +446,49 @@ func (s *Service) AttachArtifact(ctx context.Context, actor Actor, wtype workite
 func artifactDiffers(a, b workitem.ArtifactRef) bool {
 	return a.URL != b.URL || a.ExternalID != b.ExternalID ||
 		a.Title != b.Title || a.Content != b.Content
+}
+
+// gateRef 经外部校验器复核引用并尽力补快照标题（M2 集成接入点，依赖倒置）。
+// Validate 失败 → INVALID_ARTIFACT_REF（422，integration.md「材料挂接时」）；
+// Snapshot 失败忽略（降级为引用自带标题，不变量 15：集成不可用不阻断挂接）。
+func (s *Service) gateRef(ctx context.Context, ref workitem.ArtifactRef) (workitem.ArtifactRef, error) {
+	if s.Gate == nil {
+		return ref, nil
+	}
+	if err := s.Gate.Validate(ctx, ref); err != nil {
+		return ref, InvalidArtifactRef(err)
+	}
+	if ref.Title == "" {
+		if meta, err := s.Gate.Snapshot(ctx, ref); err == nil && meta.Title != "" {
+			ref.Title = meta.Title
+		}
+	}
+	return ref, nil
+}
+
+// readySet 收集当前 ready 节点：节点操作前快照，操作后 diff 出新就绪节点。
+func readySet(i *workflow.Instance) map[string]bool {
+	out := map[string]bool{}
+	for id, st := range i.Nodes {
+		if st.Status == workitem.StatusReady {
+			out[id] = true
+		}
+	}
+	return out
+}
+
+// emitReadyEvents 对新进入 ready 的节点写 node.ready 事件
+//（docs/domain/integrations.md「事件与投递」：通知提交人可开始下一步）。
+func emitReadyEvents(ctx context.Context, q store.Querier, wtype workitem.Scope, workItemID string, before map[string]bool, i *workflow.Instance) error {
+	for id, st := range i.Nodes {
+		if st.Status == workitem.StatusReady && !before[id] {
+			if err := store.InsertOutbox(ctx, q, "node.ready", string(wtype), workItemID,
+				map[string]any{"node": id}); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func hasKind(refs []workitem.ArtifactRef, kind workitem.ArtifactKind) bool {
@@ -489,6 +544,7 @@ func (s *Service) ReviewStep(ctx context.Context, actor Actor, wtype workitem.Sc
 			return Invalid("驳回必须填写理由")
 		}
 		in := li.Inputs[nodeID]
+		before := readySet(li.Inst) // 评审通过可能级联就绪后继节点
 		res, _, err := li.Inst.Review(nodeID, resolveVersion(li, nodeID, expectedVersion), d, in.Decisions, in, s.Now())
 		if err != nil {
 			return MapError(err)
@@ -512,6 +568,9 @@ func (s *Service) ReviewStep(ctx context.Context, actor Actor, wtype workitem.Sc
 		case workitem.StatusPassed:
 			_ = store.InsertOutbox(ctx, q, "node.passed", string(wtype), workItemID,
 				map[string]any{"node": nodeID, "reviewer": actor.UserID})
+		}
+		if err := emitReadyEvents(ctx, q, wtype, workItemID, before, li.Inst); err != nil {
+			return err
 		}
 		if err := s.syncIterationStatus(ctx, q, wtype, workItemID, li.Inst); err != nil {
 			return err
