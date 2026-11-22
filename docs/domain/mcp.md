@@ -40,7 +40,7 @@ Agent 每轮先调 `chalkline_get_next_action`，服务端返回结构化结论�
 | 工具 | 说明 | 权限 |
 | --- | --- | --- |
 | `chalkline_create_iteration` | 建迭代（一条新生命周期），指定模板 | pm |
-| `chalkline_create_task` | 建任务：`kind`、父任务、多个模块，返回分配的多级编号 | pm / dev / qa |
+| `chalkline_create_task` | 建任务：`kind`、父任务、多个模块，返回分配的多级编号 | pm / admin |
 | `chalkline_decompose_task` | 拆解为子任务（批量），返回 `CHK-12.3` 形式的编号 | 任务负责人 / pm |
 | `chalkline_assign_task` | 指派负责人 | pm / 任务负责人 |
 | `chalkline_link_module` | 增删任务与模块的关联 | pm / 任务负责人 |
