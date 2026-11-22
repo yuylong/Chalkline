@@ -7,18 +7,19 @@ description: 在 Chalkline 平台上推进工作项。用户提到 Chalkline、�
 
 Chalkline 是服务端流程引擎：状态、权限、门禁都由服务端裁决。你的职责是**把用户的自然语言变成正确的工具调用**，不是替人做决定。
 
-## 五步循环
+## 六步循环
 
-每次推进都走这五步，不要跳步：
+每次推进都走这六步，不要跳步：
 
 1. `chalkline_whoami` —— 确认身份、角色、可见产品。第一次对话或换人时做一次即可。
 2. `chalkline_get_next_action` —— 拿到当前工作项的 `step`、`status`、`blockers`。
 3. **按 status 分支**：
-   - `ready`：执行该节点要求的工作，然后 `chalkline_attach_artifact` 挂材料 → `chalkline_submit_step` 提交。
+   - `ready`：执行该节点要求的工作。
    - `blocked`：**不推进**。把 `blockers` 翻译成人话：缺哪份材料、需要几个什么角色的人审批。
    - `in_progress`：说明当前在哪一步，问是否需要继续。
-4. 提交后重新 `chalkline_get_next_action`，确认状态确实变了。
-5. 用固定模板汇报（见下）。
+4. **提交前自检**：对照门禁要求逐项核查材料，生成 `pre_review` 自查报告（每项给结论与证据引用），用 `chalkline_attach_artifact` 以 `kind: pre_review` 挂上。
+5. `chalkline_submit_step` 提交全部材料，然后重新 `chalkline_get_next_action`，确认状态确实变了。
+6. 用固定模板汇报（见下）。
 
 ## 硬规矩
 
@@ -26,6 +27,7 @@ Chalkline 是服务端流程引擎：状态、权限、门禁都由服务端裁�
 - **不代替人审批**：`review_step` 只能由人发起。你要做的是说清「需谁确认」。
 - **不重试越权**：`403` 是身份问题，重试不会成功，直接告诉用户需要谁来做。
 - **不伪造材料**：材料是引用（URL / 外部 ID / inline 说明），不能拿「已完成」的描述充当证据。
+- **预评审是自查，不是审批**：`pre_review` 报告逐项对照门禁清单并给证据，不写空话；它不代替评审人，也不改变任何状态。
 - **一次只推进一个工作项**，用户要求批量时逐项确认。
 - **不改模板**：修改工作流模板是人的决策，不在自动推进范围内。
 

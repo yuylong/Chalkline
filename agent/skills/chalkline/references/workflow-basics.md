@@ -22,7 +22,7 @@
 
 ## 材料
 
-`kind` + `provider` + `url`/`externalId`，例如 `{kind: "pr", provider: "git", url: "..."}`。没有外部工具时用 `inline` 附一段说明。**只挂引用，不贴正文。**
+`kind` + `provider` + `url`/`externalId`，例如 `{kind: "pr", provider: "git", url: "..."}`。没有外部工具时用 `inline` 附一段说明。**只挂引用，不贴正文。**提交前用 `kind: pre_review` 挂一份自查报告（inline，逐项对照门禁要求给结论与证据）——它是材料不是审批，帮评审人聚焦用。
 
 ## 任务拆解
 
@@ -42,4 +42,4 @@
 
 - 只能看到自己加入的产品；非成员访问返回 `404`。
 - 产品角色 `owner` / `member` / `guest`；`guest` 只读。
-- 审批必须是门禁声明角色的持有者，且不能审批自己提交的节点。
+- 审批必须是门禁声明角色的持有者。提交人本人是合格评审人时可以自审，但必须走 `review_step` 的 approve 流程留痕，不能自行宣布通过。
