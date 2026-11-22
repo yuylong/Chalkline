@@ -1,0 +1,67 @@
+# Chalkline 本地/私有部署：postgres + api + web + nginx（docs/structure.md）。
+# 用法见 README「快速开始」：cp deploy/.env.example deploy/.env && docker compose up -d
+name: chalkline
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-chalk}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?请在 deploy/.env 设置 POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-chalkline}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-chalk} -d ${POSTGRES_DB:-chalkline}"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  api:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      args:
+        VERSION: ${VERSION:-dev}
+    environment:
+      CHALKLINE_ADDR: ":8080"
+      CHALKLINE_DATABASE_URL: postgres://${POSTGRES_USER:-chalk}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-chalkline}?sslmode=disable
+      CHALKLINE_LOG_LEVEL: ${CHALKLINE_LOG_LEVEL:-info}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
+
+  web:
+    # 控制台（console 模块，M2 交付）将以 React SPA 落地；M0 提供静态占位页。
+    image: nginx:1.27-alpine
+    volumes:
+      - ../web:/usr/share/nginx/html:ro
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:1.27-alpine
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./nginx/entrypoint.sh:/etc/nginx/entrypoint.sh:ro
+      - ./certs:/etc/nginx/certs
+    environment:
+      CERT_CN: ${CERT_CN:-localhost}
+    entrypoint: ["/bin/sh", "/etc/nginx/entrypoint.sh"]
+    command: ["nginx", "-g", "daemon off;"]
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      - api
+      - web
+    restart: unless-stopped
+
+volumes:
+  pgdata:

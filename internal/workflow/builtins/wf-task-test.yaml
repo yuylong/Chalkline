@@ -1,0 +1,21 @@
+# 测试任务：测试设计◆ → 用例评审◆ → 测试执行 → 缺陷回归 → 测试报告◆ → 完成
+id: wf-task-test
+name: 测试任务
+scope: task
+version: 1
+nodes:
+  - { id: test_design, name: 测试设计, type: normal,
+      gate: { approvals: 1, roles: [reviewer], artifacts: [{ kind: test_plan, required: true }] } }
+  - { id: case_review, name: 用例评审, type: normal,
+      gate: { approvals: 1, roles: [reviewer], artifacts: [{ kind: test_cases, required: true }] } }
+  - { id: test_exec,   name: 测试执行, type: normal }
+  - { id: regression,  name: 缺陷回归, type: normal }
+  - { id: report,      name: 测试报告, type: normal,
+      gate: { approvals: 1, roles: [qa, reviewer], artifacts: [{ kind: test_report, required: true }] } }
+  - { id: done,        name: 完成, type: terminal }
+edges:
+  - { from: test_design, to: case_review }
+  - { from: case_review, to: test_exec }
+  - { from: test_exec,   to: regression }
+  - { from: regression,  to: report }
+  - { from: report,      to: done }

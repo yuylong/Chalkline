@@ -1,0 +1,25 @@
+# 标准开发任务：澄清 → 规格◆ → 实现 → 测试设计◆ → 测试执行◆ → 完成
+# 对应 docs/domain/workflow.md「定义格式」示例。
+id: wf-task-standard
+name: 标准开发任务
+scope: task
+version: 1
+settings:
+  require_children_done: true
+  allow_skip_nodes: false
+nodes:
+  - { id: clarify, name: 需求澄清, type: normal }
+  - { id: spec, name: 规格编写, type: normal,
+      gate: { approvals: 1, roles: [reviewer, pm], artifacts: [{ kind: spec, required: true }, { kind: pre_review, required: false }] } }
+  - { id: implement, name: 实现, type: normal }
+  - { id: test_design, name: 测试设计, type: normal,
+      gate: { approvals: 1, roles: [qa], artifacts: [{ kind: test_plan, required: true }] } }
+  - { id: test_exec, name: 测试执行, type: normal,
+      gate: { approvals: 1, roles: [qa], artifacts: [{ kind: test_execution, required: true }] } }
+  - { id: done, name: 完成, type: terminal }
+edges:
+  - { from: clarify,     to: spec }
+  - { from: spec,        to: implement }
+  - { from: implement,   to: test_design }
+  - { from: test_design, to: test_exec }
+  - { from: test_exec,   to: done }

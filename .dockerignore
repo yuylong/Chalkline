@@ -1,0 +1,7 @@
+.git
+bin
+deploy/certs
+deploy/.env
+web/node_modules
+web/dist
+*.md

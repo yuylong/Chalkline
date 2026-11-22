@@ -1,0 +1,29 @@
+# 轻量交付周期：常规短迭代用。规划◆ → 任务拆解 → {研发 ∥ 测试设计◆} → 测试验证◆ → 发布◆ → 总结◆
+# 门禁必填材料见 docs/domain/workflow.md「内置模板」材料表。
+id: wf-iteration-light
+name: 轻量交付周期
+scope: iteration
+version: 1
+nodes:
+  - { id: planning, name: 规划, type: normal,
+      gate: { approvals: 1, roles: [pm], artifacts: [{ kind: spec, required: true }] } }
+  - { id: breakdown, name: 任务拆解, type: normal, allows_task_creation: true }
+  - { id: build, name: 研发, type: normal, allows_task_creation: true }
+  - { id: test_design, name: 测试设计, type: normal, allows_task_creation: true,
+      gate: { approvals: 1, roles: [qa], artifacts: [{ kind: test_plan, required: true }] } }
+  - { id: verify, name: 测试验证, type: normal,
+      gate: { approvals: 1, roles: [qa, reviewer], artifacts: [{ kind: test_report, required: true }] } }
+  - { id: release, name: 发布, type: normal, require_iteration_tasks_done: true,
+      gate: { approvals: 1, roles: [pm], artifacts: [{ kind: test_report, required: true }, { kind: pr, required: true }] } }
+  - { id: summary, name: 总结, type: normal,
+      gate: { approvals: 1, roles: [pm], artifacts: [{ kind: summary, required: true }] } }
+  - { id: closed, name: 结束, type: terminal }
+edges:
+  - { from: planning,   to: breakdown }
+  - { from: breakdown,   to: build }
+  - { from: breakdown,   to: test_design }   # 分叉：测试设计与研发并行
+  - { from: build,       to: verify }
+  - { from: test_design, to: verify }        # 汇合：研发 + 测试设计都完成才测试验证
+  - { from: verify,      to: release }
+  - { from: release,     to: summary }
+  - { from: summary,     to: closed }

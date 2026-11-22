@@ -12,7 +12,14 @@ Chalkline（墨线）：面向 5–50 人研发团队的规格驱动开发（SDD
 
 ## 当前状态
 
-M0（骨架）——仓库目前**只有文档与 Agent Skill，尚无代码**。模块划分与实现顺序见 [docs/modules/README.md](docs/modules/README.md)，里程碑见 README「路线图」。
+**M0（骨架）已交付**：
+
+- 领域模型四包 `internal/domain/{identity,product,planning,workitem}`（含 model.md 不变量的纯函数校验）
+- 工作流引擎 `internal/workflow`：YAML 定义解析与 DAG 校验、5 个内置模板（embed）、状态机（ready/in_progress/awaiting_review/passed/rejected）、门禁会签判定、AND 并行汇合、驳回重提保留审批、next_action 投影
+- store：pgx 连接池、goose 内嵌迁移（0001 baseline / 0002 workflows）、内置模板种子；api：chi 路由 + 中间件 + 统一错误包络（`/healthz` `/readyz` `/api/v1/info`）
+- 部署栈 `deploy/`：compose 四服务（postgres/api/web/nginx）、多阶段 Dockerfile、nginx TLS + 首启自签证书；`Makefile` 常用命令
+
+**尚未开始（M1+）**：鉴权与登录、业务 CRUD、MCP 网关、Agent Skill、控制台、集成适配。模块划分见 [docs/modules/README.md](docs/modules/README.md)，里程碑见 README「路线图」。
 
 ## 按任务读文档
 
