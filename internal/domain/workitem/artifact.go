@@ -85,6 +85,14 @@ func ProviderAllowed(kind ArtifactKind, provider ArtifactProvider) bool {
 	return false
 }
 
+// ArtifactMeta 是外部系统的引用快照（标题/版本/状态，docs/domain/model.md Artifact.snapshot）。
+// 仅用于展示与审计；外部内容变化不回写（integrations.md「同步方向」）。
+type ArtifactMeta struct {
+	Title   string
+	Version string
+	Status  string
+}
+
 // ArtifactRef 是材料的引用——不是内容。材料与「提交人 + 提交节点」绑定，不可跨节点复用。
 type ArtifactRef struct {
 	Kind       ArtifactKind

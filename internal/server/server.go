@@ -14,6 +14,8 @@ import (
 	"github.com/yuylong/Chalkline/internal/app"
 	"github.com/yuylong/Chalkline/internal/auth"
 	"github.com/yuylong/Chalkline/internal/domain/identity"
+	"github.com/yuylong/Chalkline/internal/integration"
+	"github.com/yuylong/Chalkline/internal/integration/notify"
 	"github.com/yuylong/Chalkline/internal/mcp"
 	"github.com/yuylong/Chalkline/internal/platform"
 	"github.com/yuylong/Chalkline/internal/store"
@@ -59,6 +61,16 @@ func Run(ctx context.Context) error {
 	state := &dbState{}
 	initDone := make(chan error, 1)
 
+	// 集成装配（M2）：出站白名单客户端 + provider 注册表（git/svn/outline/redmine）。
+	// 白名单为空时拒绝一切出站：Snapshot 全部降级，Validate 只做本地校验。
+	safeClient := integration.NewSafeClient(cfg.OutboundAllowlist)
+	artifactGate := integration.NewRegistry(
+		integration.NewGitProvider(safeClient),
+		integration.NewSVNProvider(safeClient),
+		integration.NewOutlineProvider(safeClient, cfg.OutlineBaseURL, cfg.OutlineToken),
+		integration.NewRedmineProvider(safeClient, cfg.RedmineBaseURL, cfg.RedmineToken),
+	)
+
 	var svcMu sync.RWMutex
 	var svc app.API
 	getSvc := func() app.API {
@@ -74,7 +86,7 @@ func Run(ctx context.Context) error {
 			if derr == nil {
 				if derr = db.Migrate(ctx); derr == nil {
 					if derr = db.SeedBuiltinWorkflows(ctx); derr == nil {
-						s := app.NewService(db, logger, jwt)
+						s := app.NewService(db, logger, jwt, artifactGate)
 						created, berr := s.BootstrapAdmin(ctx, cfg.AdminUsername, cfg.AdminPassword)
 						if berr != nil {
 							derr = berr
@@ -95,6 +107,7 @@ func Run(ctx context.Context) error {
 			}
 			if derr == nil {
 				logger.Info("数据库就绪：迁移、种子与引导完成")
+				startDispatcher(ctx, db, cfg, logger)
 				initDone <- nil
 				return
 			}
@@ -202,4 +215,25 @@ func closeDB(state *dbState) {
 	if db, ok := state.snapshot(); ok {
 		db.Close()
 	}
+}
+
+// startDispatcher 启动 outbox 通知投递器（M2 集成）。无论是否配置通道都启动：
+// 无通道时事件直接标记完成，避免 outbox 无限滞留 pending（不变量 15）。
+func startDispatcher(ctx context.Context, db *store.DB, cfg platform.Config, logger *slog.Logger) {
+	senders := []notify.Sender{}
+	if cfg.WebhookURL != "" {
+		senders = append(senders, &notify.Webhook{URL: cfg.WebhookURL, Secret: cfg.WebhookSecret})
+		logger.Info("webhook 通知已启用")
+	}
+	if cfg.SMTPHost != "" && cfg.SMTPFrom != "" && len(cfg.NotifyEmails) > 0 {
+		senders = append(senders, &notify.SMTP{
+			Host: cfg.SMTPHost, Port: cfg.SMTPPort,
+			Username: cfg.SMTPUsername, Password: cfg.SMTPPassword,
+			From: cfg.SMTPFrom, To: cfg.NotifyEmails,
+		})
+		logger.Info("SMTP 邮件通知已启用", "host", cfg.SMTPHost, "recipients", len(cfg.NotifyEmails))
+	}
+	go (&notify.Dispatcher{
+		Queue: db, Senders: senders, Log: logger, Interval: cfg.OutboxInterval,
+	}).Run(ctx)
 }

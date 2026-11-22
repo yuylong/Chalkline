@@ -5,6 +5,7 @@ package platform
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -28,6 +29,29 @@ type Config struct {
 	// 首启 admin 引导凭据（可选）：users 表为空且二者非空时自动创建 admin。
 	AdminUsername string
 	AdminPassword string
+
+	// ---- 集成（integration 模块，M2）：全部可选，凭据只经环境变量，不落库 ----
+
+	// OutboundAllowlist 允许出站的 host 后缀（逗号分隔）；空 = 拒绝一切出站，"*" = 放行全部。
+	OutboundAllowlist []string
+	// Outline 知识库：baseURL 与 API token（材料快照用，尽力而为）。
+	OutlineBaseURL string
+	OutlineToken   string
+	// Redmine：baseURL 与 API key（issue 标题快照，单向出站不回写）。
+	RedmineBaseURL string
+	RedmineToken   string
+	// Webhook 订阅：URL 与 HMAC-SHA256 签名密钥。
+	WebhookURL    string
+	WebhookSecret string
+	// SMTP 邮件通知：只发内网 SMTP；NotifyEmails 是收件人列表。
+	SMTPHost     string
+	SMTPPort     int
+	SMTPUsername string
+	SMTPPassword string
+	SMTPFrom     string
+	NotifyEmails []string
+	// OutboxInterval 是通知投递器的轮询间隔，默认 5s。
+	OutboxInterval time.Duration
 }
 
 // Load 从环境变量构造配置并校验必填项。
@@ -42,6 +66,21 @@ func Load() (Config, error) {
 		JWTSecret:       os.Getenv("CHALKLINE_JWT_SECRET"),
 		AdminUsername:   os.Getenv("CHALKLINE_ADMIN_USERNAME"),
 		AdminPassword:   os.Getenv("CHALKLINE_ADMIN_PASSWORD"),
+
+		OutboundAllowlist: envList("CHALKLINE_OUTBOUND_ALLOWLIST"),
+		OutlineBaseURL:    os.Getenv("CHALKLINE_OUTLINE_BASE_URL"),
+		OutlineToken:      os.Getenv("CHALKLINE_OUTLINE_TOKEN"),
+		RedmineBaseURL:    os.Getenv("CHALKLINE_REDMINE_BASE_URL"),
+		RedmineToken:      os.Getenv("CHALKLINE_REDMINE_TOKEN"),
+		WebhookURL:        os.Getenv("CHALKLINE_WEBHOOK_URL"),
+		WebhookSecret:     os.Getenv("CHALKLINE_WEBHOOK_SECRET"),
+		SMTPHost:          os.Getenv("CHALKLINE_SMTP_HOST"),
+		SMTPPort:          envInt("CHALKLINE_SMTP_PORT", 25),
+		SMTPUsername:      os.Getenv("CHALKLINE_SMTP_USERNAME"),
+		SMTPPassword:      os.Getenv("CHALKLINE_SMTP_PASSWORD"),
+		SMTPFrom:          os.Getenv("CHALKLINE_SMTP_FROM"),
+		NotifyEmails:      envList("CHALKLINE_NOTIFY_EMAILS"),
+		OutboxInterval:    envDuration("CHALKLINE_OUTBOX_INTERVAL", 5*time.Second),
 	}
 	if cfg.DatabaseURL == "" {
 		return Config{}, fmt.Errorf("CHALKLINE_DATABASE_URL 未设置")
@@ -71,4 +110,31 @@ func envDuration(key string, def time.Duration) time.Duration {
 		return def
 	}
 	return d
+}
+
+func envInt(key string, def int) int {
+	v := os.Getenv(key)
+	if v == "" {
+		return def
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		return def
+	}
+	return n
+}
+
+// envList 读逗号分隔列表环境变量（空白项忽略）。
+func envList(key string) []string {
+	v := strings.TrimSpace(os.Getenv(key))
+	if v == "" {
+		return nil
+	}
+	out := []string{}
+	for _, part := range strings.Split(v, ",") {
+		if p := strings.TrimSpace(part); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
