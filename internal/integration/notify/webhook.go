@@ -15,10 +15,14 @@ import (
 )
 
 // Webhook 是通用出站事件通道：POST 事件 JSON 到订阅方，带 HMAC-SHA256 签名头，
-// 接收方可校验（docs/domain/integrations.md「安全」）。URL 与密钥只从环境变量读取。
+// 接收方可校验（docs/domain/integrations.md「安全」）。URL 只来自环境变量（静态通道）
+// 或 webhook_subscriptions（admin 配置的订阅，M3）——目标由管理员指定，属受信出站，
+// 不走材料适配器的出站白名单；不跟随重定向 + 10s 超时兜底。
 type Webhook struct {
 	URL    string
 	Secret string
+	// SubscriptionID 非空时输出 X-Chalkline-Subscription-Id，接收方区分订阅来源。
+	SubscriptionID string
 	Client *http.Client
 }
 
@@ -60,12 +64,15 @@ func (w *Webhook) Send(ctx context.Context, ev store.OutboxRow) error {
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", "chalkline-webhook/1")
+	if w.SubscriptionID != "" {
+		req.Header.Set("X-Chalkline-Subscription-Id", w.SubscriptionID)
+	}
 	if w.Secret != "" {
 		req.Header.Set("X-Chalkline-Signature", Sign(w.Secret, body))
 	}
 	client := w.Client
 	if client == nil {
-		client = &http.Client{Timeout: 10 * time.Second}
+		client = webhookClient()
 	}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -76,4 +83,14 @@ func (w *Webhook) Send(ctx context.Context, ev store.OutboxRow) error {
 		return fmt.Errorf("webhook 响应状态 %d", resp.StatusCode)
 	}
 	return nil
+}
+
+// webhookClient 不跟随重定向（防 SSRF 跳转绕过），10s 超时。
+func webhookClient() *http.Client {
+	return &http.Client{
+		Timeout: 10 * time.Second,
+		CheckRedirect: func(_ *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
 }

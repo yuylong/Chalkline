@@ -74,14 +74,32 @@ Redmine 明确**不反向回写状态**：流程状态的唯一事实来源是 C
 | `node.passed` | 门禁通过 |
 | `node.rejected` | 门禁驳回 |
 | `gate.pending` | 进入等待评审，通知有权限的评审人 |
+| `gate.overdue` | 评审超过 SLA 未裁决，提醒评审人（M3） |
+| `gate.escalated` | 评审超过升级阈值，升级给产品 owner / admin（M3） |
 | `task.assigned` | 任务指派 |
 | `iteration.closed` | 迭代收尾 |
 
 投递规则：
 
-- 指数退避重试，最多 5 次，超过标记 `failed` 并在控制台告警。
+- 静态通道（环境变量 `CHALKLINE_WEBHOOK_URL` / SMTP）：指数退避重试，最多 5 次，超过标记 `failed` 并在控制台告警。
+- **Webhook 订阅（M3）**：投递器每轮读取 `webhook_subscriptions` 中 `active` 的订阅，按 `event_types` 过滤后 POST 到各自 URL，带 `X-Chalkline-Subscription-Id` 与 `X-Chalkline-Signature` 头；**尽力而为**——单个订阅失败只记在该订阅行（`last_error`），不阻断事件流转，也不触发事件重试。
 - **投递失败不阻断流程**：门禁判定不依赖通知是否送达。
 - 事件内容只含 id、标题、链接、操作者，不携带正文。
+- 控制台 SSE 实时推送（`/api/v1/events`）尾随同一 outbox，是只读投影，不参与投递状态机。
+
+## Webhook 订阅管理（M3）
+
+外部系统消费事件的正式入口：admin 在控制台或 REST（`/api/v1/webhooks`）维护订阅——`name` / `url` / `event_types`（空 = 全部）/ `status`。
+
+- **签名**：全部订阅共用全局 `CHALKLINE_WEBHOOK_SECRET`（HMAC-SHA256，`X-Chalkline-Signature: sha256=<hex>`）。单部署服务一个团队（product.md 非目标：不做多租户），共享密钥是刻意取舍：凭据不落库（红线 8），轮换走环境变量。
+- **信任模型**：订阅 URL 由 admin 显式指定，属受信出站，不走材料适配器的出站白名单；投递不跟随重定向、10s 超时。
+- **接收方校验**：以密钥对 body 做 HMAC-SHA256，与 `X-Chalkline-Signature` 比对；`X-Chalkline-Subscription-Id` 区分订阅来源。
+
+## 开放 API 策略（M3）
+
+- **拉**：REST `/api/v1/...` 即开放 API。外部系统用 PAT（`Authorization: Bearer <PAT>`）访问，与 Agent 同一权限模型——PAT 属于某个成员，能看到的与该成员一致（产品内开放、跨产品 404）。
+- **推**：Webhook 订阅（上节）。事件只含元数据，外部系统需要细节时再经 REST 回查。
+- 不做匿名访问、不做独立 API Key 体系：单团队部署下，成员身份 + PAT 已覆盖全部外部消费方；新增凭据形态只会增加泄露面。
 
 ## 安全
 

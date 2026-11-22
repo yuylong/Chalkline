@@ -297,16 +297,17 @@ type AwaitingNodeRow struct {
 	WorkItemType workitem.Scope
 	WorkItemID   string
 	NodeID       string
+	EnteredAt    time.Time // 进入评审时间（M3 超期判定）
 }
 
 // ListAwaitingNodes 列给定产品集合内全部 awaiting_review 节点；
-// 角色资格过滤在 app 层依模板 gate.roles 完成。
+// 角色资格过滤在 app 层依模板 gate.roles 完成。EnteredAt 供超期判定（M3）。
 func ListAwaitingNodes(ctx context.Context, q Querier, productIDs []string) ([]AwaitingNodeRow, error) {
 	if len(productIDs) == 0 {
 		return nil, nil
 	}
 	return scanAll(ctx, q,
-		`SELECT wi.id, wi.work_item_type, wi.work_item_id, ns.node_id
+		`SELECT wi.id, wi.work_item_type, wi.work_item_id, ns.node_id, ns.entered_at
 		 FROM workflow_instances wi
 		 JOIN node_states ns ON ns.instance_id = wi.id AND ns.status = 'awaiting_review'
 		 WHERE (wi.work_item_type = 'task'
@@ -316,9 +317,113 @@ func ListAwaitingNodes(ctx context.Context, q Querier, productIDs []string) ([]A
 		 ORDER BY ns.entered_at`,
 		func(row rowScanner) (AwaitingNodeRow, error) {
 			var a AwaitingNodeRow
-			err := row.Scan(&a.InstanceID, &a.WorkItemType, &a.WorkItemID, &a.NodeID)
+			err := row.Scan(&a.InstanceID, &a.WorkItemType, &a.WorkItemID, &a.NodeID, &a.EnteredAt)
 			return a, err
 		}, productIDs)
+}
+
+// ---- M3：评审超期提醒 / SSE 事件尾随 / 模板导入导出 ----
+
+// OverdueAwaitingRow 是超期待审节点（含产品归属与进入评审时间）。
+type OverdueAwaitingRow struct {
+	InstanceID   string
+	NodeID       string
+	WorkItemType workitem.Scope
+	WorkItemID   string
+	ProductID    string
+	EnteredAt    time.Time
+}
+
+// ListOverdueAwaiting 列 entered_at 早于 cutoff 的全部 awaiting_review 节点
+//（SLA 监控器每轮调用；不改任何节点状态，红线 1）。
+func ListOverdueAwaiting(ctx context.Context, q Querier, cutoff time.Time) ([]OverdueAwaitingRow, error) {
+	return scanAll(ctx, q,
+		`SELECT wi.id, ns.node_id, wi.work_item_type, wi.work_item_id,
+		        COALESCE((SELECT t.product_id FROM tasks t WHERE t.id = wi.work_item_id),
+		                 (SELECT it.product_id FROM iterations it WHERE it.id = wi.work_item_id)),
+		        ns.entered_at
+		 FROM workflow_instances wi
+		 JOIN node_states ns ON ns.instance_id = wi.id AND ns.status = 'awaiting_review'
+		 WHERE ns.entered_at < $1
+		 ORDER BY ns.entered_at`,
+		func(row rowScanner) (OverdueAwaitingRow, error) {
+			var r OverdueAwaitingRow
+			err := row.Scan(&r.InstanceID, &r.NodeID, &r.WorkItemType, &r.WorkItemID,
+				&r.ProductID, &r.EnteredAt)
+			return r, err
+		}, cutoff)
+}
+
+// GateReminderExists 报告该 (instance, node, level) 提醒是否已发过（防重复）。
+func GateReminderExists(ctx context.Context, q Querier, instanceID, nodeID string, level int) (bool, error) {
+	var exists bool
+	err := q.QueryRow(ctx,
+		`SELECT EXISTS (SELECT 1 FROM gate_reminders
+		 WHERE instance_id = $1 AND node_id = $2 AND level = $3)`,
+		instanceID, nodeID, level).Scan(&exists)
+	return exists, err
+}
+
+// InsertGateReminder 记录一次提醒事实（水位只增不改）。
+func InsertGateReminder(ctx context.Context, q Querier, instanceID, nodeID string, level int) error {
+	_, err := q.Exec(ctx,
+		`INSERT INTO gate_reminders (instance_id, node_id, level) VALUES ($1, $2, $3)
+		 ON CONFLICT DO NOTHING`, instanceID, nodeID, level)
+	return err
+}
+
+// ListOutboxAfter 尾随读取新增事件（SSE 推送侧；按 id 单调递增）。
+func ListOutboxAfter(ctx context.Context, q Querier, afterID int64, limit int) ([]OutboxRow, error) {
+	return scanAll(ctx, q,
+		`SELECT `+outboxColumns+` FROM outbox_events WHERE id > $1 ORDER BY id LIMIT $2`,
+		scanOutbox, afterID, limit)
+}
+
+// MaxOutboxID 取当前最大事件 id（SSE 启动时定位游标：只推增量）。
+func MaxOutboxID(ctx context.Context, q Querier) (int64, error) {
+	var id int64
+	err := q.QueryRow(ctx, `SELECT COALESCE(max(id), 0) FROM outbox_events`).Scan(&id)
+	return id, err
+}
+
+// ProductIDOfSubject 解析事件主体归属的产品（SSE 可见性过滤用）；
+// 非工作项主体（workflow / user / webhook 等）返回空串。
+func ProductIDOfSubject(ctx context.Context, q Querier, subjectType, subjectID string) (string, error) {
+	switch subjectType {
+	case "task":
+		var pid string
+		err := q.QueryRow(ctx, `SELECT product_id FROM tasks WHERE id = $1`, subjectID).Scan(&pid)
+		if err != nil {
+			return "", err
+		}
+		return pid, nil
+	case "iteration":
+		var pid string
+		err := q.QueryRow(ctx, `SELECT product_id FROM iterations WHERE id = $1`, subjectID).Scan(&pid)
+		if err != nil {
+			return "", err
+		}
+		return pid, nil
+	case "product":
+		return subjectID, nil
+	}
+	return "", nil
+}
+
+// WorkflowExists 报告模板 id 是否已占用（导入时换 id 用）。
+func WorkflowExists(ctx context.Context, q Querier, id string) (bool, error) {
+	var exists bool
+	err := q.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM workflows WHERE id = $1)`, id).Scan(&exists)
+	return exists, err
+}
+
+// MaxWorkflowVersion 取同 scope+name 的最大版本号（导入撞名时升版本用）。
+func MaxWorkflowVersion(ctx context.Context, q Querier, scope, name string) (int, error) {
+	var v int
+	err := q.QueryRow(ctx,
+		`SELECT COALESCE(max(version), 0) FROM workflows WHERE scope = $1 AND name = $2`,
+		scope, name).Scan(&v)
+	return v, err
 }
 
 // ---- 纯转换（可脱离数据库测试）----

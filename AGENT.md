@@ -12,7 +12,7 @@ Chalkline（墨线）：面向 5–50 人研发团队的规格驱动开发（SDD
 
 ## 当前状态
 
-**M0 + M1 + M2 已交付**：
+**M0 + M1 + M2 + M3 已交付**：
 
 - M0：领域模型四包 `internal/domain/{identity,product,planning,workitem}`（model.md 不变量的纯函数校验）；工作流引擎 `internal/workflow`（DAG 校验、5 内置模板、状态机、门禁会签、AND 汇合、驳回重提、next_action 投影）；store 基座（pgx + goose 嵌入迁移）；部署栈 `deploy/`（compose 四服务、nginx TLS、首启自签证书）
 - M1 鉴权 `internal/auth`：argon2id 密码、HS256 JWT、PAT（只存 hash）、REST/MCP 双入口互斥中间件；首启 admin 引导（`CHALKLINE_ADMIN_*`）
@@ -20,8 +20,9 @@ Chalkline（墨线）：面向 5–50 人研发团队的规格驱动开发（SDD
 - M1 入口：`internal/api` 全套 REST（登录/成员/产品/迭代/任务/模板/节点操作/待我审批）；`internal/mcp` streamable HTTP（stateless）+ 22 个 `chalkline_*` 工具（读 11 + 写 11，错误统一包络）；组装引导移至 `internal/server`
 - M2 集成 `internal/integration`：`Provider` 接口与注册表（git/svn/outline/redmine，Validate 只做引用格式与私网拦截，Snapshot 尽力取标题且失败降级）；安全出站 `safeClient`（域名白名单、不跟随重定向、私网拦截，白名单空即零出站）；`notify` 投递器（outbox 轮询、SMTP/Webhook、指数退避最多 5 次、投递失败不阻断流程）、`external_links` 迁移（0007）
 - M2 控制台 `web/`：React 19 + TS + Vite + Ant Design 5 + TanStack Query + Recharts SPA（登录、产品列表/详情、迭代看板与燃尽/分布/负载图、任务详情与多级任务树、材料提交、待审批队列）；构建产物由 `deploy/web.Dockerfile` 内的 nginx 托管并做 SPA 路由回退；实例视图补 material/approval 投影供控制台展示
+- M3 规模化：迁移 0008（`webhook_subscriptions` / `gate_reminders` / 审计索引）；多产品管理（`internal/app/scale.go`：列表搜索/分页/归档守卫/`/overview` 概览）；模板导入导出（`/workflows/{id}/export`、`/workflows/import`，冲突自动换 id/升版本，YAML 往返有测试守卫）；审计检索（`internal/app/audit.go`：admin 全局 `/audit-logs` + 产品内 `/products/{id}/audit-logs`）；评审 SLA（`internal/app/sla.go` 监控器：`gate.overdue`/`gate.escalated`，只写水位与事件不改状态；pending reviews 带 `awaitingSince`/`overdue`）；材料快照固化（`artifacts.snapshot`：外部 title/version + inline sha256，随实例视图透传）；SSE 实时推送（`internal/events` hub + outbox tailer + `GET /api/v1/events`，按成员关系过滤，nginx 关缓冲）；Webhook 订阅管理（`internal/app/webhooks.go` + 投递器 `SubscriptionSource` 路由，签名密钥沿用全局 env 不落库）；控制台新增审计页、订阅页、产品搜索分页与归档入口、SSE 缓存失效
 
-**尚未开始（M3+）**：Agent Skill 落盘校验、多产品规模化管理、工作流模板导入导出、开放 API 与 Webhook 的对外开放策略、WebSocket/SSE 实时推送、审计留痕检索与评审超期提醒。模块划分见 [docs/modules/README.md](docs/modules/README.md)，里程碑见 README「路线图」。
+**尚未开始（M4+）**：Agent Skill 落盘校验、provider 启停与 base_url 管理 UI、多实例部署与水平扩展评估。模块划分见 [docs/modules/README.md](docs/modules/README.md)，里程碑见 README「路线图」。
 
 ## 按任务读文档
 

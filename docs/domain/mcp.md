@@ -25,7 +25,7 @@ Agent 每轮先调 `chalkline_get_next_action`，服务端返回结构化结论�
 | 工具 | 说明 |
 | --- | --- |
 | `chalkline_whoami` | 当前身份、角色、可见产品 |
-| `chalkline_list_products` | 产品列表（含迭代数、任务统计） |
+| `chalkline_list_products` | 产品列表（含迭代数、任务统计），支持 `q` 搜索 / `status` 过滤 / `limit`+`offset` 分页（M3） |
 | `chalkline_get_product` | 产品详情：模块树、产品文档、默认工作流 |
 | `chalkline_list_iterations` | 迭代列表，可按产品与状态过滤 |
 | `chalkline_list_tasks` | 任务列表，可按迭代、模块、负责人、状态过滤 |
@@ -33,7 +33,7 @@ Agent 每轮先调 `chalkline_get_next_action`，服务端返回结构化结论�
 | `chalkline_get_next_action` | **当前工作项下一步与阻塞原因** |
 | `chalkline_get_workflow` | 模板定义 + 本实例各节点状态 |
 | `chalkline_list_workflows` | 可用模板列表（按 scope 过滤，含内置模板） |
-| `chalkline_get_pending_reviews` | 我是评审人、待我确认的门禁 |
+| `chalkline_get_pending_reviews` | 我是评审人、待我确认的门禁；条目含 `awaitingSince` 与 `overdue`（超过评审 SLA，M3） |
 | `chalkline_list_product_members` | 产品成员与各自的产品角色 |
 
 ### 写

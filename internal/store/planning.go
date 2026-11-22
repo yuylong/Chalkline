@@ -63,6 +63,58 @@ func ListIterationsByProduct(ctx context.Context, q Querier, productID string, s
 	return scanAll(ctx, q, sql, scanIteration, args...)
 }
 
+// CountOpenIterations 统计产品内未收尾迭代（planned/active）——归档守卫用（M3）。
+func CountOpenIterations(ctx context.Context, q Querier, productID string) (int64, error) {
+	var n int64
+	err := q.QueryRow(ctx,
+		`SELECT count(*) FROM iterations WHERE product_id = $1 AND status IN ('planned', 'active')`,
+		productID).Scan(&n)
+	return n, err
+}
+
+// ---- M3 全局概览（多产品规模化管理）----
+
+// OverviewCounts 是可见产品集合的规模统计。
+type OverviewCounts struct {
+	ActiveIterations int64
+	OpenTasks        int64
+	PendingGates     int64
+	OverdueGates     int64
+}
+
+const overviewWorkItem = `(wi.work_item_type = 'task'
+   AND (SELECT t.product_id FROM tasks t WHERE t.id = wi.work_item_id) = ANY($1))
+ OR (wi.work_item_type = 'iteration'
+   AND (SELECT it.product_id FROM iterations it WHERE it.id = wi.work_item_id) = ANY($1))`
+
+// CountOverview 统计给定产品集合的迭代/任务/门禁规模（SSE 可见性同源：产品集合由 app 判定）。
+// overdueBefore 之前的 awaiting_review 计为超期（评审 SLA）。
+func CountOverview(ctx context.Context, q Querier, productIDs []string, overdueBefore time.Time) (OverviewCounts, error) {
+	var c OverviewCounts
+	if len(productIDs) == 0 {
+		return c, nil
+	}
+	err := q.QueryRow(ctx, `
+		SELECT
+		  (SELECT count(*) FROM iterations
+		    WHERE product_id = ANY($1) AND status IN ('planned', 'active')),
+		  (SELECT count(*) FROM tasks t
+		    WHERE t.product_id = ANY($1)
+		      AND NOT EXISTS (SELECT 1 FROM workflow_instances wi
+		                      WHERE wi.work_item_type = 'task' AND wi.work_item_id = t.id
+		                        AND wi.terminal_node_id <> '')),
+		  (SELECT count(*) FROM workflow_instances wi
+		    JOIN node_states ns ON ns.instance_id = wi.id AND ns.status = 'awaiting_review'
+		    WHERE `+overviewWorkItem+`),
+		  (SELECT count(*) FROM workflow_instances wi
+		    JOIN node_states ns ON ns.instance_id = wi.id AND ns.status = 'awaiting_review'
+		                           AND ns.entered_at < $2
+		    WHERE `+overviewWorkItem+`)`,
+		productIDs, overdueBefore).Scan(
+		&c.ActiveIterations, &c.OpenTasks, &c.PendingGates, &c.OverdueGates)
+	return c, err
+}
+
 // UpdateIterationStatus 更新迭代状态（仅经领域方法 Activate/Close/Cancel 之后调用）。
 func UpdateIterationStatus(ctx context.Context, q Querier, id string, status planning.IterationStatus) error {
 	tag, err := q.Exec(ctx, `UPDATE iterations SET status = $2, updated_at = now() WHERE id = $1`, id, string(status))

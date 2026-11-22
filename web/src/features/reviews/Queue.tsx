@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Card, Progress, Table, Tag, Typography } from 'antd'
 import { useNavigate } from 'react-router'
 import { apiGet } from '../../shared/api'
+import { fmtTime } from '../../shared/status'
 import { ApiErrorBanner } from '../../shared/ui'
 import type { ListEnvelope, PendingReviewView } from '../../shared/types'
 import { ReviewActions } from '../gates/ReviewAction'
@@ -72,6 +73,21 @@ export default function ReviewQueue() {
               dataIndex: 'roles',
               width: 150,
               render: (v: string[]) => v.join(' / '),
+            },
+            {
+              title: '等待',
+              key: 'waiting',
+              width: 130,
+              render: (_, r) =>
+                r.overdue ? (
+                  <Tag color="red">已超期</Tag>
+                ) : r.awaitingSince ? (
+                  <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                    {fmtTime(r.awaitingSince)}
+                  </Typography.Text>
+                ) : (
+                  '—'
+                ),
             },
             {
               title: '操作',

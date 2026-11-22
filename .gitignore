@@ -13,3 +13,6 @@ web/dist/
 # 测试与覆盖率
 *.out
 *.test
+
+# tsc 临时构建缓存
+web/tsconfig.tsbuildinfo

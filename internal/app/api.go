@@ -30,9 +30,11 @@ type API interface {
 
 	// catalog
 	CreateProduct(ctx context.Context, actor Actor, in CreateProductInput) (ProductView, error)
-	ListProducts(ctx context.Context, actor Actor) ([]ProductView, error)
+	ListProducts(ctx context.Context, actor Actor, in ProductListQuery) (ProductListResult, error)
 	GetProduct(ctx context.Context, actor Actor, id string) (ProductDetail, error)
 	UpdateProduct(ctx context.Context, actor Actor, id string, in ProductUpdateInput) (ProductView, error)
+	GetOverview(ctx context.Context, actor Actor) (OverviewView, error)
+	ListVisibleProductIDs(ctx context.Context, actor Actor) ([]string, error)
 	ListMembers(ctx context.Context, actor Actor, productID string) ([]MemberView, error)
 	UpsertMember(ctx context.Context, actor Actor, productID, userID string, role product.MemberRole) error
 	RemoveMember(ctx context.Context, actor Actor, productID, userID string) error
@@ -59,6 +61,8 @@ type API interface {
 	CreateWorkflow(ctx context.Context, actor Actor, yamlText string) (WorkflowView, error)
 	UpdateWorkflow(ctx context.Context, actor Actor, id, yamlText string) (WorkflowView, error)
 	ArchiveWorkflow(ctx context.Context, actor Actor, id string) error
+	ExportWorkflow(ctx context.Context, actor Actor, id string) (WorkflowExport, error)
+	ImportWorkflow(ctx context.Context, actor Actor, yamlText string) (WorkflowView, error)
 	StartStep(ctx context.Context, actor Actor, wtype workitem.Scope, workItemID, nodeID string, expectedVersion int64) (NodeOpResult, error)
 	SubmitStep(ctx context.Context, actor Actor, wtype workitem.Scope, workItemID, nodeID string, expectedVersion int64, artifacts []ArtifactInput, note string) (NodeOpResult, error)
 	ReviewStep(ctx context.Context, actor Actor, wtype workitem.Scope, workItemID, nodeID string, decision workitem.Decision, comment string, expectedVersion int64) (NodeOpResult, error)
@@ -66,6 +70,15 @@ type API interface {
 	GetNextAction(ctx context.Context, actor Actor, wtype workitem.Scope, workItemID string) (workflow.NextActionReport, error)
 	ListPendingReviews(ctx context.Context, actor Actor) ([]PendingReviewView, error)
 	GetInstanceViewByWorkItem(ctx context.Context, actor Actor, wtype workitem.Scope, workItemID string) (InstanceView, error)
+
+	// audit（M3 审计留痕检索）
+	SearchAuditLogs(ctx context.Context, actor Actor, f AuditQuery) (AuditListResult, error)
+
+	// webhooks（M3 订阅管理，admin）
+	CreateWebhook(ctx context.Context, actor Actor, in CreateWebhookInput) (WebhookView, error)
+	ListWebhooks(ctx context.Context, actor Actor) ([]WebhookView, error)
+	UpdateWebhook(ctx context.Context, actor Actor, id string, in UpdateWebhookInput) (WebhookView, error)
+	DeleteWebhook(ctx context.Context, actor Actor, id string) error
 }
 
 // 编译期保证 *Service 实现 API。

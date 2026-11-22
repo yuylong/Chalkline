@@ -1,8 +1,11 @@
-// 登录后布局：侧边导航（产品/待审批）+ 用户名下拉（登出）。
+// 登录后布局：侧边导航（产品/待审批/审计/Webhook）+ 用户名下拉（登出）。
+// M3：订阅 SSE 事件流，事件到达即失效相关缓存（轮询仍兜底）。
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Avatar, Badge, Dropdown, Layout as AntLayout, Menu, Typography } from 'antd'
+import { useEffect } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router'
 import { apiGet, setToken } from '../shared/api'
+import { openEventStream } from '../shared/events'
 import type { ListEnvelope, PendingReviewView, WhoamiView } from '../shared/types'
 
 const REVIEW_POLL_MS = 10_000
@@ -24,11 +27,44 @@ export default function Layout() {
   })
   const pendingCount = pending?.items.length ?? 0
 
+  // M3 实时推送：任一领域事件到达 → 失效相关查询，TanStack Query 自动重取。
+  useEffect(() => {
+    return openEventStream((ev) => {
+      switch (ev.subjectType) {
+        case 'task':
+          queryClient.invalidateQueries({ queryKey: ['tasks'] })
+          queryClient.invalidateQueries({ queryKey: ['task'] })
+          queryClient.invalidateQueries({ queryKey: ['task-workflow'] })
+          queryClient.invalidateQueries({ queryKey: ['next-action', 'task'] })
+          break
+        case 'iteration':
+          queryClient.invalidateQueries({ queryKey: ['iterations'] })
+          queryClient.invalidateQueries({ queryKey: ['iteration'] })
+          queryClient.invalidateQueries({ queryKey: ['iteration-workflow'] })
+          queryClient.invalidateQueries({ queryKey: ['next-action', 'iteration'] })
+          break
+        case 'product':
+          queryClient.invalidateQueries({ queryKey: ['products'] })
+          queryClient.invalidateQueries({ queryKey: ['product'] })
+          break
+      }
+      // 门禁类事件影响审批队列与概览；其余事件（task.assigned 等）一并刷新队列。
+      queryClient.invalidateQueries({ queryKey: ['reviews'] })
+      queryClient.invalidateQueries({ queryKey: ['overview'] })
+    })
+  }, [queryClient])
+
+  const isAdmin = whoami?.user.roles.includes('admin') ?? false
+
   const selected = location.pathname.startsWith('/reviews')
     ? '/reviews'
-    : location.pathname === '/' || location.pathname.startsWith('/products')
-      ? '/'
-      : location.pathname
+    : location.pathname.startsWith('/audit')
+      ? '/audit'
+      : location.pathname.startsWith('/webhooks')
+        ? '/webhooks'
+        : location.pathname === '/' || location.pathname.startsWith('/products')
+          ? '/'
+          : location.pathname
 
   return (
     <AntLayout style={{ minHeight: '100vh' }}>
@@ -54,6 +90,12 @@ export default function Layout() {
                 </Badge>
               ),
             },
+            ...(isAdmin
+              ? [
+                  { key: '/audit', label: '审计' },
+                  { key: '/webhooks', label: 'Webhook 订阅' },
+                ]
+              : []),
           ]}
           onClick={({ key }) => navigate(key)}
         />

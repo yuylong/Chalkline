@@ -78,3 +78,14 @@ type Provider interface {
 - 各适配器的优先级：M2 先做 `outline` + `git`（门禁材料最常用），`redmine`/`svn` 按需？→ **已定**：M2 四个全部实现，Validate 均为本地校验（不出站），Snapshot 仅 outline/redmine 做，且白名单为空时零出站。
 - 是否需要配置化的 provider 启停与 base_url 管理界面？→ **已定**：先环境变量（`CHALKLINE_OUTLINE_*` / `CHALKLINE_REDMINE_*`），M3 评估管理 UI。
 - `next_attempt_at` 与 `attempts` 的语义？→ **已定**：`attempts` 累计失败次数，`next_attempt_at` 控制下次可投递时间（指数退避），达到 5 次标 `failed`。
+
+## M3 增量：Webhook 订阅管理与开放 API 策略
+
+> 已交付。策略详见 [integrations.md](../domain/integrations.md)「Webhook 订阅管理」与「开放 API 策略」。
+
+- **订阅 CRUD**（admin）：`GET/POST /api/v1/webhooks`、`PATCH/DELETE /api/v1/webhooks/{id}`；订阅行只存 `name` / `url` / `event_types`（空 = 全部）/ `status` 与最近投递结果，**不存任何凭据**——签名密钥沿用全局 `CHALKLINE_WEBHOOK_SECRET`。
+- **投递路由**：`notify.Dispatcher` 每轮读取 active 订阅，按 `event_types` 过滤后投递，带 `X-Chalkline-Subscription-Id` 与 `X-Chalkline-Signature` 头；**尽力而为**——单个订阅失败记在订阅行（`last_error`），不触发事件重试、不阻断其他订阅。静态通道（环境变量）语义不变（失败重试）。
+- **信任模型**：订阅 URL 由 admin 指定，属受信出站，不走材料白名单；投递不跟随重定向、10s 超时。
+- **开放 API**：REST + PAT 即开放 API（拉），Webhook 订阅即推送（推）；不做匿名访问与独立 API Key。
+- 代码：`internal/store/webhooks.go`、`internal/app/webhooks.go`、`internal/api/handlers_scale.go`、`notify/dispatcher.go`（`SubscriptionSource`）；迁移 `0008_scale.sql`。
+- 测试：`notify/dispatcher_subs_test.go`（event_types 过滤、订阅失败不阻断事件、签名头）。

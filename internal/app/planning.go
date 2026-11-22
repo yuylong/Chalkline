@@ -5,6 +5,7 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	"github.com/yuylong/Chalkline/internal/domain/planning"
@@ -595,16 +596,17 @@ type InstanceView struct {
 	Approvals   []ApprovalView `json:"approvals,omitempty"`
 }
 
-// ArtifactView 材料投影：引用元数据，inline 附带内容。
+// ArtifactView 材料投影：引用元数据，inline 附带内容；snapshot 为提交时点固化的快照（M3）。
 type ArtifactView struct {
-	Kind        string `json:"kind"`
-	Provider    string `json:"provider"`
-	URL         string `json:"url,omitempty"`
-	ExternalID  string `json:"externalId,omitempty"`
-	Title       string `json:"title,omitempty"`
-	Content     string `json:"content,omitempty"`
-	NodeID      string `json:"nodeId"`
-	SubmittedBy string `json:"submittedBy"`
+	Kind        string         `json:"kind"`
+	Provider    string         `json:"provider"`
+	URL         string         `json:"url,omitempty"`
+	ExternalID  string         `json:"externalId,omitempty"`
+	Title       string         `json:"title,omitempty"`
+	Content     string         `json:"content,omitempty"`
+	NodeID      string         `json:"nodeId"`
+	SubmittedBy string         `json:"submittedBy"`
+	Snapshot    map[string]any `json:"snapshot,omitempty"`
 }
 
 // ApprovalView 审批决策投影（按时间升序即审批时间线）。
@@ -694,11 +696,19 @@ func (s *Service) instanceView(ctx context.Context, q store.Querier, instRow sto
 		return InstanceView{}, err
 	}
 	for _, a := range artifacts {
-		view.Artifacts = append(view.Artifacts, ArtifactView{
+		av := ArtifactView{
 			Kind: string(a.Ref.Kind), Provider: string(a.Ref.Provider),
 			URL: a.Ref.URL, ExternalID: a.Ref.ExternalID, Title: a.Ref.Title,
 			Content: a.Ref.Content, NodeID: a.Ref.NodeID, SubmittedBy: a.Ref.SubmittedBy,
-		})
+		}
+		if len(a.Snapshot) > 0 {
+			// 快照是提交时点固化的外部事实（M3），原样透传给控制台与 Agent。
+			var snap map[string]any
+			if json.Unmarshal(a.Snapshot, &snap) == nil {
+				av.Snapshot = snap
+			}
+		}
+		view.Artifacts = append(view.Artifacts, av)
 	}
 	approvals, err := store.ListApprovals(ctx, q, instRow.ID)
 	if err != nil {

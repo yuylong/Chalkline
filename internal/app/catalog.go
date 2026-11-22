@@ -6,6 +6,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/yuylong/Chalkline/internal/domain/identity"
@@ -85,19 +86,6 @@ func (s *Service) CreateProduct(ctx context.Context, actor Actor, in CreateProdu
 		return ProductView{}, err
 	}
 	return viewProduct(row), nil
-}
-
-// ListProducts 仅返回可见产品（成员关系过滤或 admin 全量）。
-func (s *Service) ListProducts(ctx context.Context, actor Actor) ([]ProductView, error) {
-	rows, err := store.ListVisibleProducts(ctx, s.DB.Q(), actor.UserID, actor.IsAdmin)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]ProductView, 0, len(rows))
-	for _, p := range rows {
-		out = append(out, viewProduct(p))
-	}
-	return out, nil
 }
 
 // MemberView 是产品成员视图。
@@ -245,6 +233,15 @@ func (s *Service) UpdateProduct(ctx context.Context, actor Actor, id string, in 
 			return err
 		}
 		if in.Archive && p.Status == product.StatusActive {
+			// 归档守卫（M3）：仍有未收尾迭代的产品不可归档，防止规模化管理误伤在途工作。
+			open, err := store.CountOpenIterations(ctx, q, id)
+			if err != nil {
+				return err
+			}
+			if open > 0 {
+				return &Error{Status: http.StatusConflict, Code: "INVALID_TRANSITION",
+					Message: "产品仍有未收尾迭代（planned/active），先收尾或取消迭代再归档"}
+			}
 			dom := productFromRow(p)
 			if err := dom.Archive(); err != nil {
 				return MapError(err)

@@ -6,12 +6,14 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router'
 import type { ReactElement } from 'react'
 import Layout from '../components/Layout'
 import { getToken } from '../shared/api'
+import AuditList from '../features/audit/List'
 import Login from '../features/auth/Login'
 import IterationDetail from '../features/iterations/Detail'
 import ProductDetail from '../features/products/Detail'
 import ProductList from '../features/products/List'
 import ReviewQueue from '../features/reviews/Queue'
 import TaskDetail from '../features/tasks/Detail'
+import WebhookList from '../features/webhooks/List'
 
 function RequireAuth({ children }: { children: ReactElement }) {
   if (!getToken()) return <Navigate to="/login" replace />
@@ -35,6 +37,8 @@ export default function AppRoutes() {
           <Route path="/iterations/:id" element={<IterationDetail />} />
           <Route path="/tasks/:id" element={<TaskDetail />} />
           <Route path="/reviews" element={<ReviewQueue />} />
+          <Route path="/audit" element={<AuditList />} />
+          <Route path="/webhooks" element={<WebhookList />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

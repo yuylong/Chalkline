@@ -85,3 +85,12 @@ M1 新建迁移（表名遵循复数 `snake_case`）：
 
 - 模块移动是否限制「不能移到自己的子孙下」？→ 任务 3 实现时加环检测。
 - Document 的并发编辑策略（乐观锁 vs 最后写入胜）？→ 先乐观锁（`version`），与 M0 审计表配合。
+
+## M3 增量：多产品规模化管理
+
+> 已交付。产品数量上来后，列表、归档与跨产品视图仍可用。
+
+- **列表检索**：`GET /api/v1/products` 支持 `q`（名称/key 模糊）、`status`（active/archived）、`limit`/`offset` 分页（默认 50、上限 200，mcp.md 约定），返回 `{items, total}`；MCP `chalkline_list_products` 同步支持可选参数。
+- **归档守卫**：`PATCH /products/{id}` 归档时校验产品下无 `planned`/`active` 迭代，否则 `409 INVALID_TRANSITION`（不变量 20）。
+- **跨产品概览**：`GET /api/v1/overview` 按可见产品集合统计：产品数、进行中迭代、未完结任务、待审批门禁、超期待审（评审 SLA，见 workflow.md M3）。
+- 代码：`internal/app/scale.go`、`internal/store/catalog.go`（分页过滤）、`internal/store/planning.go`（`CountOpenIterations` / `CountOverview`）。
