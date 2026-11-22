@@ -150,6 +150,27 @@ docker compose -f deploy/docker-compose.yml up -d
 
 然后在对话里问它：「我在 Chalkline 里的下一步是什么？」
 
+## 给 Agent 装 Skill
+
+MCP 让 Agent **能**调用平台，Skill 让它知道按什么顺序、用什么话术推进，开发人员不必记工具名：
+
+```
+agent/skills/chalkline/
+├── SKILL.md                     五步推进循环、硬规矩、汇报模板
+└── references/
+    ├── workflow-basics.md       节点、门禁、拆解与并行速查
+    ├── errors.md                403 / 404 / 409 / 422 怎么处理
+    └── examples.md              典型对话 → 调用序列
+```
+
+把 `agent/skills/chalkline/` 拷到 Agent 的 skills 目录即可，之后可以直接说：
+
+- 「CHK-12 现在到哪一步了？」
+- 「帮我把 CHK-12 拆成前端、后端、联调」
+- 「现在能同时做什么？」
+
+Skill 只做话术映射，**不承担权限与门禁判断**——即使模型忽略它，服务端仍会拦下越权与越级操作。设计说明见 [docs/domain/skill.md](docs/domain/skill.md)。
+
 ## 文档
 
 | 文档 | 内容 |
@@ -161,12 +182,13 @@ docker compose -f deploy/docker-compose.yml up -d
 | [docs/domain/workflow.md](docs/domain/workflow.md) | 工作流定义格式、门禁语义、状态判定 |
 | [docs/domain/integrations.md](docs/domain/integrations.md) | 外部系统集成契约、同步方向、降级策略 |
 | [docs/domain/mcp.md](docs/domain/mcp.md) | MCP 工具清单、返回契约、错误码 |
+| [docs/domain/skill.md](docs/domain/skill.md) | Agent Skill 的分工边界、话术约束与验收方式 |
 | [docs/modules/README.md](docs/modules/README.md) | 功能模块索引，一块对应一批开发任务 |
 
 ## 路线图
 
 - **M0 · 骨架**（进行中）：仓库结构、领域模型、工作流引擎核心判定、docker compose 起服务
-- **M1 · 单产品跑通**：成员与角色、产品/模块/迭代/任务 CRUD、迭代生命周期 + 任务两层工作流与预置模板、门禁审批、MCP 工具全集、控制台基础视图
+- **M1 · 单产品跑通**：成员与角色、产品成员与隔离、产品/模块/迭代/任务 CRUD、迭代生命周期 + 任务两层工作流与预置模板、并行分支、门禁审批、MCP 工具全集、Agent Skill、控制台基础视图
 - **M2 · 协作深化**：任务跨模块与多级拆解看板、迭代燃尽与进度总览、审批队列、审计留痕检索、邮件通知与 outbox 投递
 - **M3 · 规模化**：Outline / Redmine / Git 适配器、多产品、工作流模板市场（导入导出）、开放 API 与 Webhook
 

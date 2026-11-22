@@ -33,6 +33,8 @@ Chalkline/
 │       ├── features/          按功能切分（products/iterations/tasks/gates/reviews）
 │       └── shared/            通用组件、API 客户端、类型
 ├── docs/                      产品与技术文档（见下）
+├── agent/
+│   └── skills/chalkline/      Agent Skill：SKILL.md + references，随服务同版本发布
 ├── deploy/
 │   ├── docker-compose.yml      nginx / api / web / postgres
 │   ├── Dockerfile              多阶段构建，产出静态二进制
@@ -55,6 +57,7 @@ Chalkline/
 | 新前端页面 | `web/src/features/<功能>/`，路由在 `web/src/app/routes.tsx` 注册 |
 | 新的外部系统（Jira、飞书等） | `internal/integration/<provider>/`，实现 Provider 接口 |
 | 新的通知渠道 | `internal/integration/notify/` |
+| Agent Skill 或话术参考 | `agent/skills/chalkline/`，工具变更须同提交更新 |
 | 新的部署单元 | `deploy/` |
 
 规则一句话：**业务规则在 domain，流程判定在 workflow，事务编排在 app，协议转换在 api/mcp，SQL 在 store。越界即为错误。**
@@ -109,6 +112,7 @@ docs/
 │   ├── model.md            领域模型与不变量
 │   ├── workflow.md         工作流定义与门禁语义
 │   ├── integrations.md     外部系统集成契约与边界
+│   ├── skill.md            Agent Skill 设计与话术约束
 │   └── mcp.md              MCP 工具契约
 └── modules/
     ├── README.md           模块索引
