@@ -125,14 +125,16 @@ Chalkline 不做代码托管、不做文档库、不做通知中心。它只保�
 ```bash
 git clone https://github.com/yuylong/Chalkline.git
 cd Chalkline
-cp .env.example .env          # 数据库密码、JWT 密钥、证书路径
-docker compose -f deploy/docker-compose.yml up -d
+cp deploy/.env.example deploy/.env   # 设置数据库密码等
+docker compose --project-directory deploy -f deploy/docker-compose.yml up -d
 ```
 
 启动后：
 
-- 控制台：`https://localhost`（nginx 终止 TLS）
+- 控制台：`https://localhost`（nginx 终止 TLS，首启自动生成自签证书）
 - MCP 端点：`https://localhost/mcp`（Agent 配置见下）
+
+> 当前为 M0（骨架）阶段：控制台为占位页，可用端点为 `/healthz`、`/readyz`、`/api/v1/info`；登录、业务 CRUD 与 MCP 工具自 M1 起交付。
 
 在 Agent 的 MCP 配置里加入：
 
@@ -187,8 +189,8 @@ Skill 只做话术映射，**不承担权限与门禁判断**——即使模型�
 
 ## 路线图
 
-- **M0 · 骨架**（进行中）：仓库结构、领域模型、工作流引擎核心判定、docker compose 起服务
-- **M1 · 单产品跑通**：成员与角色、产品成员与隔离、产品/模块/迭代/任务 CRUD、迭代生命周期 + 任务两层工作流与预置模板、并行分支、门禁审批、MCP 工具全集、Agent Skill、控制台基础视图
+- **M0 · 骨架**（已完成）：仓库结构、领域模型、工作流引擎核心判定、docker compose 起服务
+- **M1 · 单产品跑通**（下一个）：成员与角色、产品成员与隔离、产品/模块/迭代/任务 CRUD、迭代生命周期 + 任务两层工作流与预置模板、并行分支、门禁审批、MCP 工具全集、Agent Skill、控制台基础视图
 - **M2 · 协作深化**：任务跨模块与多级拆解看板、迭代燃尽与进度总览、审批队列、审计留痕检索、邮件通知与 outbox 投递、评审超期提醒与升级链、inline 材料提交时固化文档版本
 - **M3 · 规模化**：Outline / Redmine / Git 适配器、多产品、工作流模板市场（导入导出）、开放 API 与 Webhook
 

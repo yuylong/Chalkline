@@ -1,0 +1,17 @@
+# 调研任务：调研提纲 → 信息收集 → 分析 → 调研报告◆ → 完成
+id: wf-task-research
+name: 调研任务
+scope: task
+version: 1
+nodes:
+  - { id: outline,  name: 调研提纲, type: normal }
+  - { id: collect,  name: 信息收集, type: normal }
+  - { id: analyze,  name: 分析, type: normal }
+  - { id: report,   name: 调研报告, type: normal,
+      gate: { approvals: 1, roles: [pm, reviewer], artifacts: [{ kind: research_report, required: true }] } }
+  - { id: done,     name: 完成, type: terminal }
+edges:
+  - { from: outline, to: collect }
+  - { from: collect, to: analyze }
+  - { from: analyze, to: report }
+  - { from: report,  to: done }

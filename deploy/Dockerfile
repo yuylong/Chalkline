@@ -1,0 +1,20 @@
+# chalklined 多阶段构建：静态编译，运行镜像只带二进制与 CA 证书。
+FROM golang:1.25-alpine AS build
+WORKDIR /src
+# 先拷贝依赖清单，利用层缓存加速重复构建。
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+ARG VERSION=dev
+RUN CGO_ENABLED=0 go build -trimpath \
+    -ldflags "-s -w -X github.com/yuylong/Chalkline/internal/app.Version=${VERSION}" \
+    -o /out/chalklined ./cmd/chalklined
+
+FROM alpine:3.20
+RUN apk add --no-cache ca-certificates tzdata wget \
+    && addgroup -g 10001 chalk \
+    && adduser -D -u 10001 -G chalk chalk
+COPY --from=build /out/chalklined /usr/local/bin/chalklined
+USER chalk
+EXPOSE 8080
+ENTRYPOINT ["/usr/local/bin/chalklined"]

@@ -1,0 +1,37 @@
+# 内置模板与自建模板完全等价：首次启动写入数据库后可编辑、复制、设默认。
+# 对应 docs/domain/workflow.md「生命周期模板示例」。
+id: wf-iteration-lifecycle
+name: 全生命周期（默认）
+scope: iteration
+version: 1
+nodes:
+  - { id: research_market, name: 竞品调研, type: normal,
+      gate: { approvals: 1, roles: [pm, reviewer], artifacts: [{ kind: research_report, required: true }] } }
+  - { id: research_tech, name: 关键技术调研, type: normal,
+      gate: { approvals: 1, roles: [reviewer], artifacts: [{ kind: research_report, required: true }, { kind: tech_spike, required: true }] } }
+  - { id: planning, name: 产品规划, type: normal,
+      gate: { approvals: 1, roles: [pm], artifacts: [{ kind: spec, required: true }] } }
+  - { id: breakdown, name: 任务拆解, type: normal, allows_task_creation: true,
+      gate: { approvals: 1, roles: [pm, reviewer] } }
+  - { id: build, name: 研发, type: normal, allows_task_creation: true }
+  - { id: test_design, name: 测试设计, type: normal, allows_task_creation: true,
+      gate: { approvals: 1, roles: [qa], artifacts: [{ kind: test_plan, required: true }] } }
+  - { id: assess, name: 测评, type: normal,
+      gate: { approvals: 1, roles: [qa, reviewer], artifacts: [{ kind: test_report, required: true }] } }
+  - { id: release, name: 发布, type: normal, require_iteration_tasks_done: true,
+      gate: { approvals: 1, roles: [pm, admin], artifacts: [{ kind: test_report, required: true }, { kind: pr, required: true }] } }
+  - { id: summary, name: 总结, type: normal,
+      gate: { approvals: 1, roles: [pm], artifacts: [{ kind: summary, required: true }] } }
+  - { id: closed, name: 结束, type: terminal }
+edges:
+  - { from: research_market, to: planning }        # 分叉 A：规划线
+  - { from: research_market, to: research_tech }   # 分叉 B：技术调研并行推进
+  - { from: planning,        to: breakdown }
+  - { from: breakdown,       to: build }
+  - { from: research_tech,   to: build }           # 汇合：拆解确认 + 技术调研通过才开工
+  - { from: breakdown,       to: test_design }     # 分叉：测试设计与研发并行
+  - { from: build,           to: assess }
+  - { from: test_design,     to: assess }          # 汇合：研发 + 测试设计都完成才测评
+  - { from: assess,          to: release }
+  - { from: release,         to: summary }
+  - { from: summary,         to: closed }
