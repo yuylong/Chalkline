@@ -24,16 +24,31 @@ type Queue interface {
 	FailOutbox(ctx context.Context, id int64, lastErr string, backoff time.Duration) error
 }
 
+// SubscriptionSource 是 Webhook 订阅的存储访问（M3 订阅管理；nil 则只有静态通道）。
+// 生产由 *store.DB 实现。
+type SubscriptionSource interface {
+	ListActiveWebhookSubscriptions(ctx context.Context) ([]store.ActiveWebhookSubscription, error)
+	MarkWebhookDelivery(ctx context.Context, id string, ok bool, lastErr string) error
+}
+
 // Dispatcher 是后台投递器：轮询 due 事件 → 逐条经全部 Sender 发送。
 // 任一 Sender 失败即计一次失败（整条事件重试），保证接收方看到的事件序完整。
+// M3 起 Subs 非空时，事件另按订阅（event_types 过滤）逐个投递到订阅方 URL；
+// 订阅投递是尽力而为：失败记在订阅行（last_error），不阻断事件流转。
 type Dispatcher struct {
 	Queue       Queue
-	Senders      []Sender
-	Log          *slog.Logger
-	Interval     time.Duration // 轮询间隔，默认 5s
-	MaxAttempts  int           // 最大尝试次数，默认 5
-	BatchLimit   int           // 每轮最多处理条数，默认 50
-	BackoffBase  time.Duration // 退避基数：第 n 次失败后等待 base * 2^(n-1)
+	Senders     []Sender
+	Log         *slog.Logger
+	Interval    time.Duration // 轮询间隔，默认 5s
+	MaxAttempts int           // 最大尝试次数，默认 5
+	BatchLimit  int           // 每轮最多处理条数，默认 50
+	BackoffBase time.Duration // 退避基数：第 n 次失败后等待 base * 2^(n-1)
+
+	// Subs 是 Webhook 订阅源（M3；nil 则不投订阅）。
+	Subs SubscriptionSource
+	// WebhookSecret 是订阅投递的 HMAC 签名密钥（全局 CHALKLINE_WEBHOOK_SECRET，
+	// 凭据不落库；订阅行只存 URL 与事件过滤）。
+	WebhookSecret string
 }
 
 func (d *Dispatcher) interval() time.Duration {
@@ -95,8 +110,9 @@ func (d *Dispatcher) dispatchOnce(ctx context.Context) {
 }
 
 func (d *Dispatcher) dispatchOne(ctx context.Context, ev store.OutboxRow) {
-	if len(d.Senders) == 0 {
-		// 无通道（未配置 webhook/smtp）：直接标记完成，避免事件无限滞留 pending。
+	hasSubs := d.Subs != nil
+	if len(d.Senders) == 0 && !hasSubs {
+		// 无通道（未配置 webhook/smtp 且无订阅）：直接标记完成，避免事件无限滞留 pending。
 		if err := d.Queue.MarkOutboxSent(ctx, ev.ID); err != nil {
 			d.Log.Error("outbox 标记完成失败", "id", ev.ID, "error", err)
 		}
@@ -108,11 +124,53 @@ func (d *Dispatcher) dispatchOne(ctx context.Context, ev store.OutboxRow) {
 			return
 		}
 	}
+	if hasSubs {
+		d.deliverSubscriptions(ctx, ev)
+	}
 	if err := d.Queue.MarkOutboxSent(ctx, ev.ID); err != nil {
 		d.Log.Error("outbox 标记完成失败", "id", ev.ID, "error", err)
 		return
 	}
 	d.Log.Debug("outbox 事件已投递", "id", ev.ID, "event_type", ev.EventType)
+}
+
+// deliverSubscriptions 按订阅投递：event_types 为空即全订阅；
+// 单个订阅失败只记在该订阅行，不影响事件与其他订阅（尽力而为）。
+func (d *Dispatcher) deliverSubscriptions(ctx context.Context, ev store.OutboxRow) {
+	subs, err := d.Subs.ListActiveWebhookSubscriptions(ctx)
+	if err != nil {
+		d.Log.Error("webhook 订阅读取失败", "error", err)
+		return
+	}
+	for _, sub := range subs {
+		if !subscriptionMatches(sub.EventTypes, ev.EventType) {
+			continue
+		}
+		wh := &Webhook{URL: sub.URL, Secret: d.WebhookSecret, SubscriptionID: sub.ID}
+		sendErr := wh.Send(ctx, ev)
+		lastErr := ""
+		if sendErr != nil {
+			lastErr = sendErr.Error()
+			d.Log.Warn("webhook 订阅投递失败", "subscription", sub.ID,
+				"event_type", ev.EventType, "error", sendErr)
+		}
+		if err := d.Subs.MarkWebhookDelivery(ctx, sub.ID, sendErr == nil, lastErr); err != nil {
+			d.Log.Error("webhook 投递记录失败", "subscription", sub.ID, "error", err)
+		}
+	}
+}
+
+// subscriptionMatches 事件类型过滤（空列表 = 订阅全部）。
+func subscriptionMatches(eventTypes []string, eventType string) bool {
+	if len(eventTypes) == 0 {
+		return true
+	}
+	for _, t := range eventTypes {
+		if t == eventType {
+			return true
+		}
+	}
+	return false
 }
 
 // fail 记一次失败：未达上限则按指数退避延后重试，达到上限标 failed。

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -72,6 +73,19 @@ func parseDate(s string) (time.Time, error) {
 		return time.Time{}, app.Invalid("日期 %q 需为 YYYY-MM-DD", s)
 	}
 	return t, nil
+}
+
+// queryInt 解析可选整数查询参数（缺省/非法返回 def）。
+func queryInt(r *http.Request, key string, def int) int {
+	v := r.URL.Query().Get(key)
+	if v == "" {
+		return def
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		return def
+	}
+	return n
 }
 
 // svc 取用例集合（readyGuard 已确保非 nil）。

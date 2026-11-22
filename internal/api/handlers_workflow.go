@@ -102,6 +102,41 @@ func (h *handlers) archiveWorkflow(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "archived"})
 }
 
+// exportWorkflow 导出模板为 YAML（M3：跨实例迁移与备份）。
+func (h *handlers) exportWorkflow(w http.ResponseWriter, r *http.Request) {
+	actor, err := h.actor(r)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	out, err := h.svc().ExportWorkflow(r.Context(), actor, pathParam(r, "id"))
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+// importWorkflow 导入模板 YAML（M3；冲突时服务端换 id / 升版本）。
+func (h *handlers) importWorkflow(w http.ResponseWriter, r *http.Request) {
+	actor, err := h.actor(r)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	var req createWorkflowReq
+	if err := decode(r, &req); err != nil {
+		writeAppError(w, err)
+		return
+	}
+	view, err := h.svc().ImportWorkflow(r.Context(), actor, req.YAML)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, view)
+}
+
 func (h *handlers) taskWorkflow(w http.ResponseWriter, r *http.Request) {
 	actor, err := h.actor(r)
 	if err != nil {

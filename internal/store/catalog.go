@@ -5,6 +5,9 @@ package store
 
 import (
 	"context"
+	"fmt"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/yuylong/Chalkline/internal/domain/product"
@@ -63,6 +66,74 @@ func ListVisibleProducts(ctx context.Context, q Querier, userID string, isAdmin 
 		 JOIN product_members pm ON pm.product_id = p.id AND pm.user_id = $1
 		 ORDER BY p.created_at DESC`, scanProduct, userID)
 }
+
+// ---- 多产品规模化（M3）：搜索 + 状态过滤 + 分页 ----
+
+// ProductListFilter 是产品列表过滤条件；零值字段不参与过滤。
+type ProductListFilter struct {
+	Q      string // 名称 / key 模糊匹配
+	Status string // active | archived；空 = 全部
+	Limit  int
+	Offset int
+}
+
+// productWhere 组装可见性 + 过滤 WHERE（admin 全量，非 admin 过成员关系）。
+func productWhere(userID string, isAdmin bool, f ProductListFilter) (string, []any) {
+	conds := []string{}
+	args := []any{}
+	if !isAdmin {
+		conds = append(conds, `EXISTS (SELECT 1 FROM product_members pm
+		 WHERE pm.product_id = p.id AND pm.user_id = $1)`)
+		args = append(args, userID)
+	}
+	if f.Q != "" {
+		args = append(args, "%"+strings.ToLower(f.Q)+"%")
+		conds = append(conds, fmt.Sprintf(`(LOWER(p.name) LIKE $%d OR LOWER(p.key) LIKE $%d)`,
+			len(args), len(args)))
+	}
+	if f.Status != "" {
+		args = append(args, f.Status)
+		conds = append(conds, fmt.Sprintf(`p.status = $%d`, len(args)))
+	}
+	where := ""
+	if len(conds) > 0 {
+		where = " WHERE " + strings.Join(conds, " AND ")
+	}
+	return where, args
+}
+
+func productPage(f ProductListFilter) (int, int) {
+	limit := f.Limit
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+	offset := f.Offset
+	if offset < 0 {
+		offset = 0
+	}
+	return limit, offset
+}
+
+// ListVisibleProductsPaged 分页列可见产品（M3 规模化：搜索 + 状态过滤 + 计数）。
+func ListVisibleProductsPaged(ctx context.Context, q Querier, userID string, isAdmin bool, f ProductListFilter) ([]ProductRow, error) {
+	where, args := productWhere(userID, isAdmin, f)
+	limit, offset := productPage(f)
+	sql := `SELECT ` + productColsRe + ` FROM products p` + where +
+		` ORDER BY p.created_at DESC LIMIT ` + strconv.Itoa(limit) + ` OFFSET ` + strconv.Itoa(offset)
+	return scanAll(ctx, q, sql, scanProduct, args...)
+}
+
+// CountVisibleProducts 统计过滤命中总数（分页用）。
+func CountVisibleProducts(ctx context.Context, q Querier, userID string, isAdmin bool, f ProductListFilter) (int, error) {
+	where, args := productWhere(userID, isAdmin, f)
+	var n int
+	err := q.QueryRow(ctx, `SELECT count(*) FROM products p`+where, args...).Scan(&n)
+	return n, err
+}
+
+// productColsRe 是带表前缀的产品列（分页查询联 WHERE 用）。
+const productColsRe = `p.id, p.key, p.name, p.description, p.status,
+ p.default_iteration_workflow_id, p.default_task_workflow_id, p.created_by, p.created_at`
 
 // ProductUpdate 是产品可更新字段（nil 即不改）。
 type ProductUpdate struct {

@@ -81,3 +81,16 @@
 - 国际化是否在 M2 做？→ **已定**：先中文（antd ConfigProvider + dayjs zh-CN），i18n 框架预留。
 - JWT 存储位置？→ **已定**：仅内存，刷新页面回登录页；不落 localStorage/sessionStorage。
 - 材料/审批数据来源？→ **已定**：由实例视图（`InstanceView.artifacts` / `.approvals`）随任务/迭代详情返回，前端不做二次聚合。
+
+## M3 增量：实时推送与规模化视图
+
+> 已交付。
+
+- **实时性收敛：SSE**（不引入 WebSocket）。理由：控制台只需要服务端→客户端的单向推送；SSE 走普通 HTTP，nginx 反代零改造（仅关缓冲），且与 JWT 头鉴权天然兼容（EventSource 不支持自定义头，前端用 fetch 流式读取，`web/src/shared/events.ts`）。
+  - 端点 `GET /api/v1/events`（JWT 鉴权）：尾随 outbox 的只读投影，按成员关系过滤（非 admin 只收自己产品的事件，admin 全量；成员关系快照每分钟刷新）。断线由前端指数退避重连，**轮询兜底保留**——丢事件只意味着少一次提前刷新。
+  - 服务端：`internal/events`（进程内 hub）+ `internal/server` 的 outbox tailer（`CHALKLINE_EVENTS_INTERVAL`，默认 3s）；nginx `location /api/v1/events` 关缓冲、读超时 1h。
+  - 前端：`Layout` 订阅事件流，按 `subjectType` 失效对应 TanStack Query 缓存。
+- **规模化视图**：产品列表搜索/状态过滤/分页 + 概览统计条（`/overview`）；产品详情提供归档入口（归档守卫见 catalog.md M3）。
+- **审计页**（admin）：`/audit` 全局检索（操作者/动作/主体/产品/时间范围 + 分页），载荷 JSON 展示；产品内审计走 `GET /products/{id}/audit-logs`（REST，成员可用）。
+- **Webhook 订阅页**（admin）：`/webhooks` 订阅 CRUD、启停开关、最近投递结果展示。
+- **审批队列**：条目展示等待时长，超期（评审 SLA）标红。

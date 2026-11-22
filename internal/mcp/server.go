@@ -119,19 +119,31 @@ func (d Deps) registerReadTools(s *mcp.Server) {
 		return nil, out, nil
 	})
 
-	mcp.AddTool[struct{}, any](s, &mcp.Tool{
+	mcp.AddTool[struct {
+		Q      string `json:"q,omitempty"`
+		Status string `json:"status,omitempty"`
+		Limit  int    `json:"limit,omitempty"`
+		Offset int    `json:"offset,omitempty"`
+	}, any](s, &mcp.Tool{
 		Name:        "chalkline_list_products",
-		Description: "列出你有权访问的产品（成员关系过滤；admin 全量）。",
-	}, func(ctx context.Context, _ *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, any, error) {
+		Description: "列出你有权访问的产品（成员关系过滤；admin 全量），支持搜索与分页。",
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in struct {
+		Q      string `json:"q,omitempty"`
+		Status string `json:"status,omitempty"`
+		Limit  int    `json:"limit,omitempty"`
+		Offset int    `json:"offset,omitempty"`
+	}) (*mcp.CallToolResult, any, error) {
 		svc, actor, err := d.svc(ctx)
 		if err != nil {
 			return fail(err)
 		}
-		out, err := svc.ListProducts(ctx, actor)
+		out, err := svc.ListProducts(ctx, actor, app.ProductListQuery{
+			Q: in.Q, Status: in.Status, Limit: in.Limit, Offset: in.Offset,
+		})
 		if err != nil {
 			return fail(err)
 		}
-		return nil, map[string]any{"items": out}, nil
+		return nil, out, nil
 	})
 
 	mcp.AddTool[struct {

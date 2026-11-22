@@ -6,6 +6,9 @@ package app
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"time"
 
@@ -141,6 +144,81 @@ func (s *Service) ArchiveWorkflow(ctx context.Context, actor Actor, id string) e
 		}
 		return audit(ctx, q, actor, "workflow.archive", "workflow", id, nil)
 	})
+}
+
+// ---- 模板导入导出（M3 规模化：跨实例迁移与备份）----
+
+// WorkflowExport 是模板导出产物：YAML 文本（与创建/更新入参同构，可直接再导入）。
+type WorkflowExport struct {
+	ID        string `json:"id"`
+	Scope     string `json:"scope"`
+	Name      string `json:"name"`
+	Version   int    `json:"version"`
+	YAML      string `json:"yaml"`
+}
+
+// ExportWorkflow 导出模板为 YAML（登录即可读；导出是读操作，不写审计）。
+func (s *Service) ExportWorkflow(ctx context.Context, _ Actor, id string) (WorkflowExport, error) {
+	w, err := store.WorkflowByID(ctx, s.DB.Q(), id)
+	if err != nil {
+		return WorkflowExport{}, wrapNotFound(err, "模板不存在")
+	}
+	def, err := workflow.ParseJSON(w.Definition)
+	if err != nil {
+		return WorkflowExport{}, MapError(err)
+	}
+	body, err := yaml.Marshal(def)
+	if err != nil {
+		return WorkflowExport{}, Invalid("模板序列化失败: %v", err)
+	}
+	return WorkflowExport{
+		ID: w.ID, Scope: string(w.Scope), Name: w.Name, Version: w.Version,
+		YAML: string(body),
+	}, nil
+}
+
+// ImportWorkflow 导入模板（pm / admin）：YAML 校验通过即入库。
+// 冲突策略：id 已占用或为空 → 分配新 id；(scope,name,version) 撞名 → 升到该名最大版本 + 1。
+// 返回视图中的 id 即导入后的实际 id，originalId 记录在审计里。
+func (s *Service) ImportWorkflow(ctx context.Context, actor Actor, yamlText string) (WorkflowView, error) {
+	if !actor.Roles.HasAny(identity.RolePM) {
+		return WorkflowView{}, RoleRequired("需要 pm 或 admin 角色")
+	}
+	def, err := parseTemplateYAML([]byte(yamlText))
+	if err != nil {
+		return WorkflowView{}, err
+	}
+	originalID := def.ID
+	var out WorkflowView
+	err = s.DB.WithTx(ctx, func(q store.Querier) error {
+		if def.ID == "" {
+			def.ID = s.newID("wf")
+		} else if exists, err := store.WorkflowExists(ctx, q, def.ID); err != nil {
+			return err
+		} else if exists {
+			def.ID = s.newID("wf")
+		}
+		if max, err := store.MaxWorkflowVersion(ctx, q, string(def.Scope), def.Name); err != nil {
+			return err
+		} else if def.Version <= max {
+			def.Version = max + 1
+		}
+		if err := store.InsertWorkflow(ctx, q, def, "active"); err != nil {
+			if store.IsDuplicate(err) {
+				return Invalid("模板 id 或 (scope,name,version) 已存在")
+			}
+			return err
+		}
+		if err := audit(ctx, q, actor, "workflow.import", "workflow", def.ID,
+			map[string]any{"original_id": originalID, "scope": string(def.Scope),
+				"name": def.Name, "version": def.Version}); err != nil {
+			return err
+		}
+		out = WorkflowView{ID: def.ID, Scope: string(def.Scope), Name: def.Name,
+			Version: def.Version, Status: "active"}
+		return nil
+	})
+	return out, err
 }
 
 // resolveVersion expectedVersion ≤ 0 时取加载时点的当前版本（REST/MCP 可省略版本参数）。
@@ -287,16 +365,18 @@ func (s *Service) SubmitStep(ctx context.Context, actor Actor, wtype workitem.Sc
 		// 材料引用校验（不变量 14：provider 与 kind 匹配 + 外部校验器复核）。
 		before := readySet(li.Inst) // 推进前快照：用于 node.ready 事件 diff
 		inRefs := make([]workitem.ArtifactRef, 0, len(artifacts))
+		snapshots := make([]json.RawMessage, 0, len(artifacts))
 		for _, a := range artifacts {
 			ref, err := a.toRef(nodeID, actor.UserID)
 			if err != nil {
 				return err
 			}
-			ref, err = s.gateRef(ctx, ref)
+			ref, snap, err := s.gateRef(ctx, ref)
 			if err != nil {
 				return err
 			}
 			inRefs = append(inRefs, ref)
+			snapshots = append(snapshots, snap)
 		}
 
 		// 替换判定：同 kind 已有材料且内容不同 → 作废该节点既有审批（材料变更语义）。
@@ -348,8 +428,9 @@ func (s *Service) SubmitStep(ctx context.Context, actor Actor, wtype workitem.Sc
 		}
 
 		// 材料落库（每节点每 kind 一份，替换即作废审批）。
-		for _, ref := range inRefs {
-			row := store.ArtifactRow{ID: s.newID("art"), InstanceID: li.Row.ID, Ref: ref}
+		for i, ref := range inRefs {
+			row := store.ArtifactRow{ID: s.newID("art"), InstanceID: li.Row.ID, Ref: ref,
+				Snapshot: snapshots[i]}
 			if err := store.ReplaceArtifact(ctx, q, row, replaced); err != nil {
 				return err
 			}
@@ -412,7 +493,7 @@ func (s *Service) AttachArtifact(ctx context.Context, actor Actor, wtype workite
 		if err != nil {
 			return err
 		}
-		ref, err = s.gateRef(ctx, ref)
+		ref, snap, err := s.gateRef(ctx, ref)
 		if err != nil {
 			return err
 		}
@@ -424,7 +505,8 @@ func (s *Service) AttachArtifact(ctx context.Context, actor Actor, wtype workite
 				reset = true
 			}
 		}
-		row := store.ArtifactRow{ID: s.newID("art"), InstanceID: li.Row.ID, Ref: ref}
+		row := store.ArtifactRow{ID: s.newID("art"), InstanceID: li.Row.ID, Ref: ref,
+			Snapshot: snap}
 		if err := store.ReplaceArtifact(ctx, q, row, reset); err != nil {
 			return err
 		}
@@ -448,22 +530,43 @@ func artifactDiffers(a, b workitem.ArtifactRef) bool {
 		a.Title != b.Title || a.Content != b.Content
 }
 
-// gateRef 经外部校验器复核引用并尽力补快照标题（M2 集成接入点，依赖倒置）。
+// gateRef 经外部校验器复核引用并固化快照（M3：材料提交时冻结外部文档版本，
+// 评审看到的是提交时点的事实，外部内容后续变化不回写——integrations.md「同步方向」）。
 // Validate 失败 → INVALID_ARTIFACT_REF（422，integration.md「材料挂接时」）；
-// Snapshot 失败忽略（降级为引用自带标题，不变量 15：集成不可用不阻断挂接）。
-func (s *Service) gateRef(ctx context.Context, ref workitem.ArtifactRef) (workitem.ArtifactRef, error) {
-	if s.Gate == nil {
-		return ref, nil
-	}
-	if err := s.Gate.Validate(ctx, ref); err != nil {
-		return ref, InvalidArtifactRef(err)
-	}
-	if ref.Title == "" {
-		if meta, err := s.Gate.Snapshot(ctx, ref); err == nil && meta.Title != "" {
-			ref.Title = meta.Title
+// Snapshot 失败降级为引用自带信息（不变量 15：集成不可用不阻断挂接）。
+// 快照内容：外部 provider 记 title/version/status + fetchedAt；inline 记内容 sha256 与长度。
+func (s *Service) gateRef(ctx context.Context, ref workitem.ArtifactRef) (workitem.ArtifactRef, json.RawMessage, error) {
+	if s.Gate != nil {
+		if err := s.Gate.Validate(ctx, ref); err != nil {
+			return ref, nil, InvalidArtifactRef(err)
 		}
 	}
-	return ref, nil
+	snap := map[string]any{"fetchedAt": s.Now().UTC().Format(time.RFC3339)}
+	if ref.Provider == workitem.ProviderInline {
+		sum := sha256.Sum256([]byte(ref.Content))
+		snap["sha256"] = hex.EncodeToString(sum[:])
+		snap["bytes"] = len(ref.Content)
+	} else if s.Gate != nil {
+		if meta, err := s.Gate.Snapshot(ctx, ref); err == nil {
+			if meta.Title != "" {
+				snap["title"] = meta.Title
+				if ref.Title == "" {
+					ref.Title = meta.Title
+				}
+			}
+			if meta.Version != "" {
+				snap["version"] = meta.Version
+			}
+			if meta.Status != "" {
+				snap["status"] = meta.Status
+			}
+		}
+	}
+	body, err := json.Marshal(snap)
+	if err != nil {
+		body = []byte(`{}`)
+	}
+	return ref, body, nil
 }
 
 // readySet 收集当前 ready 节点：节点操作前快照，操作后 diff 出新就绪节点。
@@ -860,6 +963,8 @@ type PendingReviewView struct {
 	ApprovalsNeeded int   `json:"approvalsNeeded"`
 	CurrentApprovals int  `json:"currentApprovals"`
 	Roles        []string `json:"roles"`
+	AwaitingSince string  `json:"awaitingSince,omitempty"` // 进入评审时间（M3）
+	Overdue      bool     `json:"overdue"`                 // 超过评审 SLA（M3）
 }
 
 // ListPendingReviews 我是评审人、待我确认的门禁（chalkline_get_pending_reviews）。
@@ -932,6 +1037,8 @@ func (s *Service) ListPendingReviews(ctx context.Context, actor Actor) ([]Pendin
 			NodeID: a.NodeID, NodeName: node.Name,
 			ApprovalsNeeded: node.Gate.Approvals, CurrentApprovals: current,
 			Roles: roleNames(node.Gate.Roles),
+			AwaitingSince: a.EnteredAt.UTC().Format(time.RFC3339),
+			Overdue:       s.Now().Sub(a.EnteredAt) > s.reviewSLA(),
 		})
 	}
 	return out, nil

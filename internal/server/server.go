@@ -14,6 +14,7 @@ import (
 	"github.com/yuylong/Chalkline/internal/app"
 	"github.com/yuylong/Chalkline/internal/auth"
 	"github.com/yuylong/Chalkline/internal/domain/identity"
+	"github.com/yuylong/Chalkline/internal/events"
 	"github.com/yuylong/Chalkline/internal/integration"
 	"github.com/yuylong/Chalkline/internal/integration/notify"
 	"github.com/yuylong/Chalkline/internal/mcp"
@@ -79,6 +80,9 @@ func Run(ctx context.Context) error {
 		return svc
 	}
 
+	// M3 实时推送：进程内事件总线（outbox tailer 发布，SSE 连接订阅）。
+	eventHub := events.NewHub()
+
 	// 数据库初始化：连接 → 迁移 → 种子 → admin 引导 → 组装 Service。
 	go func() {
 		for {
@@ -86,7 +90,10 @@ func Run(ctx context.Context) error {
 			if derr == nil {
 				if derr = db.Migrate(ctx); derr == nil {
 					if derr = db.SeedBuiltinWorkflows(ctx); derr == nil {
-						s := app.NewService(db, logger, jwt, artifactGate)
+						s := app.NewService(db, logger, jwt, artifactGate, app.Options{
+							ReviewSLA:        cfg.ReviewSLA,
+							ReviewEscalation: cfg.ReviewEscalation,
+						})
 						created, berr := s.BootstrapAdmin(ctx, cfg.AdminUsername, cfg.AdminPassword)
 						if berr != nil {
 							derr = berr
@@ -108,6 +115,12 @@ func Run(ctx context.Context) error {
 			if derr == nil {
 				logger.Info("数据库就绪：迁移、种子与引导完成")
 				startDispatcher(ctx, db, cfg, logger)
+				// M3：评审 SLA 监控器（超期提醒与升级链，只写水位与事件，不改状态）。
+				if impl, ok := svc.(*app.Service); ok {
+					go impl.RunReviewSLA(ctx, cfg.ReviewScanInterval, logger)
+				}
+				// M3：outbox 事件尾随 → SSE 总线（控制台实时刷新）。
+				go tailOutbox(ctx, db, eventHub, cfg.EventsInterval, logger)
 				initDone <- nil
 				return
 			}
@@ -126,7 +139,7 @@ func Run(ctx context.Context) error {
 
 	srv := &http.Server{
 		Addr:          cfg.Addr,
-		Handler:       newRouter(logger, state, getSvc, authmw, mcpHandler),
+		Handler:       newRouter(logger, state, getSvc, authmw, mcpHandler, eventHub),
 		ReadTimeout:   cfg.ReadTimeout,
 		WriteTimeout:  cfg.WriteTimeout,
 	}
@@ -189,7 +202,7 @@ func (p lazyIdentityProvider) TouchPAT(ctx context.Context, tokenHash string) er
 }
 
 func newRouter(logger *slog.Logger, state *dbState, getSvc func() app.API,
-	authmw *auth.Middleware, mcpHandler http.Handler) http.Handler {
+	authmw *auth.Middleware, mcpHandler http.Handler, eventHub *events.Hub) http.Handler {
 	return api.NewRouter(api.Deps{
 		Logger:   logger,
 		Version:  Version,
@@ -197,6 +210,7 @@ func newRouter(logger *slog.Logger, state *dbState, getSvc func() app.API,
 		AuthREST: authmw.AuthenticateREST,
 		AuthMCP:  authmw.AuthenticateMCP,
 		MCP:      mcpHandler,
+		Events:   eventHub,
 		Ready: func() bool {
 			_, ok := state.snapshot()
 			return ok && getSvc() != nil
@@ -217,8 +231,8 @@ func closeDB(state *dbState) {
 	}
 }
 
-// startDispatcher 启动 outbox 通知投递器（M2 集成）。无论是否配置通道都启动：
-// 无通道时事件直接标记完成，避免 outbox 无限滞留 pending（不变量 15）。
+// startDispatcher 启动 outbox 通知投递器（M2 集成 + M3 订阅路由）。无论是否配置通道都启动：
+// 无通道且无订阅时事件直接标记完成，避免 outbox 无限滞留 pending（不变量 15）。
 func startDispatcher(ctx context.Context, db *store.DB, cfg platform.Config, logger *slog.Logger) {
 	senders := []notify.Sender{}
 	if cfg.WebhookURL != "" {
@@ -235,5 +249,48 @@ func startDispatcher(ctx context.Context, db *store.DB, cfg platform.Config, log
 	}
 	go (&notify.Dispatcher{
 		Queue: db, Senders: senders, Log: logger, Interval: cfg.OutboxInterval,
+		// M3：Webhook 订阅管理——事件按订阅的 event_types 路由到各自 URL，
+		// 签名密钥沿用全局 CHALKLINE_WEBHOOK_SECRET（凭据不落库）。
+		Subs:          db,
+		WebhookSecret: cfg.WebhookSecret,
 	}).Run(ctx)
+}
+
+// tailOutbox 尾随 outbox 新事件并发布到 SSE 总线（M3 实时推送）。
+// 启动时定位到当前最大 id（只推增量）；产品归属在发布前解析，可见性过滤在 api 层。
+func tailOutbox(ctx context.Context, db *store.DB, hub *events.Hub, interval time.Duration, logger *slog.Logger) {
+	if interval <= 0 {
+		interval = 3 * time.Second
+	}
+	lastID, err := store.MaxOutboxID(ctx, db.Q())
+	if err != nil {
+		logger.Error("SSE 尾随启动失败：无法定位事件游标", "error", err)
+		return
+	}
+	logger.Info("SSE 事件尾随启动", "interval", interval.String(), "cursor", lastID)
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+		rows, err := store.ListOutboxAfter(ctx, db.Q(), lastID, 100)
+		if err != nil {
+			logger.Error("SSE 尾随读取失败", "error", err)
+			continue
+		}
+		for _, ev := range rows {
+			productID, err := store.ProductIDOfSubject(ctx, db.Q(), ev.SubjectType, ev.SubjectID)
+			if err != nil {
+				productID = "" // 主体可能已被删除：仍推送，可见性过滤会兜底
+			}
+			hub.Publish(events.Event{
+				ID: ev.ID, EventType: ev.EventType, SubjectType: ev.SubjectType,
+				SubjectID: ev.SubjectID, ProductID: productID, Payload: ev.Payload,
+			})
+			lastID = ev.ID
+		}
+	}
 }

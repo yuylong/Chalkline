@@ -46,6 +46,21 @@ export interface ProductView {
   createdAt: string
 }
 
+/** M3：产品列表分页结果（搜索 + 状态过滤）。 */
+export interface ProductListResult {
+  items: ProductView[]
+  total: number
+}
+
+/** M3：跨产品概览（按可见产品集合统计）。 */
+export interface OverviewView {
+  products: number
+  activeIterations: number
+  openTasks: number
+  pendingGates: number
+  overdueGates: number
+}
+
 export interface MemberView {
   userId: string
   username: string
@@ -154,6 +169,8 @@ export interface ArtifactRef {
   content?: string
   nodeId: string
   submittedBy: string
+  /** M3：提交时点固化的快照（外部 title/version 或 inline sha256）。 */
+  snapshot?: Record<string, unknown>
 }
 
 /** 审批记录（ReviewDecision 投影）。M2 起随实例视图返回（InstanceView.approvals）。 */
@@ -204,6 +221,54 @@ export interface PendingReviewView {
   approvalsNeeded: number
   currentApprovals: number
   roles: string[]
+  /** M3：进入评审时间与是否超过评审 SLA。 */
+  awaitingSince?: string
+  overdue?: boolean
+}
+
+// ---- M3：审计留痕检索 ----
+
+export interface AuditLogView {
+  id: number
+  actorId: string
+  actorName: string
+  action: string
+  subjectType: string
+  subjectId: string
+  payload: Record<string, unknown>
+  createdAt: string
+}
+
+export interface AuditListResult {
+  items: AuditLogView[]
+  total: number
+}
+
+// ---- M3：Webhook 订阅管理 ----
+
+export interface WebhookView {
+  id: string
+  name: string
+  url: string
+  eventTypes: string[] // 空 = 订阅全部事件
+  status: string // active | paused
+  createdBy: string
+  createdAt: string
+  lastDeliveryAt?: string
+  lastDeliveryOk?: boolean
+  lastError?: string
+}
+
+// ---- M3：SSE 事件流 ----
+
+/** /api/v1/events 推送的事件（outbox 投影 + 产品归属）。 */
+export interface StreamEvent {
+  id: number
+  eventType: string
+  subjectType: string
+  subjectId: string
+  productId?: string
+  payload?: Record<string, unknown>
 }
 
 // ---- next action（/tasks/{id}/next-action、/iterations/{id}/next-action）----
