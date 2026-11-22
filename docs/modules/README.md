@@ -7,7 +7,7 @@
 | 模块 | 职责 | 代码位置 | 设计文档 | 状态 |
 | --- | --- | --- | --- | --- |
 | identity | 成员、角色、PAT、会话与鉴权 | `internal/domain/identity` `internal/auth` | 待写 | M1 |
-| catalog | 产品、模块树、产品文档 | `internal/domain/product` | 待写 | M1 |
+| catalog | 产品、产品成员、模块树、产品文档 | `internal/domain/product` | 待写 | M1 |
 | planning | 迭代、任务、子任务、指派、跨模块关联 | `internal/domain/planning` | 待写 | M1 |
 | workflow | 工作流模板、实例、节点状态、门禁裁决、材料引用 | `internal/workflow` | 待写 | M1 |
 | integration | 外部系统适配：Git/SVN、Outline、Redmine、邮件、Webhook | `internal/integration` | 待写 | M2 |

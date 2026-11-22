@@ -77,6 +77,7 @@ docker compose -f deploy/docker-compose.yml up -d
 8. **错误码语义固定**：`403` 权限不足、`404` 不存在或不可见、`409` 状态冲突或门禁未通过、`422` 参数非法。
 9. **外部系统只能经 `internal/integration/` 访问**，domain / api / mcp 不得直连 Git、Outline、Redmine、SMTP。
 10. **外部凭据不落库**：token、密码只从环境变量或密钥文件读取，日志中禁止出现。
+11. **产品内查询必须先过成员关系**：列表与详情 SQL 都带 `product_id` 过滤，禁止「先查全量再在内存里过滤」。
 
 ## 代码约定
 

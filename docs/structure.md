@@ -11,7 +11,7 @@ Chalkline/
 │   └── chalklinectl/          运维 CLI（二期，迁移/种子数据）
 ├── internal/
 │   ├── domain/                实体、值对象、不变量、领域错误（无外部依赖）
-│   │   ├── product/           产品、模块树
+│   │   ├── product/           产品、产品成员、模块树
 │   │   ├── planning/          迭代、任务、子任务、指派
 │   │   ├── identity/          成员、角色、令牌
 │   │   └── workitem/          工作项状态与门禁的通用抽象

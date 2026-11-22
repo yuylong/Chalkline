@@ -34,6 +34,7 @@ Agent 每轮先调 `chalkline_get_next_action`，服务端返回结构化结论�
 | `chalkline_get_workflow` | 模板定义 + 本实例各节点状态 |
 | `chalkline_list_workflows` | 可用模板列表（按 scope 过滤，含内置模板） |
 | `chalkline_get_pending_reviews` | 我是评审人、待我确认的门禁 |
+| `chalkline_list_product_members` | 产品成员与各自的产品角色 |
 
 ### 写
 
@@ -48,8 +49,10 @@ Agent 每轮先调 `chalkline_get_next_action`，服务端返回结构化结论�
 | `chalkline_submit_step` | 提交节点，携带材料与说明 | 任务负责人 |
 | `chalkline_attach_artifact` | 挂接材料引用：`provider` + `url`/`externalId`，或 `inline` 内容 | 任务负责人 |
 | `chalkline_review_step` | 门禁确认或驳回 | 门禁 `roles` 声明角色的成员（`admin` 恒可），非提交人 |
+| `chalkline_upsert_product_member` | 加入成员或调整产品角色（`owner` / `member` / `guest`） | 产品 `owner` / `admin` |
+| `chalkline_remove_product_member` | 移除成员，要求其未终结任务已转派 | 产品 `owner` / `admin` |
 
-权限列与 [model.md](model.md) 的对象级权限表一致，在服务端强制执行，越权返回 `403`；`get_next_action` 对无权执行的成员不返回该工具。
+权限列与 [model.md](model.md) 的对象级权限表一致，在服务端强制执行：越权写返回 `403`，访问未加入的产品返回 `404`；`get_next_action` 对无权执行的成员不返回该工具。
 
 ## 返回契约
 
