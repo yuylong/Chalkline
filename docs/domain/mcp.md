@@ -61,21 +61,25 @@ Agent 每轮先调 `chalkline_get_next_action`，服务端返回结构化结论�
 ```json
 {
   "workItem": { "type": "task", "id": "tsk_7f3a", "title": "工作流引擎状态判定" },
-  "currentNode": { "id": "spec", "name": "规格编写", "status": "in_progress" },
+  "currentNodes": [
+    { "id": "spec", "name": "规格编写", "status": "in_progress" }
+  ],
   "status": "blocked",
-  "nextAction": {
-    "nodeId": "spec",
-    "tool": "chalkline_submit_step",
-    "blockers": [
-      { "type": "artifact_missing", "kind": "spec", "message": "需上传规格文档" },
-      { "type": "approval_missing", "required": 1, "current": 0, "roles": ["reviewer"] }
-    ]
-  },
+  "nextActions": [
+    {
+      "nodeId": "spec",
+      "tool": "chalkline_submit_step",
+      "blockers": [
+        { "type": "artifact_missing", "kind": "spec", "message": "需上传规格文档" },
+        { "type": "approval_missing", "required": 1, "current": 0, "roles": ["reviewer"] }
+      ]
+    }
+  ],
   "allowedActions": ["chalkline_attach_artifact"]
 }
 ```
 
-`status` 为 `ready` 时 `blockers` 为空数组，Agent 可直接调用 `nextAction.tool`。
+`status` 为 `ready` 时各 `nextActions[].blockers` 为空数组，Agent 可直接调用对应的 `tool`。**并行分支时 `currentNodes` 与 `nextActions` 返回多个条目**：先向用户逐条报告分支状态，由人选择推进哪条，不替人排序；串行模板时数组长度恒为 1。
 
 ### 门禁未通过
 
@@ -101,6 +105,7 @@ Agent 每轮先调 `chalkline_get_next_action`，服务端返回结构化结论�
 | `STAGE_NOT_ALLOW_TASK` | 409 | 当前迭代阶段不允许创建任务 |
 | `GATE_BLOCKED` | 409 | 门禁未满足时调 `submit_step` |
 | `INVALID_TRANSITION` | 409 | 节点状态不允许该操作 |
+| `STATE_CONFLICT` | 409 | 节点状态已被并发修改（乐观锁冲突），刷新状态后重试 |
 | `ARTIFACT_MISSING` | 422 | 提交时缺必需材料 |
 | `INVALID_ARTIFACT_REF` | 422 | 材料引用格式非法，或 provider 与 kind 不匹配 |
 | `INTEGRATION_UNAVAILABLE` | 503 | 模板要求外部校验，但对应适配器未连通 |
@@ -119,8 +124,9 @@ Agent: chalkline_get_next_action(taskId=tsk_7f3a)
 Agent: chalkline_start_step(taskId=tsk_7f3a)
    → 节点进入 in_progress
 Agent: （编写规格，落库到 Document）
+Agent: chalkline_attach_artifact(taskId=tsk_7f3a, artifact={kind:"pre_review", provider:"inline", content:"对照门禁逐项自查：…（固定结构见 Skill）"})
 Agent: chalkline_submit_step(taskId=tsk_7f3a, artifacts=[{kind:"spec", provider:"outline", url:"https://outline.example.com/doc/spec-91"}])
-   → status=awaiting_review, 需 1 名 reviewer
+   → status=awaiting_review, 需 1 名 reviewer（评审人同时可见 pre_review 自查报告）
 Agent: 向人报告「规格已提交，等待 <姓名> 审批」
 --- 人在控制台确认 ---
 Agent: chalkline_get_next_action(taskId=tsk_7f3a)
@@ -133,5 +139,6 @@ Agent: chalkline_get_next_action(taskId=tsk_7f3a)
 - 任务编号（`CHK-12.3`）由服务端分配并返回，客户端不可指定、不可修改。
 - 列表接口一律分页，默认 50，上限 200。
 - 写接口幂等：`submit_step` 重复提交同一节点返回当前状态而非报错。
+- `awaiting_review` 期间可补挂材料；替换已进入评审的材料会重置该节点的审批收集，语义见 [workflow.md](workflow.md)「材料变更」。
 - 时间字段 ISO 8601 UTC。
 - 工具名与参数一旦发布不得重命名，破坏性变更通过新工具名提供。

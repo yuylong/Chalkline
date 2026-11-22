@@ -186,7 +186,7 @@ AuditLog（全量留痕）
 
 ### WorkflowInstance / NodeState
 
-工作项的运行态。实例绑定某个模板版本；`NodeState` 记录每个节点的状态与进入/完成时间。**工作项的业务状态是节点状态的投影**，不单独维护。
+工作项的运行态。实例绑定某个模板版本；`NodeState` 记录每个节点的状态与进入/完成时间，并携带乐观锁版本号——并发修改冲突时拒绝写入并返回 `409 STATE_CONFLICT`，客户端刷新后重试。**工作项的业务状态是节点状态的投影**，不单独维护。
 
 ### GateApproval（门禁审批）
 
@@ -203,6 +203,8 @@ AuditLog（全量留痕）
 
 门禁证据。**材料是引用而非内容**，可指向外部系统（见 [integrations.md](integrations.md)）。材料与「提交人 + 提交节点」绑定，不可跨节点复用。
 
+提交后允许补挂材料；**替换已进入评审的材料会使该节点的既有审批全部作废**（历史记录保留），基于当前版本材料重新收集——审批必须对应提交人当前的材料。
+
 | `kind` | 用于 | 典型来源 |
 | --- | --- | --- |
 | `research_report` | 竞品调研、技术调研 | Outline / inline |
@@ -215,6 +217,7 @@ AuditLog（全量留痕）
 | `test_report` | 测试报告 | Outline / 附件 |
 | `pr` | 代码改动 | Git / SVN |
 | `summary` | 迭代/任务总结 | Outline / inline |
+| `pre_review` | AI 预评审自查报告（结构约束见 [skill.md](skill.md)） | inline |
 | `file` | 其他证据 | 附件 |
 
 | 字段 | 说明 |
@@ -261,6 +264,8 @@ AuditLog（全量留痕）
 15. 集成投递失败不改变门禁判定与工作项状态；外部系统不可用时流程照常推进。
 16. 成员只能访问自己加入的产品；非成员访问返回 `404`，`admin` 不受此限；`guest` 可读不可写、不可审批。
 17. 每个产品至少保留一个 `owner`；移除成员前，其未终结任务必须转派。
+18. 迭代级节点可声明 `require_iteration_tasks_done`（默认 `false`）；为 `true` 时，该节点 `passed` 的必要条件是迭代下全部任务已终结（`done` / `cancelled`）。
+19. `pre_review` 材料是 AI 自查报告而非审批：不计入门禁 `approvals`，不改变节点状态；驳回只来自评审人的 `review_step` 决策。
 
 ## 状态投影
 

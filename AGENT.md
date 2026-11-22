@@ -18,7 +18,7 @@ M0（骨架）——仓库目前**只有文档与 Agent Skill，尚无代码**�
 
 | 你要做的事 | 先读 |
 | --- | --- |
-| 写任何业务规则 / 校验 | [docs/domain/model.md](docs/domain/model.md)——17 条不变量是硬边界 |
+| 写任何业务规则 / 校验 | [docs/domain/model.md](docs/domain/model.md)——不变量清单是硬边界 |
 | 工作流判定、门禁语义、模板格式 | [docs/domain/workflow.md](docs/domain/workflow.md) |
 | 加 / 改 MCP 工具 | [docs/domain/mcp.md](docs/domain/mcp.md)——工具名与错误码发布后不可改名 |
 | 外部系统接入（Git / Outline / Redmine / SMTP / Webhook） | [docs/domain/integrations.md](docs/domain/integrations.md) |

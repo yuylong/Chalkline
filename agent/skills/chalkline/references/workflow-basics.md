@@ -22,7 +22,7 @@
 
 ## 材料
 
-`kind` + `provider` + `url`/`externalId`，例如 `{kind: "pr", provider: "git", url: "..."}`。没有外部工具时用 `inline` 附一段说明。**只挂引用，不贴正文。**
+`kind` + `provider` + `url`/`externalId`，例如 `{kind: "pr", provider: "git", url: "..."}`。没有外部工具时用 `inline` 附一段说明。**只挂引用，不贴正文。**提交前用 `kind: pre_review` 挂一份自查报告（inline，逐项对照门禁要求给结论与证据）——它是材料不是审批，帮评审人聚焦用。
 
 ## 任务拆解
 

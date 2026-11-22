@@ -32,6 +32,7 @@ nodes:
       artifacts:
         - kind: spec
           required: true
+        - { kind: pre_review, required: false }   # AI 自查报告，可选
   - id: implement
     name: 实现
     type: normal
@@ -76,6 +77,7 @@ edges:
 | --- | --- |
 | `gate` | 门禁配置，省略即不拦截，提交直接通过 |
 | `allows_task_creation` | 仅 `iteration` 作用域有效；该阶段允许创建任务，默认 `false` |
+| `require_iteration_tasks_done` | 仅 `iteration` 作用域有效；为 `true` 时该节点 `passed` 需迭代下全部任务终结，默认 `false` |
 | `due_in_days` | 该阶段期望耗时，超期在控制台标红（不阻断） |
 
 `allows_task_creation` 是声明式白名单，不是条件逻辑——它保证「规格没批完不能开工建任务」，同时不把规则写进引擎。
@@ -102,6 +104,16 @@ edges:
 
 > 关键约束：门禁通过只取决于数据库中的 `GateApproval` 与 `Artifact` 记录。Agent 在对话里声称「已评审」不产生任何效果。
 
+### 预评审（pre_review）
+
+`pre_review` 是材料的一种：提交人侧的编码 Agent 在提交前对照门禁要求逐项自查，把报告作为材料随提交挂上。**它是材料，不是审批**：
+
+- 不计入 `approvals`，不参与 `passed` / `rejected` 判定；
+- 不能触发驳回——驳回只来自评审人的 `review_step` 决策；
+- 门禁可把它配为 `required: true`，那也只校验「报告存在且格式合法」，而不是「AI 认可」。
+
+自查报告必须逐项对照门禁材料清单并附证据引用，不写「总体没问题」式的空话——结构由 Skill 约束（见 [skill.md](skill.md)）。评审人侧同样可以让自己的 Agent 调 `chalkline_get_task` 拉取全部材料做独立核查，意见供人参考，不产生平台状态变更。
+
 ## 状态与判定算法
 
 节点状态：`pending` → `ready` → `in_progress` → `awaiting_review` → `passed` / `rejected`
@@ -126,6 +138,12 @@ edges:
 ```
 
 父任务收口：`require_children_done: true` 时，父任务的终态节点在全部子任务 `done` 之前保持阻塞。
+
+迭代收口：节点声明 `require_iteration_tasks_done: true` 时，迭代下存在未终结任务（`open`）则该节点保持阻塞，`get_next_action` 在 `blockers` 中返回缺失项。
+
+材料变更：`awaiting_review` 期间允许补挂材料；替换已进入评审的材料会使该节点既有审批全部作废（记录保留），基于当前版本重新收集。
+
+并发控制：节点状态变更基于乐观锁版本号，并发冲突返回 `409 STATE_CONFLICT`，客户端刷新状态后重试；同一评审人的重复决策采用 upsert 语义（最近一次为准），天然幂等。
 
 ## 并行与汇合
 
@@ -169,6 +187,8 @@ edges:
 | 用例评审 | `test_cases` | Outline / 附件 |
 | 测试执行 | `test_execution` | 附件 / CI 链接 |
 
+任一门禁均可追加可选材料 `pre_review`（AI 提交前自查报告，inline），配为 `required: true` 时仅校验报告存在，语义见「门禁语义 · 预评审」。
+
 门禁只校验**材料引用存在且格式合法**，不要求外部系统实时可访问——Outline 挂了不应导致评审无法通过。引用模型与集成方式见 [integrations.md](integrations.md)。
 
 ## 生命周期模板示例
@@ -194,7 +214,7 @@ nodes:
       gate: { approvals: 1, roles: [qa], artifacts: [{ kind: test_plan, required: true }] } }
   - { id: assess, name: 测评, type: normal,
       gate: { approvals: 1, roles: [qa, reviewer], artifacts: [{ kind: test_report, required: true }] } }
-  - { id: release, name: 发布, type: normal,
+  - { id: release, name: 发布, type: normal, require_iteration_tasks_done: true,
       gate: { approvals: 1, roles: [pm, admin], artifacts: [{ kind: test_report, required: true }, { kind: pr, required: true }] } }
   - { id: summary, name: 总结, type: normal,
       gate: { approvals: 1, roles: [pm], artifacts: [{ kind: summary, required: true }] } }
@@ -220,6 +240,7 @@ edges:
 - 「研发」是 **AND 汇合**：任务拆解确认 + 关键技术调研通过后才开工——技术没验证过的东西不该直接开发。
 - 「研发」与「测试设计」**并行**：测试设计不必等开发全部结束才开始，两边都完成才进入「测评」。
 - 「任务拆解」门禁不要求新材料，只需一名评审人确认任务树：一级任务是否覆盖了规格、粒度是否适合分派、跨模块任务是否标注清楚。轻量模板可关掉这道门禁。
+- 「发布」节点声明 `require_iteration_tasks_done: true`：全部任务终结才能通过发布，收口检查从迭代 `closed` 提前到发布，避免收尾时才强制转移一批任务。
 - 拆解在「任务拆解」节点完成一级任务，二级任务可在拆解时或研发过程中继续拆，规则见 [model.md](model.md#任务拆解规则)。
 
 ## 迭代与任务的关系
