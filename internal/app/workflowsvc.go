@@ -40,7 +40,7 @@ func viewWorkflow(w store.WorkflowRow, withDef bool) WorkflowView {
 
 // ListWorkflows 模板列表（登录即可读，含内置）。
 func (s *Service) ListWorkflows(ctx context.Context, _ Actor, scope *workitem.Scope) ([]WorkflowView, error) {
-	rows, err := store.ListWorkflows(ctx, s.DB.q(), scope)
+	rows, err := store.ListWorkflows(ctx, s.DB.Q(), scope)
 	if err != nil {
 		return nil, err
 	}
@@ -53,7 +53,7 @@ func (s *Service) ListWorkflows(ctx context.Context, _ Actor, scope *workitem.Sc
 
 // GetWorkflow 模板详情。
 func (s *Service) GetWorkflow(ctx context.Context, _ Actor, id string) (WorkflowView, error) {
-	w, err := store.WorkflowByID(ctx, s.DB.q(), id)
+	w, err := store.WorkflowByID(ctx, s.DB.Q(), id)
 	if err != nil {
 		return WorkflowView{}, wrapNotFound(err, "模板不存在")
 	}
@@ -143,6 +143,17 @@ func (s *Service) ArchiveWorkflow(ctx context.Context, actor Actor, id string) e
 	})
 }
 
+// resolveVersion expectedVersion ≤ 0 时取加载时点的当前版本（REST/MCP 可省略版本参数）。
+func resolveVersion(li loadedInstance, nodeID string, expectedVersion int64) int64 {
+	if expectedVersion > 0 {
+		return expectedVersion
+	}
+	if st, err := li.Inst.State(nodeID); err == nil {
+		return st.Version
+	}
+	return expectedVersion
+}
+
 // ---- 实例操作 ----
 
 // loadedInstance 是一次操作加载的全部运行态。
@@ -185,31 +196,6 @@ func (s *Service) loadInstance(ctx context.Context, q store.Querier, wtype worki
 	return li, nil
 }
 
-// workItemCtx 定位工作项的产品与写权限（start/submit/attach）。
-func (s *Service) workItemCtx(ctx context.Context, q store.Querier, wtype workitem.Scope, workItemID string) (memberContext, error) {
-	var productID string
-	var assignee string
-	switch wtype {
-	case workitem.ScopeTask:
-		t, err := store.TaskByID(ctx, q, workItemID)
-		if err != nil {
-			return memberContext{}, wrapNotFound(err, "任务不存在或不可见")
-		}
-		productID, assignee = t.ProductID, t.AssigneeID
-	case workitem.ScopeIteration:
-		it, err := store.IterationByID(ctx, q, workItemID)
-		if err != nil {
-			return memberContext{}, wrapNotFound(err, "迭代不存在或不可见")
-		}
-		productID = it.ProductID
-	default:
-		return memberContext{}, Invalid("工作项类型非法")
-	}
-	mc, err := s.mustView(ctx, q, Actor{UserID: ""}, productID) // 占位，实际 actor 由调用方传入
-	_ = mc
-	return mc, err
-}
-
 // NodeOpResult 是节点操作的统一产物。
 type NodeOpResult struct {
 	Node       NodeStateView `json:"node"`
@@ -241,7 +227,7 @@ func (s *Service) StartStep(ctx context.Context, actor Actor, wtype workitem.Sco
 			return err
 		}
 		now := s.Now()
-		if err := li.Inst.Start(nodeID, expectedVersion, now); err != nil {
+		if err := li.Inst.Start(nodeID, resolveVersion(li, nodeID, expectedVersion), now); err != nil {
 			return MapError(err)
 		}
 		if err := store.SaveNodeStates(ctx, q, li.Row.ID, li.Inst); err != nil {
@@ -346,7 +332,7 @@ func (s *Service) SubmitStep(ctx context.Context, actor Actor, wtype workitem.Sc
 		}
 
 		now := s.Now()
-		if err := li.Inst.Submit(nodeID, expectedVersion, in, now); err != nil {
+		if err := li.Inst.Submit(nodeID, resolveVersion(li, nodeID, expectedVersion), in, now); err != nil {
 			// 幂等：awaiting_review 重复提交返回当前状态而非报错（mcp.md）。
 			if errors.Is(err, workflow.ErrInvalidTransition) {
 				if st, serr := li.Inst.State(nodeID); serr == nil && st.Status == workitem.StatusAwaitingReview {
@@ -503,7 +489,7 @@ func (s *Service) ReviewStep(ctx context.Context, actor Actor, wtype workitem.Sc
 			return Invalid("驳回必须填写理由")
 		}
 		in := li.Inputs[nodeID]
-		res, _, err := li.Inst.Review(nodeID, expectedVersion, d, in.Decisions, in, s.Now())
+		res, _, err := li.Inst.Review(nodeID, resolveVersion(li, nodeID, expectedVersion), d, in.Decisions, in, s.Now())
 		if err != nil {
 			return MapError(err)
 		}
@@ -519,11 +505,11 @@ func (s *Service) ReviewStep(ctx context.Context, actor Actor, wtype workitem.Sc
 			return err
 		}
 		st, _ := li.Inst.State(nodeID)
-		switch {
-		case st.Status == workitem.StatusRejected:
+		switch st.Status {
+		case workitem.StatusRejected:
 			_ = store.InsertOutbox(ctx, q, "node.rejected", string(wtype), workItemID,
 				map[string]any{"node": nodeID, "reviewer": actor.UserID})
-		case st.Status == workitem.StatusPassed:
+		case workitem.StatusPassed:
 			_ = store.InsertOutbox(ctx, q, "node.passed", string(wtype), workItemID,
 				map[string]any{"node": nodeID, "reviewer": actor.UserID})
 		}
@@ -534,10 +520,6 @@ func (s *Service) ReviewStep(ctx context.Context, actor Actor, wtype workitem.Sc
 	})
 	return out, err
 }
-
-func productGuestOnly(mc memberContext) productGuestRole { return "" }
-
-type productGuestRole string
 
 // roleNames 角色串。
 func roleNames(roles []identity.Role) []string {
@@ -714,7 +696,7 @@ func (s *Service) syncIterationStatus(ctx context.Context, q store.Querier, wtyp
 
 // GetNextAction 结构化下一步（mcp.md 契约）：服务端事实，Agent 不得跳过 blockers。
 func (s *Service) GetNextAction(ctx context.Context, actor Actor, wtype workitem.Scope, workItemID string) (workflow.NextActionReport, error) {
-	q := s.DB.q()
+	q := s.DB.Q()
 	// 可见性。
 	productID, err := s.productOf(ctx, q, wtype, workItemID)
 	if err != nil {
@@ -823,7 +805,7 @@ type PendingReviewView struct {
 
 // ListPendingReviews 我是评审人、待我确认的门禁（chalkline_get_pending_reviews）。
 func (s *Service) ListPendingReviews(ctx context.Context, actor Actor) ([]PendingReviewView, error) {
-	q := s.DB.q()
+	q := s.DB.Q()
 	productIDs, err := store.ProductIDsOfMember(ctx, q, actor.UserID)
 	if err != nil {
 		return nil, err
@@ -906,7 +888,7 @@ func mustStates(ctx context.Context, q store.Querier, instanceID string) []workf
 
 // GetInstanceViewByWorkItem REST/MCP 共用的实例状态查询。
 func (s *Service) GetInstanceViewByWorkItem(ctx context.Context, actor Actor, wtype workitem.Scope, workItemID string) (InstanceView, error) {
-	q := s.DB.q()
+	q := s.DB.Q()
 	productID, err := s.productOf(ctx, q, wtype, workItemID)
 	if err != nil {
 		return InstanceView{}, wrapNotFound(err, "工作项不存在或不可见")

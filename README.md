@@ -133,8 +133,25 @@ docker compose --project-directory deploy -f deploy/docker-compose.yml up -d
 
 - 控制台：`https://localhost`（nginx 终止 TLS，首启自动生成自签证书）
 - MCP 端点：`https://localhost/mcp`（Agent 配置见下）
+- REST API：`https://localhost/api/v1/...`（JWT 鉴权）
 
-> 当前为 M0（骨架）阶段：控制台为占位页，可用端点为 `/healthz`、`/readyz`、`/api/v1/info`；登录、业务 CRUD 与 MCP 工具自 M1 起交付。
+> 当前为 M1（单产品跑通）阶段：登录（JWT）+ PAT、产品/迭代/任务 CRUD、两层工作流实例化与门禁审批、22 个 MCP 工具已交付。控制台仍为占位页（M2 交付），`docs/modules/` 各模块文档的状态列标注当前进度。
+
+首个成员：在 `deploy/.env` 设置 `CHALKLINE_ADMIN_USERNAME` / `CHALKLINE_ADMIN_PASSWORD`，首启会自动创建 admin。登录拿 JWT：
+
+```bash
+curl -k -X POST https://localhost/api/v1/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"admin","password":"<你的密码>"}'
+```
+
+签发 PAT（MCP 接入用，明文只显示一次）：
+
+```bash
+curl -k -X POST https://localhost/api/v1/auth/pat \
+  -H "Authorization: Bearer <JWT>" -H 'Content-Type: application/json' \
+  -d '{"name":"my-agent","ttlDays":90}'
+```
 
 在 Agent 的 MCP 配置里加入：
 
@@ -190,8 +207,8 @@ Skill 只做话术映射，**不承担权限与门禁判断**——即使模型�
 ## 路线图
 
 - **M0 · 骨架**（已完成）：仓库结构、领域模型、工作流引擎核心判定、docker compose 起服务
-- **M1 · 单产品跑通**（下一个）：成员与角色、产品成员与隔离、产品/模块/迭代/任务 CRUD、迭代生命周期 + 任务两层工作流与预置模板、并行分支、门禁审批、MCP 工具全集、Agent Skill、控制台基础视图
-- **M2 · 协作深化**：任务跨模块与多级拆解看板、迭代燃尽与进度总览、审批队列、审计留痕检索、邮件通知与 outbox 投递、评审超期提醒与升级链、inline 材料提交时固化文档版本
+- **M1 · 单产品跑通**（已完成）：成员与角色（JWT/PAT）、产品成员与隔离、产品/模块/迭代/任务 CRUD、迭代生命周期 + 任务两层工作流与预置模板、并行分支、门禁审批、MCP 工具全集（22 个）
+- **M2 · 协作深化**（下一个）：控制台 SPA（产品总览、迭代看板、任务树、审批队列）、任务跨模块与多级拆解看板、迭代燃尽与进度总览、邮件通知与 outbox 投递、审计留痕检索、评审超期提醒与升级链、inline 材料提交时固化文档版本
 - **M3 · 规模化**：Outline / Redmine / Git 适配器、多产品、工作流模板市场（导入导出）、开放 API 与 Webhook
 
 ## 参与开发

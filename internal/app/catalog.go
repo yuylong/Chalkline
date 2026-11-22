@@ -89,7 +89,7 @@ func (s *Service) CreateProduct(ctx context.Context, actor Actor, in CreateProdu
 
 // ListProducts 仅返回可见产品（成员关系过滤或 admin 全量）。
 func (s *Service) ListProducts(ctx context.Context, actor Actor) ([]ProductView, error) {
-	rows, err := store.ListVisibleProducts(ctx, s.DB.q(), actor.UserID, actor.IsAdmin)
+	rows, err := store.ListVisibleProducts(ctx, s.DB.Q(), actor.UserID, actor.IsAdmin)
 	if err != nil {
 		return nil, err
 	}
@@ -150,7 +150,7 @@ func (s *Service) GetProduct(ctx context.Context, actor Actor, id string) (Produ
 }
 
 func (s *Service) loadProductDetail(ctx context.Context, actor Actor, id string) (ProductDetail, error) {
-	q := s.DB.q()
+	q := s.DB.Q()
 	var detail ProductDetail
 	p, err := store.ProductByID(ctx, q, id)
 	if err != nil {
@@ -269,7 +269,7 @@ func (s *Service) UpdateProduct(ctx context.Context, actor Actor, id string, in 
 	if err != nil {
 		return ProductView{}, err
 	}
-	p, err := store.ProductByID(ctx, s.DB.q(), id)
+	p, err := store.ProductByID(ctx, s.DB.Q(), id)
 	if err != nil {
 		return ProductView{}, err
 	}
@@ -285,7 +285,7 @@ func productFromRow(p store.ProductRow) product.Product {
 
 // ListMembers 列产品成员：产品成员或 admin。
 func (s *Service) ListMembers(ctx context.Context, actor Actor, productID string) ([]MemberView, error) {
-	q := s.DB.q()
+	q := s.DB.Q()
 	if _, err := s.mustView(ctx, q, actor, productID); err != nil {
 		return nil, err
 	}
@@ -427,6 +427,12 @@ func (s *Service) CreateModule(ctx context.Context, actor Actor, productID, pare
 	return out, err
 }
 
+// UpdateModuleInput 模块更新：改名/移动子树。
+type UpdateModuleInput struct {
+	Name     *string
+	ParentID *string // nil 不动；"" 提升为根；有值换父
+}
+
 // UpdateModule 改名/移动子树：整棵子树重算 path（不变量 1；不许移到自身子孙下）。
 // in.ParentID：nil 不动；"" 提升为根；其他值换父。
 func (s *Service) UpdateModule(ctx context.Context, actor Actor, productID, moduleID string, in UpdateModuleInput) (ModuleView, error) {
@@ -545,7 +551,7 @@ func samePosition(m store.ModuleRow, newParent *string) bool {
 
 // ListModules 模块树：产品成员或 admin。
 func (s *Service) ListModules(ctx context.Context, actor Actor, productID string) ([]ModuleView, error) {
-	q := s.DB.q()
+	q := s.DB.Q()
 	if _, err := s.mustView(ctx, q, actor, productID); err != nil {
 		return nil, err
 	}
@@ -613,7 +619,7 @@ func (s *Service) UpsertDocument(ctx context.Context, actor Actor, in UpsertDocu
 
 // GetDocument 读文档：可见即可读。
 func (s *Service) GetDocument(ctx context.Context, actor Actor, ownerType, ownerID string) (DocumentView, error) {
-	q := s.DB.q()
+	q := s.DB.Q()
 	productID, err := s.ownerProductID(ctx, q, ownerType, ownerID)
 	if err != nil {
 		return DocumentView{}, err

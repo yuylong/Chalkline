@@ -28,6 +28,9 @@ services:
       CHALKLINE_ADDR: ":8080"
       CHALKLINE_DATABASE_URL: postgres://${POSTGRES_USER:-chalk}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-chalkline}?sslmode=disable
       CHALKLINE_LOG_LEVEL: ${CHALKLINE_LOG_LEVEL:-info}
+      CHALKLINE_JWT_SECRET: ${CHALKLINE_JWT_SECRET:-}
+      CHALKLINE_ADMIN_USERNAME: ${CHALKLINE_ADMIN_USERNAME:-}
+      CHALKLINE_ADMIN_PASSWORD: ${CHALKLINE_ADMIN_PASSWORD:-}
     depends_on:
       postgres:
         condition: service_healthy

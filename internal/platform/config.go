@@ -23,6 +23,11 @@ type Config struct {
 	// HTTP 服务器读/写超时，默认 30s / 60s。
 	ReadTimeout  time.Duration
 	WriteTimeout time.Duration
+	// JWT 签名密钥；未设置时进程启动生成临时密钥并告警（重启后会话失效，生产必须设置）。
+	JWTSecret string
+	// 首启 admin 引导凭据（可选）：users 表为空且二者非空时自动创建 admin。
+	AdminUsername string
+	AdminPassword string
 }
 
 // Load 从环境变量构造配置并校验必填项。
@@ -34,6 +39,9 @@ func Load() (Config, error) {
 		DBRetryInterval: envDuration("CHALKLINE_DB_RETRY_INTERVAL", 5*time.Second),
 		ReadTimeout:     envDuration("CHALKLINE_READ_TIMEOUT", 30*time.Second),
 		WriteTimeout:    envDuration("CHALKLINE_WRITE_TIMEOUT", 60*time.Second),
+		JWTSecret:       os.Getenv("CHALKLINE_JWT_SECRET"),
+		AdminUsername:   os.Getenv("CHALKLINE_ADMIN_USERNAME"),
+		AdminPassword:   os.Getenv("CHALKLINE_ADMIN_PASSWORD"),
 	}
 	if cfg.DatabaseURL == "" {
 		return Config{}, fmt.Errorf("CHALKLINE_DATABASE_URL 未设置")

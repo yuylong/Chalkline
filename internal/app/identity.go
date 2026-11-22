@@ -40,7 +40,7 @@ type LoginResult struct {
 
 // Login 用户名密码换 JWT；失败统一 401（不区分用户不存在与密码错误，不暴露存在性）。
 func (s *Service) Login(ctx context.Context, username, password string) (LoginResult, error) {
-	u, err := store.UserByUsername(ctx, s.DB.q(), username)
+	u, err := store.UserByUsername(ctx, s.DB.Q(), username)
 	if err != nil {
 		return LoginResult{}, Unauthorized("用户名或密码错误")
 	}
@@ -108,7 +108,7 @@ func (s *Service) CreatePAT(ctx context.Context, actor Actor, name string, ttlDa
 
 // ListPATs 列本人 PAT。
 func (s *Service) ListPATs(ctx context.Context, actor Actor) ([]PATView, error) {
-	rows, err := store.ListPATsByUser(ctx, s.DB.q(), actor.UserID)
+	rows, err := store.ListPATsByUser(ctx, s.DB.Q(), actor.UserID)
 	if err != nil {
 		return nil, err
 	}
@@ -171,7 +171,7 @@ func (s *Service) CreateUser(ctx context.Context, actor Actor, in CreateUserInpu
 
 // ListUsers 成员列表（admin）。
 func (s *Service) ListUsers(ctx context.Context, _ Actor) ([]UserView, error) {
-	users, err := store.ListUsers(ctx, s.DB.q())
+	users, err := store.ListUsers(ctx, s.DB.Q())
 	if err != nil {
 		return nil, err
 	}
@@ -184,7 +184,7 @@ func (s *Service) ListUsers(ctx context.Context, _ Actor) ([]UserView, error) {
 
 // GetUser 成员详情（admin）。
 func (s *Service) GetUser(ctx context.Context, _ Actor, id string) (UserView, error) {
-	u, err := store.UserByID(ctx, s.DB.q(), id)
+	u, err := store.UserByID(ctx, s.DB.Q(), id)
 	if err != nil {
 		return UserView{}, wrapNotFound(err, "成员不存在")
 	}
@@ -217,7 +217,7 @@ func (s *Service) UpdateUser(ctx context.Context, actor Actor, id string, roles 
 	if err != nil {
 		return UserView{}, err
 	}
-	u, err := store.UserByID(ctx, s.DB.q(), id)
+	u, err := store.UserByID(ctx, s.DB.Q(), id)
 	if err != nil {
 		return UserView{}, err
 	}
@@ -250,7 +250,7 @@ func (s *Service) BootstrapAdmin(ctx context.Context, username, password string)
 	if username == "" || password == "" {
 		return false, nil
 	}
-	n, err := store.UserCount(ctx, s.DB.q())
+	n, err := store.UserCount(ctx, s.DB.Q())
 	if err != nil {
 		return false, err
 	}
@@ -266,7 +266,7 @@ func (s *Service) BootstrapAdmin(ctx context.Context, username, password string)
 	if err != nil {
 		return false, MapError(err)
 	}
-	if err := store.InsertUser(ctx, s.DB.q(), u); err != nil {
+	if err := store.InsertUser(ctx, s.DB.Q(), u); err != nil {
 		if store.IsDuplicate(err) {
 			return false, nil
 		}
@@ -285,11 +285,11 @@ type WhoamiView struct {
 
 // Whoami 返回当前身份与可见产品（可见产品列表来自 catalog，mcp.md whoami）。
 func (s *Service) Whoami(ctx context.Context, actor Actor) (WhoamiView, error) {
-	u, err := store.UserByID(ctx, s.DB.q(), actor.UserID)
+	u, err := store.UserByID(ctx, s.DB.Q(), actor.UserID)
 	if err != nil {
 		return WhoamiView{}, wrapNotFound(err, "成员不存在")
 	}
-	products, err := store.ListVisibleProducts(ctx, s.DB.q(), actor.UserID, actor.IsAdmin)
+	products, err := store.ListVisibleProducts(ctx, s.DB.Q(), actor.UserID, actor.IsAdmin)
 	if err != nil {
 		return WhoamiView{}, err
 	}

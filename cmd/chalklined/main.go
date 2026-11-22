@@ -1,4 +1,4 @@
-// chalklined 是 Chalkline 唯一后端进程：HTTP API（M1 起含 REST 与 MCP，M0 为骨架端点）。
+// chalklined 是 Chalkline 唯一后端进程：REST + MCP 两个入口共享同一套领域与事务边界。
 package main
 
 import (
@@ -8,13 +8,13 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/yuylong/Chalkline/internal/app"
+	"github.com/yuylong/Chalkline/internal/server"
 )
 
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	if err := app.Run(ctx); err != nil {
+	if err := server.Run(ctx); err != nil {
 		fmt.Fprintf(os.Stderr, "chalkline: %v\n", err)
 		os.Exit(1)
 	}

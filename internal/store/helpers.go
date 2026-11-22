@@ -26,8 +26,8 @@ type Querier interface {
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 }
 
-// q 返回连接池作为默认 Querier。
-func (db *DB) q() Querier { return db.Pool }
+// Q 返回连接池作为默认 Querier（供 app 层在事务外直接查询）。
+func (db *DB) Q() Querier { return db.Pool }
 
 // WithTx 在事务内执行 fn；返回错误即回滚，成功提交。
 func (db *DB) WithTx(ctx context.Context, fn func(q Querier) error) error {

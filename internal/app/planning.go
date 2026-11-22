@@ -135,7 +135,7 @@ func (s *Service) CreateIteration(ctx context.Context, actor Actor, productID st
 
 // ListIterations 产品迭代列表：产品成员或 admin。
 func (s *Service) ListIterations(ctx context.Context, actor Actor, productID string, status *planning.IterationStatus) ([]IterationView, error) {
-	q := s.DB.q()
+	q := s.DB.Q()
 	if _, err := s.mustView(ctx, q, actor, productID); err != nil {
 		return nil, err
 	}
@@ -171,7 +171,7 @@ type NodeStateView struct {
 
 // GetIteration 迭代详情：成员或 admin。
 func (s *Service) GetIteration(ctx context.Context, actor Actor, id string) (IterationDetail, error) {
-	q := s.DB.q()
+	q := s.DB.Q()
 	it, err := store.IterationByID(ctx, q, id)
 	if err != nil {
 		return IterationDetail{}, wrapNotFound(err, "迭代不存在或不可见")
@@ -373,26 +373,6 @@ func (s *Service) createTaskInTx(ctx context.Context, q store.Querier, actor Act
 		}
 	}
 
-	// 领域构造（含拆解不变量：同产品同迭代 / 深度 ≤ 3 / 编号延伸）。
-	var parentDom *planning.Task
-	if parent != nil {
-		pd := parentTaskDomain(*parent)
-		parentDom = &pd
-	}
-	kind := in.Kind
-	if kind == "" {
-		kind = planning.KindDev
-	}
-	priority := in.Priority
-	if priority == "" {
-		priority = planning.PriorityNormal
-	}
-	dom, err := planning.NewTask(s.newID("tsk"), it.ProductID, it.ID, parentDom,
-		number, in.Title, kind, priority, "", "")
-	if err != nil {
-		return TaskView{}, MapError(err)
-	}
-
 	// 任务流模板：显式指定 > 继承父任务 > 产品默认。
 	wfID := in.WorkflowID
 	if wfID == "" && parent != nil {
@@ -412,6 +392,26 @@ func (s *Service) createTaskInTx(ctx context.Context, q store.Querier, actor Act
 		return TaskView{}, Invalid("模板 %s 已归档", wfID)
 	}
 	def, err := workflow.ParseJSON(wf.Definition)
+	if err != nil {
+		return TaskView{}, MapError(err)
+	}
+
+	// 领域构造（含拆解不变量：同产品同迭代 / 深度 ≤ 3 / 编号延伸）。
+	var parentDom *planning.Task
+	if parent != nil {
+		pd := parentTaskDomain(*parent)
+		parentDom = &pd
+	}
+	kind := in.Kind
+	if kind == "" {
+		kind = planning.KindDev
+	}
+	priority := in.Priority
+	if priority == "" {
+		priority = planning.PriorityNormal
+	}
+	dom, err := planning.NewTask(s.newID("tsk"), it.ProductID, it.ID, parentDom,
+		number, in.Title, kind, priority, wfID)
 	if err != nil {
 		return TaskView{}, MapError(err)
 	}
@@ -594,7 +594,7 @@ type InstanceView struct {
 
 // GetTask 任务详情：产品成员或 admin；含工作流状态与材料/审批（workflow 视图）。
 func (s *Service) GetTask(ctx context.Context, actor Actor, id string) (TaskDetail, error) {
-	q := s.DB.q()
+	q := s.DB.Q()
 	t, err := store.TaskByID(ctx, q, id)
 	if err != nil {
 		return TaskDetail{}, wrapNotFound(err, "任务不存在或不可见")
@@ -675,7 +675,7 @@ type TaskFilter struct {
 
 // ListTasks 任务列表：先过产品可见性，再按条件过滤。
 func (s *Service) ListTasks(ctx context.Context, actor Actor, f TaskFilter) ([]TaskView, error) {
-	q := s.DB.q()
+	q := s.DB.Q()
 	productID := f.ProductID
 	if productID == "" {
 		// 由迭代或模块反推产品。
@@ -744,7 +744,7 @@ func (s *Service) ListTasks(ctx context.Context, actor Actor, f TaskFilter) ([]T
 }
 
 func (s *Service) listTasksByAssignee(ctx context.Context, actor Actor, assigneeID string) ([]TaskView, error) {
-	q := s.DB.q()
+	q := s.DB.Q()
 	// 可见产品集合。
 	products, err := store.ListVisibleProducts(ctx, q, actor.UserID, actor.IsAdmin)
 	if err != nil {
