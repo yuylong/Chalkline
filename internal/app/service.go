@@ -36,11 +36,22 @@ type Service struct {
 	Now func() time.Time
 	// Gate 材料外部校验（M2 集成接入点，integration.md「材料挂接时」）。
 	Gate ArtifactGate
+	// ReviewSLA 评审超期阈值（M3：超过即提醒评审人；0 = 默认 24h）。
+	ReviewSLA time.Duration
+	// ReviewEscalation 升级阈值（M3：超过即升级给产品 owner/admin；0 = 默认 72h）。
+	ReviewEscalation time.Duration
+}
+
+// Options 是 NewService 的可选配置（M3 评审 SLA）。
+type Options struct {
+	ReviewSLA         time.Duration
+	ReviewEscalation  time.Duration
 }
 
 // NewService 组装服务。gate 可为 nil：此时材料只做 domain 格式校验。
-func NewService(db *store.DB, log *slog.Logger, jwt *auth.JWTManager, gate ArtifactGate) *Service {
-	return &Service{DB: db, Log: log, JWT: jwt, Now: time.Now, Gate: gate}
+func NewService(db *store.DB, log *slog.Logger, jwt *auth.JWTManager, gate ArtifactGate, opts Options) *Service {
+	return &Service{DB: db, Log: log, JWT: jwt, Now: time.Now, Gate: gate,
+		ReviewSLA: opts.ReviewSLA, ReviewEscalation: opts.ReviewEscalation}
 }
 
 // newID 生成带类型前缀的短 id（mcp.md：所有 ID 带类型前缀）。

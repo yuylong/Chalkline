@@ -42,12 +42,33 @@ func (h *handlers) listProducts(w http.ResponseWriter, r *http.Request) {
 		writeAppError(w, err)
 		return
 	}
-	items, err := h.svc().ListProducts(r.Context(), actor)
+	// M3 规模化：搜索 + 状态过滤 + 分页（mcp.md 列表分页约定）。
+	in := app.ProductListQuery{
+		Q:      r.URL.Query().Get("q"),
+		Status: r.URL.Query().Get("status"),
+		Limit:  queryInt(r, "limit", 0),
+		Offset: queryInt(r, "offset", 0),
+	}
+	result, err := h.svc().ListProducts(r.Context(), actor, in)
 	if err != nil {
 		writeAppError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+	writeJSON(w, http.StatusOK, result)
+}
+
+func (h *handlers) getOverview(w http.ResponseWriter, r *http.Request) {
+	actor, err := h.actor(r)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	view, err := h.svc().GetOverview(r.Context(), actor)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, view)
 }
 
 func (h *handlers) getProduct(w http.ResponseWriter, r *http.Request) {

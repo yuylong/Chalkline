@@ -23,6 +23,7 @@ Chalkline/
 │   ├── api/                   REST handler、DTO、路由注册
 │   ├── mcp/                   MCP 工具定义与协议转换
 │   ├── auth/                  会话、PAT、权限判定
+│   ├── events/                进程内事件总线（outbox → SSE 分发，M3）
 │   ├── integration/           外部系统适配器（只做协议转换与引用校验）
 │   │   ├── git/ svn/ outline/ redmine/
 │   │   └── notify/            SMTP 与 Webhook 投递
@@ -57,6 +58,7 @@ Chalkline/
 | 新前端页面 | `web/src/features/<功能>/`，路由在 `web/src/app/routes.tsx` 注册 |
 | 新的外部系统（Jira、飞书等） | `internal/integration/<provider>/`，实现 Provider 接口 |
 | 新的通知渠道 | `internal/integration/notify/` |
+| 新的进程内事件分发（SSE 等） | `internal/events/`，只做分发不做判定，可见性过滤在 api 层 |
 | Agent Skill 或话术参考 | `agent/skills/chalkline/`，工具变更须同提交更新 |
 | 新的部署单元 | `deploy/` |
 

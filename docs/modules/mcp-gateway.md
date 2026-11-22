@@ -24,6 +24,7 @@
   写：`create_iteration` / `create_task` / `decompose_task` / `assign_task` / `link_module` / `start_step` / `submit_step` / `attach_artifact` / `review_step` / `upsert_product_member` / `remove_product_member`。
 
 - **返回契约**：`get_next_action` 的 `workItem` / `currentNodes` / `status` / `nextActions[].blockers` / `allowedActions` 结构与 mcp.md 示例一致；并行分支返回多条目。
+- **M3 参数扩展**（只加可选参数，不改名，不破坏既有调用）：`list_products` 支持 `q` / `status` / `limit` / `offset`；`get_pending_reviews` 条目新增 `awaitingSince` / `overdue`。
 - **错误**：统一 `{ "error": { "code", "message", "details" } }`，`code` ∈ mcp.md 错误码表。
 
 ## 核心流程

@@ -135,7 +135,7 @@ docker compose --project-directory deploy -f deploy/docker-compose.yml up -d
 - MCP 端点：`https://localhost/mcp`（Agent 配置见下）
 - REST API：`https://localhost/api/v1/...`（JWT 鉴权）
 
-> 当前为 M2（协作深化）阶段：M1 的登录（JWT）+ PAT、产品/迭代/任务 CRUD、两层工作流与门禁审批、22 个 MCP 工具，加上 M2 的控制台 SPA（产品总览 / 迭代看板 / 任务树 / 审批队列 / 进度图表）与集成适配器（Git/SVN/Outline/Redmine 引用校验、outbox 通知投递）均已交付。`docs/modules/` 各模块文档的状态列标注当前进度。
+> 当前为 M3（规模化）阶段：M1 的登录（JWT）+ PAT、产品/迭代/任务 CRUD、两层工作流与门禁审批、22 个 MCP 工具，M2 的控制台 SPA 与集成适配器，加上 M3 的多产品规模化管理（搜索/分页/归档守卫/概览）、工作流模板导入导出、审计留痕检索、评审超期提醒与升级链、材料快照固化、SSE 实时推送、Webhook 订阅管理与开放 API 策略均已交付。`docs/modules/` 各模块文档的状态列标注当前进度。
 
 首个成员：在 `deploy/.env` 设置 `CHALKLINE_ADMIN_USERNAME` / `CHALKLINE_ADMIN_PASSWORD`，首启会自动创建 admin。登录拿 JWT：
 
@@ -209,7 +209,8 @@ Skill 只做话术映射，**不承担权限与门禁判断**——即使模型�
 - **M0 · 骨架**（已完成）：仓库结构、领域模型、工作流引擎核心判定、docker compose 起服务
 - **M1 · 单产品跑通**（已完成）：成员与角色（JWT/PAT）、产品成员与隔离、产品/模块/迭代/任务 CRUD、迭代生命周期 + 任务两层工作流与预置模板、并行分支、门禁审批、MCP 工具全集（22 个）
 - **M2 · 协作深化**（已完成）：控制台 SPA（产品总览、迭代看板、任务树、审批队列、燃尽/状态分布/成员负载图）、实例视图材料与审批投影、集成适配器（git/svn/outline/redmine 引用校验与标题快照）、安全出站（域名白名单、SSRF 防护）、outbox 通知投递（SMTP/Webhook、指数退避）、`external_links` 迁移
-- **M3 · 规模化**（下一个）：多产品规模化管理、工作流模板导入导出、审计留痕检索、评审超期提醒与升级链、inline 材料提交时固化文档版本、实时推送（WebSocket/SSE 评估）、开放 API 与 Webhook 订阅管理
+- **M3 · 规模化**（已完成）：多产品规模化管理（列表搜索/分页、归档守卫、跨产品概览）、工作流模板导入导出（YAML、冲突自动换 id/升版本）、审计留痕检索（admin 全局 + 产品内成员）、评审超期提醒与升级链（`gate.overdue` / `gate.escalated`，SLA 可配）、材料提交时固化快照（外部版本 + inline sha256）、实时推送（SSE，评估结论见 tech.md）、开放 API 与 Webhook 订阅管理（PAT 拉取 + 订阅推送，签名密钥不落库）
+- **M4+ · 待规划**：Agent Skill 落盘校验、provider 启停与 base_url 管理 UI、多实例部署与水平扩展评估
 
 ## 参与开发
 

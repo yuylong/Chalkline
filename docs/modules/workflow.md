@@ -106,3 +106,26 @@ MCP：`get_next_action` / `start_step` / `submit_step` / `attach_artifact` / `re
 
 - 实例加载策略：每次操作全量加载节点/审批/材料，还是按需？→ M1 先全量（数据量小），性能问题在 M2 优化。
 - `get_next_action` 的合格评审人列表（`eligibleReviewers`）如何计算？→ 调 catalog 取产品内持该角色的成员，M1 实现。
+
+## M3 增量：模板导入导出与评审 SLA
+
+> 已交付。
+
+**模板导入导出**（跨实例迁移与备份）：
+
+| 端点 | 说明 | 权限 |
+| --- | --- | --- |
+| `GET /api/v1/workflows/{id}/export` | 模板导出为 YAML（与创建入参同构，可直接再导入） | 登录 |
+| `POST /api/v1/workflows/import` | 导入 YAML；id 冲突自动换新 id，(scope,name,version) 撞名自动升版本 | `pm` / `admin` |
+
+- 导入冲突策略在服务端裁决并写审计（`workflow.import`，payload 记 `original_id`）；导出是读操作不写审计。
+- YAML 往返有单测守卫（`internal/workflow/yaml_roundtrip_test.go`）：全部内置模板导出后必须能原样再解析。
+
+**评审超期提醒与升级链**：
+
+- 配置：`CHALKLINE_REVIEW_SLA`（默认 24h）→ `gate.overdue` 提醒评审人；`CHALKLINE_REVIEW_ESCALATION`（默认 3×SLA）→ `gate.escalated` 升级给产品 owner / admin；`CHALKLINE_REVIEW_SCAN_INTERVAL`（默认 10m）扫描间隔。
+- 监控器 `internal/app/sla.go`：只写 `gate_reminders` 水位（`(instance, node, level)` 唯一，防重复）与 outbox 事件 + 审计（actor=`system`），**不改任何节点状态**（红线 1、不变量 21）；跳级时按 1→2 保序补发。
+- `GET /reviews/pending` 与 MCP `chalkline_get_pending_reviews` 条目新增 `awaitingSince` 与 `overdue`，控制台队列标红。
+- 事件经既有 outbox 通道投递（SMTP / Webhook / 订阅），投递失败不阻断流程（不变量 15）。
+
+**材料快照固化**：`submit_step` / `attach_artifact` 在挂接时把快照写入 `artifacts.snapshot`——外部 provider 记 title/version/fetchedAt，inline 记内容 sha256 与长度；实例视图（`InstanceView.artifacts[].snapshot`）透传给控制台与 Agent。评审看到的是提交时点的事实（integrations.md「同步方向」）。

@@ -1,12 +1,13 @@
 // 产品列表：我的产品 + 创建产品（默认工作流经 PATCH /products/{id} 落地）。
+// M3 规模化：搜索 / 状态过滤 / 分页（服务端检索）+ 跨产品概览统计。
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { App, Button, Form, Input, Modal, Select, Table, Tag, Typography } from 'antd'
+import { App, Button, Form, Input, Modal, Select, Space, Statistic, Table, Tag, Typography } from 'antd'
 import { useState } from 'react'
 import { useNavigate } from 'react-router'
 import { apiGet, apiPatch, apiPost } from '../../shared/api'
 import { fmtTime } from '../../shared/status'
 import { ApiErrorBanner } from '../../shared/ui'
-import type { ListEnvelope, ProductView, WorkflowView } from '../../shared/types'
+import type { ListEnvelope, OverviewView, ProductListResult, ProductView, WorkflowView } from '../../shared/types'
 
 interface CreateForm {
   key: string
@@ -16,16 +17,32 @@ interface CreateForm {
   defaultTaskWorkflowId?: string
 }
 
+const PAGE_SIZE = 20
+
 export default function ProductList() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { message } = App.useApp()
   const [open, setOpen] = useState(false)
   const [form] = Form.useForm<CreateForm>()
+  const [q, setQ] = useState('')
+  const [status, setStatus] = useState<string | undefined>(undefined)
+  const [page, setPage] = useState(1)
 
   const { data, isPending, isError, error } = useQuery({
-    queryKey: ['products'],
-    queryFn: () => apiGet<ListEnvelope<ProductView>>('/products'),
+    queryKey: ['products', q, status, page],
+    queryFn: () => {
+      const params = new URLSearchParams()
+      if (q) params.set('q', q)
+      if (status) params.set('status', status)
+      params.set('limit', String(PAGE_SIZE))
+      params.set('offset', String((page - 1) * PAGE_SIZE))
+      return apiGet<ProductListResult>(`/products?${params.toString()}`)
+    },
+  })
+  const { data: overview } = useQuery({
+    queryKey: ['overview'],
+    queryFn: () => apiGet<OverviewView>('/overview'),
   })
   const { data: workflows } = useQuery({
     queryKey: ['workflows'],
@@ -56,6 +73,7 @@ export default function ProductList() {
       setOpen(false)
       form.resetFields()
       queryClient.invalidateQueries({ queryKey: ['products'] })
+      queryClient.invalidateQueries({ queryKey: ['overview'] })
     },
     onError: (err: Error) => message.error(err.message),
   })
@@ -72,11 +90,58 @@ export default function ProductList() {
           创建产品
         </Button>
       </div>
+
+      {overview && (
+        <Space size="large" style={{ marginBottom: 16, background: '#fff', padding: '12px 24px', borderRadius: 8 }}>
+          <Statistic title="可见产品" value={overview.products} />
+          <Statistic title="进行中迭代" value={overview.activeIterations} />
+          <Statistic title="未完结任务" value={overview.openTasks} />
+          <Statistic title="待审批门禁" value={overview.pendingGates} />
+          <Statistic
+            title="超期待审"
+            value={overview.overdueGates}
+            valueStyle={overview.overdueGates > 0 ? { color: '#cf1322' } : undefined}
+          />
+        </Space>
+      )}
+
+      <Space style={{ marginBottom: 12 }}>
+        <Input.Search
+          allowClear
+          placeholder="搜索名称 / 标识"
+          style={{ width: 240 }}
+          onSearch={(v) => {
+            setQ(v)
+            setPage(1)
+          }}
+        />
+        <Select
+          allowClear
+          placeholder="全部状态"
+          style={{ width: 140 }}
+          value={status}
+          onChange={(v) => {
+            setStatus(v)
+            setPage(1)
+          }}
+          options={[
+            { value: 'active', label: '活跃' },
+            { value: 'archived', label: '已归档' },
+          ]}
+        />
+      </Space>
+
       <Table<ProductView>
         rowKey="id"
         loading={isPending}
         dataSource={data?.items ?? []}
-        pagination={false}
+        pagination={{
+          current: page,
+          pageSize: PAGE_SIZE,
+          total: data?.total ?? 0,
+          showSizeChanger: false,
+          onChange: setPage,
+        }}
         onRow={(record) => ({ onClick: () => navigate(`/products/${record.id}`), style: { cursor: 'pointer' } })}
         columns={[
           { title: '标识', dataIndex: 'key', width: 90, render: (v: string) => <Tag>{v}</Tag> },

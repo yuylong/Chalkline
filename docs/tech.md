@@ -48,6 +48,7 @@ Rust 的表达力最贴合状态机，但此项目的瓶颈不在 CPU，付出�
 - **TLS 由 nginx 终止，应用不感知**：`chalklined` 只监听容器内 HTTP，证书、HSTS、限流、内网白名单都在 nginx 层配置；应用不引入自签证书逻辑，避免两处维护。
 - **集成只存引用，不做双向同步**：内容归外部系统，Chalkline 只存 URL、外部 ID 与快照。双向同步会产生无法裁决的冲突源。详见 [docs/domain/integrations.md](domain/integrations.md)。
 - **通知走 outbox**：状态流转写事件表，由投递器异步发送，失败重试且不阻断流程。
+- **实时推送用 SSE，不用 WebSocket**（M3）：控制台只需要服务端→客户端单向推送；SSE 走普通 HTTP 长连接，nginx 反代仅需关缓冲，鉴权复用 JWT 头。事件源是 outbox 的只读投影（进程内 hub 分发），轮询保留兜底。双向交互（如协作光标）不在产品目标内，需要时再评估。
 - **前端静态产物由 nginx 托管**：Go 进程不承担静态文件服务，SPA 路由回退在 nginx 用 `try_files` 处理。
 
 ## 常用命令

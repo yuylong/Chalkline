@@ -52,6 +52,17 @@ type Config struct {
 	NotifyEmails []string
 	// OutboxInterval 是通知投递器的轮询间隔，默认 5s。
 	OutboxInterval time.Duration
+
+	// ---- M3 规模化 ----
+
+	// ReviewSLA 评审超期阈值：awaiting_review 超过该时长未裁决即提醒评审人，默认 24h。
+	ReviewSLA time.Duration
+	// ReviewEscalation 升级阈值：超过该时长升级给产品 owner / admin，默认 0 = 3×SLA。
+	ReviewEscalation time.Duration
+	// ReviewScanInterval SLA 监控器扫描间隔，默认 10m。
+	ReviewScanInterval time.Duration
+	// EventsInterval SSE 事件尾随轮询间隔，默认 3s。
+	EventsInterval time.Duration
 }
 
 // Load 从环境变量构造配置并校验必填项。
@@ -81,6 +92,11 @@ func Load() (Config, error) {
 		SMTPFrom:          os.Getenv("CHALKLINE_SMTP_FROM"),
 		NotifyEmails:      envList("CHALKLINE_NOTIFY_EMAILS"),
 		OutboxInterval:    envDuration("CHALKLINE_OUTBOX_INTERVAL", 5*time.Second),
+
+		ReviewSLA:         envDuration("CHALKLINE_REVIEW_SLA", 24*time.Hour),
+		ReviewEscalation:  envDuration("CHALKLINE_REVIEW_ESCALATION", 0),
+		ReviewScanInterval: envDuration("CHALKLINE_REVIEW_SCAN_INTERVAL", 10*time.Minute),
+		EventsInterval:    envDuration("CHALKLINE_EVENTS_INTERVAL", 3*time.Second),
 	}
 	if cfg.DatabaseURL == "" {
 		return Config{}, fmt.Errorf("CHALKLINE_DATABASE_URL 未设置")

@@ -96,8 +96,8 @@ func TestInfo(t *testing.T) {
 	}
 	var body map[string]any
 	_ = json.Unmarshal(rec.Body.Bytes(), &body)
-	if body["milestone"] != "M2" {
-		t.Fatalf("milestone 应为 M2，实际 %v", body["milestone"])
+	if body["milestone"] != "M3" {
+		t.Fatalf("milestone 应为 M3，实际 %v", body["milestone"])
 	}
 }
 

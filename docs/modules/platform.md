@@ -71,3 +71,12 @@ Go 接口（被上层使用）：
 
 - 生产证书替换流程（当前仅自签）→ M3 规模化收敛。
 - `audit_logs` / `outbox_events` 的具体写入方与格式 → **已定**：审计由 `app` 事务内 `store.InsertAudit` 写入；outbox 由 `app` 写事件、`integration/notify.Dispatcher` 异步消费投递。
+
+## M3 增量：规模化配置与迁移
+
+> 已交付。
+
+- **新配置**（环境变量，见 `deploy/.env.example`）：`CHALKLINE_REVIEW_SLA`（默认 24h）、`CHALKLINE_REVIEW_ESCALATION`（默认 3×SLA）、`CHALKLINE_REVIEW_SCAN_INTERVAL`（默认 10m）、`CHALKLINE_EVENTS_INTERVAL`（默认 3s）。
+- **迁移 `0008_scale.sql`**：`webhook_subscriptions`（订阅管理）、`gate_reminders`（评审提醒水位）、`audit_logs` 补 `created_at` 索引（时间范围检索）。
+- **后台任务**：数据库就绪后 server 额外启动两个 goroutine——评审 SLA 监控器（`app.RunReviewSLA`）与 outbox 事件尾随（SSE 投递源）；二者都只读业务状态、只写水位/事件，不触碰节点状态。
+- 生产证书替换流程仍为手动替换 `deploy/certs/` 下文件（compose 挂载），未做自动化——单团队部署下收益有限，保留为运维手册事项。

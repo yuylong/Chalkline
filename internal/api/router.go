@@ -11,6 +11,7 @@ import (
 	"github.com/yuylong/Chalkline/internal/app"
 	"github.com/yuylong/Chalkline/internal/auth"
 	"github.com/yuylong/Chalkline/internal/domain/identity"
+	"github.com/yuylong/Chalkline/internal/events"
 )
 
 // Deps 是路由所需依赖，由 server 组装层注入。
@@ -25,6 +26,8 @@ type Deps struct {
 	AuthMCP func(http.Handler) http.Handler
 	// MCP 交给路由挂载（nil 则 /mcp 返回 501）。
 	MCP http.Handler
+	// Events 是进程内事件总线（M3 SSE 实时推送；nil 则 /api/v1/events 返回 501）。
+	Events *events.Hub
 	// Ready 报告数据库是否已连接并完成迁移与种子。
 	Ready func() bool
 	// Ping 探活数据库连接（Ready 为 true 时有效）。
@@ -56,6 +59,9 @@ func NewRouter(d Deps) http.Handler {
 			g.Use(readyGuard(d))
 			g.Use(d.AuthREST)
 
+			// M3 实时推送：SSE 事件流（JWT 鉴权，长连接）。
+			g.Get("/events", h.eventsStream)
+
 			// identity：PAT 与本人信息
 			g.Get("/auth/me", h.me)
 			g.Post("/auth/pat", h.createPAT)
@@ -67,6 +73,8 @@ func NewRouter(d Deps) http.Handler {
 			g.Post("/products", h.createProduct)
 			g.Get("/products/{id}", h.getProduct)
 			g.Patch("/products/{id}", h.updateProduct)
+			g.Get("/overview", h.getOverview)
+			g.Get("/products/{id}/audit-logs", h.auditLogs)
 			g.Get("/products/{id}/members", h.listMembers)
 			g.Post("/products/{id}/members", h.upsertMember)
 			g.Delete("/products/{id}/members/{uid}", h.removeMember)
@@ -90,9 +98,11 @@ func NewRouter(d Deps) http.Handler {
 			// workflow：模板 / 实例查询 / 待办
 			g.Get("/workflows", h.listWorkflows)
 			g.Post("/workflows", h.createWorkflow)
+			g.Post("/workflows/import", h.importWorkflow)
 			g.Get("/workflows/{id}", h.getWorkflow)
 			g.Patch("/workflows/{id}", h.updateWorkflow)
 			g.Post("/workflows/{id}/archive", h.archiveWorkflow)
+			g.Get("/workflows/{id}/export", h.exportWorkflow)
 			g.Get("/tasks/{id}/workflow", h.taskWorkflow)
 			g.Get("/iterations/{id}/workflow", h.iterationWorkflow)
 			g.Get("/reviews/pending", h.pendingReviews)
@@ -116,6 +126,13 @@ func NewRouter(d Deps) http.Handler {
 				admin.Get("/users/{id}", h.getUser)
 				admin.Patch("/users/{id}", h.updateUser)
 				admin.Post("/users/{id}/password", h.setUserPassword)
+
+				// M3：审计全局检索与 Webhook 订阅管理（admin）
+				admin.Get("/audit-logs", h.auditLogs)
+				admin.Get("/webhooks", h.listWebhooks)
+				admin.Post("/webhooks", h.createWebhook)
+				admin.Patch("/webhooks/{id}", h.updateWebhook)
+				admin.Delete("/webhooks/{id}", h.deleteWebhook)
 			})
 		})
 	})
@@ -161,7 +178,7 @@ func info(d Deps) http.HandlerFunc {
 			"name":      "chalkline",
 			"version":   d.Version,
 			"api":       "v1",
-			"milestone": "M2",
+			"milestone": "M3",
 		})
 	}
 }

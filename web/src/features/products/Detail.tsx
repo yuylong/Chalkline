@@ -21,7 +21,7 @@ import {
 import dayjs from 'dayjs'
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
-import { apiDelete, apiGet, apiPost } from '../../shared/api'
+import { apiDelete, apiGet, apiPatch, apiPost } from '../../shared/api'
 import { fmtDate, fmtTime, iterationStatusMeta, memberRoleMeta, MEMBER_ROLES } from '../../shared/status'
 import { ApiErrorBanner, DetailError, PageLoading } from '../../shared/ui'
 import type {
@@ -30,6 +30,8 @@ import type {
   MemberView,
   ModuleView,
   ProductDetail,
+  ProductView,
+  WhoamiView,
   WorkflowView,
 } from '../../shared/types'
 
@@ -136,13 +138,46 @@ export default function ProductDetail() {
     onError: (err: Error) => message.error(err.message),
   })
 
+  // M3 归档：产品 owner / admin；仍有未收尾迭代时后端 409 并提示原因。
+  const { data: whoami } = useQuery({
+    queryKey: ['whoami'],
+    queryFn: () => apiGet<WhoamiView>('/auth/me'),
+  })
+  const archiveMut = useMutation({
+    mutationFn: () => apiPatch<ProductView>(`/products/${id}`, { archive: true }),
+    onSuccess: () => {
+      message.success('产品已归档')
+      queryClient.invalidateQueries({ queryKey: ['product', id] })
+      queryClient.invalidateQueries({ queryKey: ['products'] })
+      queryClient.invalidateQueries({ queryKey: ['overview'] })
+    },
+    onError: (err: Error) => message.error(err.message),
+  })
+
   if (detail.isError) return <DetailError error={detail.error} />
   if (detail.isPending) return <PageLoading />
   const p = detail.data
+  const myRole = p.members.find((m) => m.userId === whoami?.user.id)?.role
+  const canArchive =
+    p.status === 'active' && (whoami?.user.roles.includes('admin') || myRole === 'owner')
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <Card>
+      <Card
+        extra={
+          canArchive ? (
+            <Popconfirm
+              title="确认归档该产品？"
+              description="归档后只读保留历史；仍有未收尾迭代时会拒绝"
+              onConfirm={() => archiveMut.mutate()}
+            >
+              <Button size="small" danger loading={archiveMut.isPending}>
+                归档产品
+              </Button>
+            </Popconfirm>
+          ) : undefined
+        }
+      >
         <Typography.Title level={4} style={{ marginTop: 0 }}>
           <Tag>{p.key}</Tag>
           {p.name}

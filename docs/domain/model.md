@@ -225,7 +225,7 @@ AuditLog（全量留痕）
 | `kind` | 材料类型 |
 | `provider` | `git` / `svn` / `outline` / `redmine` / `file` / `url` / `inline` |
 | `url` / `externalId` | 外部定位；`inline` 时为空 |
-| `snapshot` | 标题、版本、状态等快照，仅用于展示与审计，不回写 |
+| `snapshot` | **提交时点固化**的快照（M3）：外部材料记标题/版本/抓取时间，inline 记内容 sha256 与长度。评审看到的是提交时的事实，外部内容后续变化不回写 |
 
 ### Document（轻量内联文档）
 
@@ -237,11 +237,19 @@ AuditLog（全量留痕）
 
 ### OutboxEvent（投递）
 
-状态流转产生的领域事件写入 outbox，由投递器异步发送到邮件与 Webhook。`status` 为 `pending` / `sent` / `failed`，含重试次数与最后错误。投递失败不影响流程推进。
+状态流转产生的领域事件写入 outbox，由投递器异步发送：静态通道（环境变量配置的 Webhook / SMTP）失败重试；**Webhook 订阅（M3）按各自 `event_types` 路由到订阅 URL，尽力而为**——单个订阅失败只记在订阅行，不阻断事件。`status` 为 `pending` / `sent` / `failed`，含重试次数与最后错误。投递失败不影响流程推进。控制台 SSE 实时推送同样尾随 outbox（只读投影，不改投递状态）。
+
+### WebhookSubscription（事件订阅，M3）
+
+外部系统消费事件的出站订阅：`name` / `url` / `event_types`（空 = 全部）/ `status`（`active` / `paused`）+ 最近投递结果。管理权限收敛到 `admin`；签名密钥沿用全局 `CHALKLINE_WEBHOOK_SECRET`，**订阅行不存任何凭据**。
+
+### GateReminder（评审提醒水位，M3）
+
+评审超期提醒与升级链的已发记录：`(instance, node, level)` 唯一，`level` 1 = 超期提醒评审人（`gate.overdue`），2 = 升级给产品 owner / admin（`gate.escalated`）。**只记录提醒事实，不改任何节点状态**（不变量 1）；节点重新进入评审（驳回重提）时水位随实例语义自然重置为按新进入时间判定。
 
 ### AuditLog（审计）
 
-`actor_id` + `action` + `subject_type` + `subject_id` + `payload` + `created_at`。所有状态流转、审批、指派、材料上传必须写入。
+`actor_id` + `action` + `subject_type` + `subject_id` + `payload` + `created_at`。所有状态流转、审批、指派、材料上传必须写入。M3 起可检索：admin 全局，产品成员按产品归属过滤（task / iteration / module / product 主体联表判定）。
 
 ## 不变量
 
@@ -266,6 +274,8 @@ AuditLog（全量留痕）
 17. 每个产品至少保留一个 `owner`；移除成员前，其未终结任务必须转派。
 18. 迭代级节点可声明 `require_iteration_tasks_done`（默认 `false`）；为 `true` 时，该节点 `passed` 的必要条件是迭代下全部任务已终结（`done` / `cancelled`）。
 19. `pre_review` 材料是 AI 自查报告而非审批：不计入门禁 `approvals`，不改变节点状态；驳回只来自评审人的 `review_step` 决策。
+20. 产品归档前其下不得存在 `planned` / `active` 迭代（归档守卫）；归档后只读保留历史。
+21. 评审超期提醒与升级链只写提醒水位与 outbox 事件，**不得修改任何节点状态**；同一 `(instance, node, level)` 只提醒一次。
 
 ## 状态投影
 
