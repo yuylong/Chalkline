@@ -123,7 +123,6 @@ edges:
 进入判定（纯函数）:
   ready(node) = 所有前驱节点 passed
                 AND 未被跳过
-                AND 前置任务依赖已满足（跨任务 depends_on）
 
 可开始:
   in_progress(node) 仅当 ready(node)
