@@ -48,7 +48,7 @@ Agent 每轮先调 `chalkline_get_next_action`，服务端返回结构化结论�
 | `chalkline_start_step` | 开始当前可执行节点 | 任务负责人 |
 | `chalkline_submit_step` | 提交节点，携带材料与说明 | 任务负责人 |
 | `chalkline_attach_artifact` | 挂接材料引用：`provider` + `url`/`externalId`，或 `inline` 内容 | 任务负责人 |
-| `chalkline_review_step` | 门禁确认或驳回 | 门禁 `roles` 声明角色的成员（`admin` 恒可），非提交人 |
+| `chalkline_review_step` | 门禁确认或驳回 | 门禁 `roles` 声明角色的成员（`admin` 恒可）；提交人本人为合格评审人时可自审，同样走 approve 流程 |
 | `chalkline_upsert_product_member` | 加入成员或调整产品角色（`owner` / `member` / `guest`） | 产品 `owner` / `admin` |
 | `chalkline_remove_product_member` | 移除成员，要求其未终结任务已转派 | 产品 `owner` / `admin` |
 
@@ -110,7 +110,6 @@ Agent 每轮先调 `chalkline_get_next_action`，服务端返回结构化结论�
 | `INVALID_ARTIFACT_REF` | 422 | 材料引用格式非法，或 provider 与 kind 不匹配 |
 | `INTEGRATION_UNAVAILABLE` | 503 | 模板要求外部校验，但对应适配器未连通 |
 | `TREE_DEPTH_EXCEEDED` | 422 | 模块 > 5 层或任务 > 3 层 |
-| `SELF_REVIEW_FORBIDDEN` | 403 | 评审自己提交的节点 |
 | `ROLE_REQUIRED` | 403 | 角色不满足 |
 | `NOT_FOUND` | 404 | 不存在或不可见 |
 

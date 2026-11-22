@@ -101,6 +101,7 @@ edges:
 1. 材料齐备 **且** 有效审批数 ≥ `approvals` → `passed`
 2. 任一 `reject` → 节点回到 `in_progress`，驳回理由写入审计与通知
 3. 二者缺一 → 维持 `awaiting_review`，`get_next_action` 返回缺失项明细
+4. 驳回后重提：既有 `approve` **保留累计**，不因重提作废；原驳回人重新表态前，其最近一次 `reject` 持续阻塞准出（不重复触发节点回退）。重提再次进入 `awaiting_review` 并重发 `gate.pending` 通知
 
 > 关键约束：门禁通过只取决于数据库中的 `GateApproval` 与 `Artifact` 记录。Agent 在对话里声称「已评审」不产生任何效果。
 
@@ -141,7 +142,9 @@ edges:
 
 迭代收口：节点声明 `require_iteration_tasks_done: true` 时，迭代下存在未终结任务（`open`）则该节点保持阻塞，`get_next_action` 在 `blockers` 中返回缺失项。
 
-材料变更：`awaiting_review` 期间允许补挂材料；替换已进入评审的材料会使该节点既有审批全部作废（记录保留），基于当前版本重新收集。
+驳回重提：重新提交不清零既有 `approve`（保留累计）；「未决 reject」即评审人最近一次决策为 `reject`——原驳回人重新表态前持续阻塞准出，但不再次触发节点回退。重提后再次进入 `awaiting_review` 并重发 `gate.pending` 通知。
+
+材料变更：`awaiting_review` 期间允许补挂材料；替换已进入评审的材料会使该节点既有审批全部作废（记录保留），基于当前版本重新收集。**驳回后的修改重提不适用本条**——驳回本就意味着修改后重来，按「驳回重提」保留累计。
 
 并发控制：节点状态变更基于乐观锁版本号，并发冲突返回 `409 STATE_CONFLICT`，客户端刷新状态后重试；同一评审人的重复决策采用 upsert 语义（最近一次为准），天然幂等。
 

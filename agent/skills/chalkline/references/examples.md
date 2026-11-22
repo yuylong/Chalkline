@@ -50,7 +50,7 @@ chalkline_decompose_task(
 )
 ```
 
-> **Agent**：CHK-12.3 下新增 3 个三级任务（CHK-12.3.1 ~ .3）。已经是第三层，再往下拆会触发 `DEPTH_EXCEEDED`，更细的工作建议写进任务描述。
+> **Agent**：CHK-12.3 下新增 3 个三级任务（CHK-12.3.1 ~ .3）。已经是第三层，再往下拆会触发 `TREE_DEPTH_EXCEEDED`，更细的工作建议写进任务描述。
 
 > **人**：把 CHK-12.2 挪到下一个迭代。
 
@@ -106,7 +106,7 @@ chalkline_get_next_action(iterationId: "CHK-IT5")
 chalkline_get_task(taskId: "CHK-12")
 ```
 
-> **Agent**：驳回理由是「范围过大」，节点已回到 `in_progress`。修改后需要重新挂 `spec` 材料并再次提交，仍由原来的 reviewer 确认。要我把驳回意见整理成待办吗？
+> **Agent**：驳回理由是「范围过大」，节点已回到 `in_progress`。修改后重新挂 `spec` 材料并再次提交即可——之前收集的 approve 继续有效，原驳回人重新确认后就能通过。要我把驳回意见整理成待办吗？
 
 要点：**不要直接重提**。先确认用户是否已经改完材料——重提没改的内容只会再被驳回一次。
 
@@ -117,9 +117,9 @@ chalkline_get_task(taskId: "CHK-12")
 > **人**：帮我把 CHK-31 的状态改成完成。
 
 ```
-chalkline_submit_step(...) → 403 FORBIDDEN
+chalkline_submit_step(...) → 403 ROLE_REQUIRED
 ```
 
-> **Agent**：CHK-31 不是你负责的任务，你也没有 pm 角色，平台拒绝了这次操作（403）。需要由负责人或产品 owner 操作；我可以把要提交的材料清单整理给你转过去。
+> **Agent**：CHK-31 不是你负责的任务，你也没有 pm 角色，平台拒绝了这次操作（403 ROLE_REQUIRED）。需要由负责人或产品 owner 操作；我可以把要提交的材料清单整理给你转过去。
 
 要点：**不重试、不换工具绕**。403 说明规则生效了，这正是平台的设计目的。

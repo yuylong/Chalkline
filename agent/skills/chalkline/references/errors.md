@@ -4,14 +4,16 @@
 
 | HTTP | code | 含义 | 你该做什么 |
 | --- | --- | --- | --- |
-| 403 | `FORBIDDEN` | 身份够不着这个操作 | 告诉用户需要谁来做（负责人 / owner / 对应角色），**不要重试** |
+| 403 | `ROLE_REQUIRED` | 不持有该操作所需的角色（任务负责人 / owner / 门禁角色） | 告诉用户需要谁来做，**不要重试** |
 | 404 | `NOT_FOUND` | 对象不存在，或你不是该产品成员 | 先 `whoami` 确认可见产品；提示加入产品，不要猜 ID |
+| 409 | `NOT_READY` | 前驱节点未完成 | 说明还差哪个前驱节点，先去推进它 |
 | 409 | `GATE_BLOCKED` | 门禁未满足 | 读 `blockers`：缺材料就挂材料，缺审批就说清找谁 |
-| 409 | `STATE_CONFLICT` | 状态已被别人推进 | 重新 `get_next_action` 再决定，不要重复提交 |
+| 409 | `STATE_CONFLICT` | 状态已被并发修改 | 重新 `get_next_action` 再决定，不要重复提交 |
 | 409 | `STAGE_NOT_ALLOW_TASK` | 当前节点不允许建任务 | 说明流程走到哪个节点才能拆解 |
+| 409 | `INVALID_TRANSITION` | 节点状态不允许该操作 | 重新读状态，按 `nextActions` 走 |
 | 422 | `ARTIFACT_MISSING` | 提交时缺必需材料 | 按 `blockers` 列出的 `kind` 补挂 |
 | 422 | `INVALID_ARTIFACT_REF` | 引用格式错或 provider 与 kind 不匹配 | 检查 URL 与 provider，`pr` 只能来自 `git`/`svn` |
-| 422 | `DEPTH_EXCEEDED` | 任务层级超过 3 层 | 建议合并子任务或另立一级任务 |
+| 422 | `TREE_DEPTH_EXCEEDED` | 模块 > 5 层或任务 > 3 层 | 建议合并子任务或另立一级任务 |
 | 503 | `INTEGRATION_UNAVAILABLE` | 模板要求外部校验但适配器未连通 | 告知用户联系管理员，**不要反复重试** |
 
 ## 通用原则
