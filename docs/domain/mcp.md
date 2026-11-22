@@ -47,7 +47,9 @@ Agent 每轮先调 `chalkline_get_next_action`，服务端返回结构化结论�
 | `chalkline_start_step` | 开始当前可执行节点 | 任务负责人 |
 | `chalkline_submit_step` | 提交节点，携带材料与说明 | 任务负责人 |
 | `chalkline_attach_artifact` | 挂接材料引用：`provider` + `url`/`externalId`，或 `inline` 内容 | 任务负责人 |
-| `chalkline_review_step` | 门禁确认或驳回 | reviewer / qa |
+| `chalkline_review_step` | 门禁确认或驳回 | 门禁 `roles` 声明角色的成员（`admin` 恒可），非提交人 |
+
+权限列与 [model.md](model.md) 的对象级权限表一致，在服务端强制执行，越权返回 `403`；`get_next_action` 对无权执行的成员不返回该工具。
 
 ## 返回契约
 

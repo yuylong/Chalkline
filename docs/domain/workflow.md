@@ -127,14 +127,27 @@ edges:
 
 父任务收口：`require_children_done: true` 时，父任务的终态节点在全部子任务 `done` 之前保持阻塞。
 
+## 并行与汇合
+
+模板是 DAG，并行不需要新语法——分叉与汇合都是**边**的效果：
+
+- **分叉（fork）**：一个节点 `passed` 后，它的所有后继（各自前驱齐备）同时进入 `in_progress`。实例的「当前节点」是一个**集合**，控制台按泳道并行展示。
+- **汇合（join）**：多前驱节点采用 **AND 语义**——全部前驱 `passed` 才 `ready`。不做 OR-join（任一前驱通过即放行），避免「哪条路走通了」变得不可判定。
+- **单支驳回不连坐**：驳回只回退该分支的提交，并行分支照常推进与评审。
+- **门禁独立**：并行节点各配各的门禁，审批记录互不共享。
+- **并行建任务**：`allows_task_creation` 在并行分支上各自生效——「研发」建开发任务、「测试设计」建测试任务，互不等待。
+- 单个模板并行分支建议 ≤ 3 条；再多应拆成两个工作流，或下沉为子任务承载。
+
+状态投影不变：实例存在任一 `in_progress` / `awaiting_review` 节点即视为「进行中」，串行模板同理。
+
 ## 内置模板
 
-平台预置下列模板，**均可在控制台编辑或复制**，删掉不需要的节点即可适配团队节奏。
+平台预置下列模板，**均可在控制台编辑或复制**，删掉不需要的节点即可适配团队节奏。`{ A ∥ B }` 表示并行分支。
 
 | 模板 | scope | 节点序列（带门禁的标 ◆） |
 | --- | --- | --- |
-| 全生命周期（默认） | iteration | 竞品调研◆ → 关键技术调研◆ → 产品规划◆ → 任务拆解◆ → 研发 → 测评◆ → 发布◆ → 总结◆ |
-| 轻量交付周期 | iteration | 规划◆ → 任务拆解 → 研发 → 测试验证◆ → 发布◆ → 总结◆ |
+| 全生命周期（默认） | iteration | 竞品调研◆ → {产品规划◆ → 任务拆解◆ ∥ 关键技术调研◆} → {研发 ∥ 测试设计◆} → 测评◆ → 发布◆ → 总结◆ |
+| 轻量交付周期 | iteration | 规划◆ → 任务拆解 → {研发 ∥ 测试设计◆} → 测试验证◆ → 发布◆ → 总结◆ |
 | 标准开发任务 | task | 澄清 → 规格◆ → 实现 → 测试设计◆ → 测试执行◆ → 完成 |
 | 调研任务 | task | 调研提纲 → 信息收集 → 分析 → 调研报告◆ → 完成 |
 | 测试任务 | task | 测试设计◆ → 用例评审◆ → 测试执行 → 缺陷回归 → 测试报告◆ → 完成 |
@@ -177,6 +190,8 @@ nodes:
   - { id: breakdown, name: 任务拆解, type: normal, allows_task_creation: true,
       gate: { approvals: 1, roles: [pm, reviewer] } }
   - { id: build, name: 研发, type: normal, allows_task_creation: true }
+  - { id: test_design, name: 测试设计, type: normal, allows_task_creation: true,
+      gate: { approvals: 1, roles: [qa], artifacts: [{ kind: test_plan, required: true }] } }
   - { id: assess, name: 测评, type: normal,
       gate: { approvals: 1, roles: [qa, reviewer], artifacts: [{ kind: test_report, required: true }] } }
   - { id: release, name: 发布, type: normal,
@@ -185,11 +200,14 @@ nodes:
       gate: { approvals: 1, roles: [pm], artifacts: [{ kind: summary, required: true }] } }
   - { id: closed, name: 结束, type: terminal }
 edges:
-  - { from: research_market, to: research_tech }
-  - { from: research_tech,   to: planning }
+  - { from: research_market, to: planning }        # 分叉 A：规划线
+  - { from: research_market, to: research_tech }  # 分叉 B：技术调研并行推进
   - { from: planning,        to: breakdown }
   - { from: breakdown,       to: build }
+  - { from: research_tech,   to: build }           # 汇合：拆解确认 + 技术调研通过才开工
+  - { from: breakdown,       to: test_design }     # 分叉：测试设计与研发并行
   - { from: build,           to: assess }
+  - { from: test_design,     to: assess }          # 汇合：研发 + 测试设计都完成才测评
   - { from: assess,          to: release }
   - { from: release,         to: summary }
   - { from: summary,         to: closed }
@@ -197,7 +215,10 @@ edges:
 
 关键点：
 
-- `breakdown` 与 `build` 都带 `allows_task_creation: true`，所以任务只能在「任务拆解」之后创建——调研和规划没通过时，任何人都无法建任务。
+- 任务只能在带 `allows_task_creation: true` 的节点创建（任务拆解 / 研发 / 测试设计）——调研和规划没通过时，任何人都无法建任务。
+- 「任务拆解」与「关键技术调研」**并行**：市场调研通过后即可进入规划与拆解，技术验证同步进行，互不等待。
+- 「研发」是 **AND 汇合**：任务拆解确认 + 关键技术调研通过后才开工——技术没验证过的东西不该直接开发。
+- 「研发」与「测试设计」**并行**：测试设计不必等开发全部结束才开始，两边都完成才进入「测评」。
 - 「任务拆解」门禁不要求新材料，只需一名评审人确认任务树：一级任务是否覆盖了规格、粒度是否适合分派、跨模块任务是否标注清楚。轻量模板可关掉这道门禁。
 - 拆解在「任务拆解」节点完成一级任务，二级任务可在拆解时或研发过程中继续拆，规则见 [model.md](model.md#任务拆解规则)。
 
