@@ -12,14 +12,14 @@ Chalkline（墨线）：面向 5–50 人研发团队的规格驱动开发（SDD
 
 ## 当前状态
 
-**M0（骨架）已交付**：
+**M0 + M1（单产品跑通）已交付**：
 
-- 领域模型四包 `internal/domain/{identity,product,planning,workitem}`（含 model.md 不变量的纯函数校验）
-- 工作流引擎 `internal/workflow`：YAML 定义解析与 DAG 校验、5 个内置模板（embed）、状态机（ready/in_progress/awaiting_review/passed/rejected）、门禁会签判定、AND 并行汇合、驳回重提保留审批、next_action 投影
-- store：pgx 连接池、goose 内嵌迁移（0001 baseline / 0002 workflows）、内置模板种子；api：chi 路由 + 中间件 + 统一错误包络（`/healthz` `/readyz` `/api/v1/info`）
-- 部署栈 `deploy/`：compose 四服务（postgres/api/web/nginx）、多阶段 Dockerfile、nginx TLS + 首启自签证书；`Makefile` 常用命令
+- M0：领域模型四包 `internal/domain/{identity,product,planning,workitem}`（model.md 不变量的纯函数校验）；工作流引擎 `internal/workflow`（DAG 校验、5 内置模板、状态机、门禁会签、AND 汇合、驳回重提、next_action 投影）；store 基座（pgx + goose 嵌入迁移）；部署栈 `deploy/`（compose 四服务、nginx TLS、首启自签证书）
+- M1 鉴权 `internal/auth`：argon2id 密码、HS256 JWT、PAT（只存 hash）、REST/MCP 双入口互斥中间件；首启 admin 引导（`CHALKLINE_ADMIN_*`）
+- M1 业务层：migrations 0003–0006（users/PAT、产品/成员/模块/文档、迭代/任务/计数器、实例/节点状态/审批/材料）；`internal/app` 用例编排（登录、成员管理、产品隔离与不变量 16/17、编号原子分配与不变量 2/3/5、两层工作流实例化、材料替换重置审批、迭代状态投影、权限矩阵、审计与 outbox）
+- M1 入口：`internal/api` 全套 REST（登录/成员/产品/迭代/任务/模板/节点操作/待我审批）；`internal/mcp` streamable HTTP（stateless）+ 22 个 `chalkline_*` 工具（读 11 + 写 11，错误统一包络）；组装引导移至 `internal/server`
 
-**尚未开始（M1+）**：鉴权与登录、业务 CRUD、MCP 网关、Agent Skill、控制台、集成适配。模块划分见 [docs/modules/README.md](docs/modules/README.md)，里程碑见 README「路线图」。
+**尚未开始（M2+）**：控制台 SPA、集成适配器（Git/Outline/Redmine/通知投递）、Agent Skill 落盘。模块划分见 [docs/modules/README.md](docs/modules/README.md)，里程碑见 README「路线图」。
 
 ## 按任务读文档
 

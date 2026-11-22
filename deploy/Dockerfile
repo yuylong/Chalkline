@@ -7,7 +7,7 @@ RUN go mod download
 COPY . .
 ARG VERSION=dev
 RUN CGO_ENABLED=0 go build -trimpath \
-    -ldflags "-s -w -X github.com/yuylong/Chalkline/internal/app.Version=${VERSION}" \
+    -ldflags "-s -w -X github.com/yuylong/Chalkline/internal/server.Version=${VERSION}" \
     -o /out/chalklined ./cmd/chalklined
 
 FROM alpine:3.20

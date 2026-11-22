@@ -1,6 +1,6 @@
 # Chalkline 开发工作流常用命令。
 VERSION ?= $(shell git describe --tags --always 2>/dev/null || echo dev)
-LD := -ldflags "-s -w -X github.com/yuylong/Chalkline/internal/app.Version=$(VERSION)"
+LD := -ldflags "-s -w -X github.com/yuylong/Chalkline/internal/server.Version=$(VERSION)"
 COMPOSE := docker compose --project-directory deploy -f deploy/docker-compose.yml
 
 .PHONY: help build run test vet lint tidy up down logs ps clean

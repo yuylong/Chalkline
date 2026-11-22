@@ -61,3 +61,16 @@ func Recoverer(logger *slog.Logger) func(next http.Handler) http.Handler {
 		})
 	}
 }
+
+// readyGuard 数据库未就绪时统一 503（业务端点专用；/healthz 恒可访问）。
+func readyGuard(d Deps) func(next http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if !d.Ready() {
+				WriteError(w, http.StatusServiceUnavailable, "SERVICE_UNAVAILABLE", "数据库尚未就绪，请稍后重试", nil)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
