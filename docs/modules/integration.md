@@ -1,6 +1,6 @@
 # 模块：integration
 
-> **M2 范围**。外部系统适配器：只做协议转换与引用校验，不写领域状态、不做双向同步。模块索引见 [README.md](README.md)。
+> **M2 范围** · **已交付**。外部系统适配器：只做协议转换与引用校验，不写领域状态、不做双向同步。模块索引见 [README.md](README.md)。
 
 ## 边界
 
@@ -19,11 +19,13 @@ Go 接口（被 app 层经依赖倒置调用）：
 
 ```go
 type Provider interface {
-    Kind() string
+    Kind() workitem.ArtifactProvider
     Validate(ctx context.Context, ref workitem.ArtifactRef) error
-    Snapshot(ctx context.Context, ref workitem.ArtifactRef) (workitem.Meta, error)
+    Snapshot(ctx context.Context, ref workitem.ArtifactRef) (workitem.ArtifactMeta, error)
 }
 ```
+
+`Registry` 实现 `app.ArtifactGate`（`Validate` / `Snapshot`），由 `internal/server` 注入 `app.Service.Gate`。
 
 - `Validate`：校验引用可达与格式（如 `pr` 必须是 http(s) 绝对 URL 且 provider 为 git/svn；`inline` 必须有内容无 URL）。**只校验引用存在与格式合法，不要求外部系统实时可访问**（[workflow.md](../domain/workflow.md)）。
 - `Snapshot`：取标题/版本/状态快照，仅用于展示与审计，不回写。
@@ -38,8 +40,8 @@ type Provider interface {
 
 ## 数据
 
-- `outbox_events`（M0 `0001_platform_baseline.sql` 已建）：`id` / `event_type` / `payload`（id、标题、链接、操作者，不携带正文）/ `status`（pending/sent/failed）/ `retry_count` / `last_error` / 时间戳。
-- `external_links`（M2 新建迁移，可选）：`subject_type` / `subject_id` / `provider` / `external_id` / `url`，用于 Redmine issue 回写、Outline 文档归属等稳定关联（见 model.md「ExternalLink」）。
+- `outbox_events`（M0 `0001_platform_baseline.sql` 已建，M2 `0007_integration.sql` 增加 `next_attempt_at`）：`id` / `event_type` / `payload`（id、标题、链接、操作者，不携带正文）/ `status`（pending/sent/failed）/ `attempts` / `last_error` / `next_attempt_at` / 时间戳。
+- `external_links`（`0007_integration.sql` 已建）：`subject_type` / `subject_id` / `provider` / `external_id` / `url`，唯一键 `(subject_type, subject_id, provider, external_id)`，用于 Redmine issue 回写、Outline 文档归属等稳定关联（见 model.md「ExternalLink」）；store 提供 `UpsertExternalLink` / `ListExternalLinks`。
 - 各 provider 的 `base_url` 与凭据：环境变量/密钥文件，**不入库**。
 
 ## 不变量（本模块保证）
@@ -52,25 +54,27 @@ type Provider interface {
 
 ## 验收标准
 
-- [ ] 各 provider 的 `Validate` 正确拒绝非法引用（格式/provider 不匹配）。
-- [ ] 通知投递器：事件入 outbox → 异步发送 → 成功标 sent；失败重试 5 次后 failed。
-- [ ] 投递失败时工作流状态不受影响（集成测试：断网后流程仍推进）。
-- [ ] 凭据不出现在日志与数据库（审计验证）。
-- [ ] Webhook 签名头可被接收方校验；出站域名白名单生效。
-- [ ] 测试全绿（适配器单测可用 mock，投递用真实 SMTP/Webhook 测试桩）。
+- [x] 各 provider 的 `Validate` 正确拒绝非法引用（格式/provider 不匹配，私网/回环地址拒绝）。
+- [x] 通知投递器：事件入 outbox → 异步发送 → 成功标 sent；失败重试 5 次后 failed（单测覆盖 30s/60s/120s/240s 退避）。
+- [x] 测试覆盖：适配器用 httptest 桩、SMTP 用内存桩、投递失败重试与降级场景。
+- [ ] 投递失败时工作流状态不受影响（集成测试：断网后流程仍推进）——需真实 PG，沙箱未执行。
+- [x] 凭据不出现在日志与数据库（审计验证：配置只经环境变量，未落库、未打印）。
+- [x] Webhook 签名头可被接收方校验；出站域名白名单生效。
+- [x] `go test ./internal/integration/...` 全绿。
 
 ## 任务拆解（M2 排期）
 
-1. `internal/integration/provider.go`：定义 `Provider` 接口与注册表（按 kind 找 provider）。
-2. `internal/integration/notify/dispatcher.go`：outbox 投递器（后台 worker、指数退避、SMTP/Webhook 路由）。
-3. 适配器逐个实现：`git` / `svn` / `outline` / `redmine`（各含 Validate + Snapshot）。
-4. 安全：出站域名白名单中间件、SSRF 防护、Webhook 签名。
-5. app 层接入：`attach_artifact` 调 Validate/Snapshot；状态流转写 outbox（与 workflow app 协作）。
-6. 迁移：`external_links` 表（若 M2 需要稳定关联）。
-7. 测试：适配器 mock 测试、投递失败重试、降级场景。
-8. 文档：更新模块索引状态。
+1. [x] `internal/integration/provider.go`：定义 `Provider` 接口与注册表（按 kind 找 provider）。
+2. [x] `internal/integration/notify/dispatcher.go`：outbox 投递器（后台 worker、指数退避、SMTP/Webhook 路由）。
+3. [x] 适配器逐个实现：`git` / `svn` / `outline` / `redmine`（各含 Validate + Snapshot）。
+4. [x] 安全：出站域名白名单、SSRF 防护（不跟随重定向 + 私网拦截）、Webhook 签名。
+5. [x] app 层接入：`attach_artifact` 调 Validate/Snapshot；状态流转写 outbox（与 workflow app 协作）。
+6. [x] 迁移：`external_links` 表（0007）。
+7. [x] 测试：适配器 mock 测试、投递失败重试、降级场景。
+8. [x] 文档：更新模块索引状态。
 
 ## 开放问题
 
-- 各适配器的优先级：M2 先做 `outline` + `git`（门禁材料最常用），`redmine`/`svn` 按需？→ M2 启动时定。
-- 是否需要配置化的 provider 启停与 base_url 管理界面？→ 先环境变量，M3 评估管理 UI。
+- 各适配器的优先级：M2 先做 `outline` + `git`（门禁材料最常用），`redmine`/`svn` 按需？→ **已定**：M2 四个全部实现，Validate 均为本地校验（不出站），Snapshot 仅 outline/redmine 做，且白名单为空时零出站。
+- 是否需要配置化的 provider 启停与 base_url 管理界面？→ **已定**：先环境变量（`CHALKLINE_OUTLINE_*` / `CHALKLINE_REDMINE_*`），M3 评估管理 UI。
+- `next_attempt_at` 与 `attempts` 的语义？→ **已定**：`attempts` 累计失败次数，`next_attempt_at` 控制下次可投递时间（指数退避），达到 5 次标 `failed`。

@@ -144,8 +144,7 @@ export interface WorkflowView {
   definition?: string // JSON 文本，仅详情返回
 }
 
-/** 材料引用（ArtifactRef）。当前 M1 REST 的实例查询未返回 artifacts，
- * 此处为可选的前向兼容字段：后端补充后前端自动展示，缺席时优雅降级。 */
+/** 材料引用（ArtifactRef）。M2 起随实例视图返回（InstanceView.artifacts）。 */
 export interface ArtifactRef {
   kind: string
   provider: string
@@ -157,7 +156,7 @@ export interface ArtifactRef {
   submittedBy: string
 }
 
-/** 审批记录（ReviewDecision 投影）。同为可选前向兼容字段，见 ArtifactRef 注释。 */
+/** 审批记录（ReviewDecision 投影）。M2 起随实例视图返回（InstanceView.approvals）。 */
 export interface ApprovalRecord {
   nodeId: string
   reviewerId: string
@@ -173,9 +172,9 @@ export interface InstanceView {
   nodes: NodeStateView[]
   terminal?: string // done | cancelled
   progressPct: number
-  /** M1 尚未返回；待后端补充（console.md 材料查看/审批时间线所需）。 */
+  /** 材料投影（M2 起返回）。 */
   artifacts?: ArtifactRef[]
-  /** M1 尚未返回；待后端补充。 */
+  /** 审批时间线投影（M2 起返回）。 */
   approvals?: ApprovalRecord[]
 }
 

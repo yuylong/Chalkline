@@ -4,7 +4,7 @@
 
 ## 模块清单
 
-> 全部 8 个模块的设计文档已就绪；M1 五模块已随 M1 里程碑交付，代码按里程碑推进，状态列标注当前进度。
+> 全部 8 个模块的设计文档已就绪；M1/M2 七个模块已交付，代码按里程碑推进，状态列标注当前进度。
 
 | 模块 | 职责 | 代码位置 | 设计文档 | 状态 |
 | --- | --- | --- | --- | --- |
@@ -13,8 +13,8 @@
 | planning | 迭代、任务、子任务、指派、跨模块关联 | `internal/domain/planning` | [planning.md](planning.md) | M1 · 已交付 |
 | workflow | 工作流模板、实例、节点状态、门禁裁决、材料引用 | `internal/workflow` | [workflow.md](workflow.md) | M1 · 已交付（引擎核心 M0） |
 | mcp-gateway | MCP 服务、工具注册、PAT 鉴权 | `internal/mcp` | [mcp-gateway.md](mcp-gateway.md) | M1 · 已交付（22 工具） |
-| integration | 外部系统适配：Git/SVN、Outline、Redmine、邮件、Webhook | `internal/integration` | [integration.md](integration.md) | M2 · 文档就绪 |
-| console | 控制台：产品总览、迭代看板、任务树、审批队列 | `web/src/features` | [console.md](console.md) | M2 · 文档就绪 |
+| integration | 外部系统适配：Git/SVN、Outline、Redmine、邮件、Webhook | `internal/integration` | [integration.md](integration.md) | M2 · 已交付 |
+| console | 控制台：产品总览、迭代看板、任务树、审批队列 | `web/src/features` | [console.md](console.md) | M2 · 已交付 |
 | platform | 配置、日志、迁移、部署脚本 | `internal/platform` `deploy` | [platform.md](platform.md) | M0 · 已交付 |
 
 ## 依赖关系

@@ -44,11 +44,11 @@ Go 接口（被上层使用）：
 3. 后台循环：`store.New` → `Migrate` → `SeedBuiltinWorkflows`；失败记 ERROR 日志并按 `DB_RETRY_INTERVAL`（默认 5s）重试，DB 就绪前 `/readyz` 503。
 4. 收到 SIGINT/SIGTERM：10s 优雅停机，随后关闭连接池。
 
-部署（`deploy/`）：`docker compose up` 起 postgres / api / web / nginx 四服务；nginx 终止 TLS（首启无证书时 entrypoint 自动 openssl 自签），`/` 走 web 静态占位页，`/api/` 与 `/mcp` 反代 api:8080。环境变量经 `deploy/.env` 注入。
+部署（`deploy/`）：`docker compose up` 起 postgres / api / web / nginx 四服务；nginx 终止 TLS（首启无证书时 entrypoint 自动 openssl 自签），`/` 走 web 容器托管的前端静态产物（M2 起为 React SPA，容器内 nginx `try_files` 回退），`/api/` 与 `/mcp` 反代 api:8080。环境变量经 `deploy/.env` 注入。
 
 ## 数据
 
-- `migrations/0001_platform_baseline.sql`：`audit_logs`、`outbox_events`。M0 只建表，写入方在 M1（审计）/ M2（outbox 投递）接入。
+- `migrations/0001_platform_baseline.sql`：`audit_logs`、`outbox_events`。M1 起写入审计，M2 起 outbox 由投递器消费（`0007_integration.sql` 补 `next_attempt_at` 支撑退避）。
 - `migrations/0002_workflows.sql`：`workflows`（`scope/name/version` 唯一，`definition` jsonb 存校验后的定义）。
 - 种子：5 个内置模板 `ON CONFLICT (id) DO NOTHING`，不覆盖入库后的用户修改。
 
@@ -70,4 +70,4 @@ Go 接口（被上层使用）：
 ## 开放问题
 
 - 生产证书替换流程（当前仅自签）→ M3 规模化收敛。
-- `audit_logs` / `outbox_events` 的具体写入方与格式 → M1/M2 各模块接入时定稿。
+- `audit_logs` / `outbox_events` 的具体写入方与格式 → **已定**：审计由 `app` 事务内 `store.InsertAudit` 写入；outbox 由 `app` 写事件、`integration/notify.Dispatcher` 异步消费投递。

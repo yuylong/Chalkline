@@ -610,7 +610,7 @@ type ArtifactView struct {
 // ApprovalView 审批决策投影（按时间升序即审批时间线）。
 type ApprovalView struct {
 	NodeID    string   `json:"nodeId"`
-	Reviewer  string   `json:"reviewer"`
+	Reviewer  string   `json:"reviewerId"`
 	Decision  string   `json:"decision"`
 	Comment   string   `json:"comment,omitempty"`
 	Roles     []string `json:"roles,omitempty"`
