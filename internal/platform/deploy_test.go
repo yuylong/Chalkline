@@ -9,7 +9,7 @@ import (
 )
 
 // 部署栈文件结构校验：compose 必须包含 postgres/api/web/nginx 四个服务
-//（docs/structure.md），配套 nginx 配置与入口脚本必须存在。
+// （docs/structure.md），配套 nginx 配置与入口脚本必须存在。
 func TestDeployStackFiles(t *testing.T) {
 	data, err := os.ReadFile("../../deploy/docker-compose.yml")
 	if err != nil {
