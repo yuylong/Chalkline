@@ -10,7 +10,10 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?请在 deploy/.env 设置 POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB:-chalkline}
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      # postgres 18+ 镜像数据目录布局变更：卷必须挂 /var/lib/postgresql
+      # （PGDATA 位于其下的版本化子目录，如 /var/lib/postgresql/19/docker）。
+      # 挂旧路径 .../data 会导致数据不落盘/启动报错；≤17 的旧卷布局不兼容，需 pg_dump 迁移。
+      - pgdata:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-chalk} -d ${POSTGRES_DB:-chalkline}"]
       interval: 3s
@@ -53,7 +56,9 @@ services:
       postgres:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/healthz"]
+      # /healthz 只注册了 GET（chi 不为 GET 自动处理 HEAD），wget --spider 发 HEAD 会 405。
+      # 用 --method=GET 显式发 GET 请求。
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--method=GET", "-O", "/dev/null", "http://localhost:8080/healthz"]
       interval: 5s
       timeout: 3s
       retries: 12
