@@ -1,5 +1,6 @@
 # chalklined 多阶段构建：静态编译，运行镜像只带二进制与 CA 证书。
-FROM golang:1.25-alpine AS build
+# 基础镜像版本需 >= go.mod 的 go 指令（当前 1.26.0）。
+FROM golang:1.26-alpine AS build
 WORKDIR /src
 # Go 模块代理（GOPROXY）：由 compose 从 .env 透传；留空 = Go 内置默认
 # （https://proxy.golang.org,direct），国内网络可在 .env 设为 https://goproxy.cn,direct。
