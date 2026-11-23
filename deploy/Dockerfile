@@ -15,7 +15,7 @@ RUN CGO_ENABLED=0 go build -trimpath \
     -ldflags "-s -w -X github.com/yuylong/Chalkline/internal/server.Version=${VERSION}" \
     -o /out/chalklined ./cmd/chalklined
 
-FROM alpine:3.20
+FROM alpine:3.23
 RUN apk add --no-cache ca-certificates tzdata wget \
     && addgroup -g 10001 chalk \
     && adduser -D -u 10001 -G chalk chalk

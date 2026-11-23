@@ -4,7 +4,7 @@ name: chalkline
 
 services:
   postgres:
-    image: postgres:16-alpine
+    image: postgres:19-alpine
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-chalk}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?请在 deploy/.env 设置 POSTGRES_PASSWORD}
@@ -65,7 +65,7 @@ services:
     restart: unless-stopped
 
   nginx:
-    image: nginx:1.27-alpine
+    image: nginx:1.31-alpine
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
       - ./nginx/entrypoint.sh:/etc/nginx/entrypoint.sh:ro

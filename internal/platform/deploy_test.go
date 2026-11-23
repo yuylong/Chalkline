@@ -73,7 +73,7 @@ func TestDeployStackFiles(t *testing.T) {
 		t.Fatalf("读取 web.Dockerfile: %v", err)
 	}
 	webDF := string(webDockerfile)
-	for _, fragment := range []string{"pnpm build", "nginx:1.27-alpine", "/usr/share/nginx/html"} {
+	for _, fragment := range []string{"pnpm build", "nginx:1.31-alpine", "/usr/share/nginx/html"} {
 		if !strings.Contains(webDF, fragment) {
 			t.Errorf("web.Dockerfile 缺少 %q", fragment)
 		}

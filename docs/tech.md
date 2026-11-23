@@ -23,7 +23,7 @@ Rust 的表达力最贴合状态机，但此项目的瓶颈不在 CPU，付出�
 | --- | --- | --- |
 | 语言 | Go 1.23+ | 标准库优先 |
 | HTTP 路由 | chi | 贴近 `net/http`，不引入重框架 |
-| 数据库 | PostgreSQL 16 | 唯一数据存储 |
+| 数据库 | PostgreSQL 19 | 唯一数据存储 |
 | 数据访问 | pgx/v5 + sqlc | SQL 手写、类型安全生成，不用 ORM |
 | 迁移 | goose | 只前进，不自动回滚 |
 | MCP | modelcontextprotocol/go-sdk | streamable HTTP transport，无需桥接 |
