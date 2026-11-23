@@ -1,6 +1,8 @@
 # chalklined 多阶段构建：静态编译，运行镜像只带二进制与 CA 证书。
-# 基础镜像版本需 >= go.mod 的 go 指令（当前 1.26.0）。
-FROM golang:1.26-alpine AS build
+# 基础镜像可由 compose 从 .env 透传覆盖（如阿里云等仅支持 latest 或需走镜像源的环境）。
+# 构建镜像版本需 >= go.mod 的 go 指令（当前 1.26.0）。
+ARG GO_IMAGE=golang:1.26-alpine
+FROM ${GO_IMAGE} AS build
 WORKDIR /src
 # Go 模块代理（GOPROXY）：由 compose 从 .env 透传；留空 = Go 内置默认
 # （https://proxy.golang.org,direct），国内网络可在 .env 设为 https://goproxy.cn,direct。
@@ -15,7 +17,8 @@ RUN CGO_ENABLED=0 go build -trimpath \
     -ldflags "-s -w -X github.com/yuylong/Chalkline/internal/server.Version=${VERSION}" \
     -o /out/chalklined ./cmd/chalklined
 
-FROM alpine:3.23
+ARG RUNTIME_IMAGE=alpine:3.23
+FROM ${RUNTIME_IMAGE}
 RUN apk add --no-cache ca-certificates tzdata wget \
     && addgroup -g 10001 chalk \
     && adduser -D -u 10001 -G chalk chalk
