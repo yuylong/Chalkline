@@ -24,6 +24,7 @@ services:
       dockerfile: deploy/Dockerfile
       args:
         VERSION: ${VERSION:-dev}
+        GOPROXY: ${GOPROXY:-}
     environment:
       CHALKLINE_ADDR: ":8080"
       CHALKLINE_DATABASE_URL: postgres://${POSTGRES_USER:-chalk}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-chalkline}?sslmode=disable
