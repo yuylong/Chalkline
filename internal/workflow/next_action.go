@@ -77,7 +77,14 @@ func (b Blocker) blocksSubmit() bool {
 //   - blocked：存在因材料缺失或收口未完成而无法提交的节点（blockers 逐条处理）；
 //   - in_progress：防御性兜底（串行流中正常不会出现）。
 func NextAction(inst *Instance, in NextActionInputs) (NextActionReport, error) {
-	report := NextActionReport{WorkItem: in.WorkItem}
+	// 切片初始化为空而非 nil：序列化后必须是 [] 而不是 null，
+	// 否则控制台在 awaiting_review 时读 nextActions 会崩（mcp.md 返回契约）。
+	report := NextActionReport{
+		WorkItem:       in.WorkItem,
+		CurrentNodes:   []CurrentNodeView{},
+		NextActions:    []ActionView{},
+		AllowedActions: []string{},
+	}
 
 	if _, done := inst.Terminal(); done {
 		report.Status = "done"

@@ -72,6 +72,9 @@ func TestNextActionStatuses(t *testing.T) {
 	if len(rep.NextActions) != 0 {
 		t.Fatalf("等待评审不应有 nextActions: %+v", rep.NextActions)
 	}
+	if rep.NextActions == nil || rep.AllowedActions == nil {
+		t.Fatal("nextActions/allowedActions 应为空数组而非 null（控制台依赖该契约）")
+	}
 
 	// 走到终态 → done。
 	if _, _, err := inst.Review("spec", 3, approve("spec", "usr_rv", identity.RoleReviewer),
