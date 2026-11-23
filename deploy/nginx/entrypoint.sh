@@ -6,6 +6,12 @@ set -e
 CERT_DIR=/etc/nginx/certs
 CN="${CERT_CN:-localhost}"
 
+# 预留 HTTP-01 webroot 目录（nginx 放行 /.well-known/acme-challenge/）。
+# 目录只读时仅告警，不阻断启动（自签证书场景用不到该目录）。
+if ! mkdir -p "$CERT_DIR/acme/.well-known/acme-challenge" 2>/dev/null; then
+    echo "警告：无法创建 ACME webroot 目录（$CERT_DIR/acme），HTTP-01 校验将不可用。" >&2
+fi
+
 if [ ! -f "$CERT_DIR/chalkline.crt" ] || [ ! -f "$CERT_DIR/chalkline.key" ]; then
     echo "未发现 TLS 证书，生成自签名证书 (CN=$CN) ..."
     mkdir -p "$CERT_DIR"

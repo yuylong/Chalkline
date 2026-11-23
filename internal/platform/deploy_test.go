@@ -52,7 +52,15 @@ func TestDeployStackFiles(t *testing.T) {
 		t.Fatalf("读取 nginx.conf: %v", err)
 	}
 	conf := string(nginxConf)
-	for _, fragment := range []string{"listen 443 ssl", "proxy_pass http://api:8080", "proxy_pass http://web:80"} {
+	for _, fragment := range []string{
+		"listen 443 ssl",
+		"proxy_pass http://api:8080",
+		"proxy_pass http://web:80",
+		// HTTP-01 webroot 预留路径：80 端口必须放行 challenge 且不做 301，
+		// 否则 certbot 等 ACME 客户端校验必然失败。
+		"location ^~ /.well-known/acme-challenge/",
+		"root /etc/nginx/certs/acme",
+	} {
 		if !strings.Contains(conf, fragment) {
 			t.Errorf("nginx.conf 缺少 %q", fragment)
 		}
@@ -77,5 +85,15 @@ func TestDeployStackFiles(t *testing.T) {
 		if !strings.Contains(webDF, fragment) {
 			t.Errorf("web.Dockerfile 缺少 %q", fragment)
 		}
+	}
+
+	// entrypoint.sh 必须创建 HTTP-01 webroot 目录，否则 nginx.conf 放行的
+	// 校验路径在全新环境（deploy/certs 不入库）下必然 404。
+	entrypoint, err := os.ReadFile("../../deploy/nginx/entrypoint.sh")
+	if err != nil {
+		t.Fatalf("读取 entrypoint.sh: %v", err)
+	}
+	if !strings.Contains(string(entrypoint), "acme/.well-known/acme-challenge") {
+		t.Error("entrypoint.sh 缺少 ACME webroot 目录创建")
 	}
 }

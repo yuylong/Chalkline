@@ -46,6 +46,8 @@ Go 接口（被上层使用）：
 
 部署（`deploy/`）：`docker compose up` 起 postgres / api / web / nginx 四服务；nginx 终止 TLS（首启无证书时 entrypoint 自动 openssl 自签），`/` 走 web 容器托管的前端静态产物（M2 起为 React SPA，容器内 nginx `try_files` 回退），`/api/` 与 `/mcp` 反代 api:8080。环境变量经 `deploy/.env` 注入。
 
+80 端口预留了 HTTP-01 校验路径 `/.well-known/acme-challenge/`（`root /etc/nginx/certs/acme`，由 `entrypoint.sh` 创建目录），供 webroot 模式签发证书时使用。未启用 ACME 时该目录为空，其余请求仍 301 至 HTTPS，对内网部署与自签证书流程无影响；目录缺失仅返回 404，不影响 nginx 启动。
+
 ## 数据
 
 - `migrations/0001_platform_baseline.sql`：`audit_logs`、`outbox_events`。M1 起写入审计，M2 起 outbox 由投递器消费（`0007_integration.sql` 补 `next_attempt_at` 支撑退避）。
@@ -79,4 +81,4 @@ Go 接口（被上层使用）：
 - **新配置**（环境变量，见 `deploy/.env.example`）：`CHALKLINE_REVIEW_SLA`（默认 24h）、`CHALKLINE_REVIEW_ESCALATION`（默认 3×SLA）、`CHALKLINE_REVIEW_SCAN_INTERVAL`（默认 10m）、`CHALKLINE_EVENTS_INTERVAL`（默认 3s）。
 - **迁移 `0008_scale.sql`**：`webhook_subscriptions`（订阅管理）、`gate_reminders`（评审提醒水位）、`audit_logs` 补 `created_at` 索引（时间范围检索）。
 - **后台任务**：数据库就绪后 server 额外启动两个 goroutine——评审 SLA 监控器（`app.RunReviewSLA`）与 outbox 事件尾随（SSE 投递源）；二者都只读业务状态、只写水位/事件，不触碰节点状态。
-- 生产证书替换流程仍为手动替换 `deploy/certs/` 下文件（compose 挂载），未做自动化——单团队部署下收益有限，保留为运维手册事项。
+- 生产证书替换流程仍为手动替换 `deploy/certs/` 下文件（compose 挂载），未做自动化——单团队部署下收益有限，保留为运维手册事项。若需 Let's Encrypt，nginx 已预留 HTTP-01 校验路径，可手动以 webroot 模式签发后换入证书文件（未集成自动续期）。
