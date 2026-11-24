@@ -112,7 +112,7 @@ func canManageProduct(mc memberContext) error {
 }
 
 // canCreateInProduct 建迭代/模块/任务：产品 owner/member 且持全局 pm，或 admin
-//（docs/domain/model.md 对象级权限表）。
+// （docs/domain/model.md 对象级权限表）。
 func canCreateInProduct(mc memberContext, actor Actor) error {
 	if mc.IsAdmin {
 		return nil
