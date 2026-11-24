@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	sseHeartbeat = 15 * time.Second
+	sseHeartbeat         = 15 * time.Second
 	sseVisibilityRefresh = time.Minute // 成员关系快照刷新周期
 )
 

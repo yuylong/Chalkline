@@ -48,7 +48,7 @@ func (s NodeStatus) CanSubmit() bool {
 type Outcome string
 
 const (
-	OutcomeDone     Outcome = "done"
+	OutcomeDone      Outcome = "done"
 	OutcomeCancelled Outcome = "cancelled"
 )
 

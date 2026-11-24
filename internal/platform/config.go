@@ -93,10 +93,10 @@ func Load() (Config, error) {
 		NotifyEmails:      envList("CHALKLINE_NOTIFY_EMAILS"),
 		OutboxInterval:    envDuration("CHALKLINE_OUTBOX_INTERVAL", 5*time.Second),
 
-		ReviewSLA:         envDuration("CHALKLINE_REVIEW_SLA", 24*time.Hour),
-		ReviewEscalation:  envDuration("CHALKLINE_REVIEW_ESCALATION", 0),
+		ReviewSLA:          envDuration("CHALKLINE_REVIEW_SLA", 24*time.Hour),
+		ReviewEscalation:   envDuration("CHALKLINE_REVIEW_ESCALATION", 0),
 		ReviewScanInterval: envDuration("CHALKLINE_REVIEW_SCAN_INTERVAL", 10*time.Minute),
-		EventsInterval:    envDuration("CHALKLINE_EVENTS_INTERVAL", 3*time.Second),
+		EventsInterval:     envDuration("CHALKLINE_EVENTS_INTERVAL", 3*time.Second),
 	}
 	if cfg.DatabaseURL == "" {
 		return Config{}, fmt.Errorf("CHALKLINE_DATABASE_URL 未设置")

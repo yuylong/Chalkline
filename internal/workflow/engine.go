@@ -11,17 +11,17 @@ import (
 // NodeState 是节点运行态。携带乐观锁版本号：并发修改冲突时拒绝写入并返回
 // ErrStateConflict（docs/domain/workflow.md「并发控制」）。
 type NodeState struct {
-	NodeID      string             `json:"node_id"`
+	NodeID      string              `json:"node_id"`
 	Status      workitem.NodeStatus `json:"status"`
-	Version     int64              `json:"version"` // 每次状态变更 +1
-	EnteredAt   time.Time          `json:"entered_at"`
-	CompletedAt time.Time          `json:"completed_at"`
+	Version     int64               `json:"version"` // 每次状态变更 +1
+	EnteredAt   time.Time           `json:"entered_at"`
+	CompletedAt time.Time           `json:"completed_at"`
 }
 
 // Instance 是工作项的运行态。实例绑定某个模板版本；
 // 工作项的业务状态（如任务的 open/done）是节点状态的投影，不单独维护。
 type Instance struct {
-	Definition Definition `json:"definition"`
+	Definition Definition            `json:"definition"`
 	Nodes      map[string]*NodeState `json:"nodes"`
 	// TerminalNodeID 已抵达的终态节点（空即未抵达）。
 	TerminalNodeID string `json:"terminal_node_id"`
@@ -325,27 +325,27 @@ func missingRequiredArtifacts(gate workitem.Gate, artifacts []workitem.ArtifactR
 // nodeSettings 汇总节点的收口要求。
 func nodeSettings(def Definition, node Node) evalSettings {
 	return evalSettings{
-		requireChildrenDone: def.Settings.RequireChildrenDone && node.Type == NodeTerminal,
+		requireChildrenDone:       def.Settings.RequireChildrenDone && node.Type == NodeTerminal,
 		requireIterationTasksDone: node.RequireIterationTasksDone,
 	}
 }
 
 // evalSettings 是 Evaluate 需要的模板侧收口配置。
 type evalSettings struct {
-	requireChildrenDone     bool
+	requireChildrenDone       bool
 	requireIterationTasksDone bool
 }
 
 // GateResult 是门禁裁决结论：Passed 即准出；
 // 各缺失项与阻塞人供 get_next_action 组装 blockers 明细。
 type GateResult struct {
-	Passed          bool                    `json:"passed"`
-	PendingRejects  []string                `json:"pending_rejects"`  // 最近一次决策为 reject 的评审人
-	Approvals       int                     `json:"approvals"`        // 有效 approve 数（不同评审人）
-	ApprovalsNeeded int                     `json:"approvals_needed"`
+	Passed           bool                    `json:"passed"`
+	PendingRejects   []string                `json:"pending_rejects"` // 最近一次决策为 reject 的评审人
+	Approvals        int                     `json:"approvals"`       // 有效 approve 数（不同评审人）
+	ApprovalsNeeded  int                     `json:"approvals_needed"`
 	MissingArtifacts []workitem.ArtifactKind `json:"missing_artifacts"`
-	ChildrenBlocked  bool                   `json:"children_blocked"`      // 子任务未全部 done
-	IterationBlocked bool                   `json:"iteration_blocked"`    // 迭代下存在未终结任务
+	ChildrenBlocked  bool                    `json:"children_blocked"`  // 子任务未全部 done
+	IterationBlocked bool                    `json:"iteration_blocked"` // 迭代下存在未终结任务
 }
 
 // Evaluate 是门禁准出判定（纯函数，docs/domain/workflow.md「状态与判定算法」）：

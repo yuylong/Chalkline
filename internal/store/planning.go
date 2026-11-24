@@ -12,18 +12,18 @@ import (
 
 // IterationRow 是迭代存储形态。
 type IterationRow struct {
-	ID                  string
-	ProductID           string
-	Name                string
-	Goal                string
-	Number              string
-	StartsOn            time.Time
-	EndsOn              time.Time
-	Status              planning.IterationStatus
-	WorkflowID          string
-	WorkflowInstanceID  string
-	CreatedBy           string
-	CreatedAt           time.Time
+	ID                 string
+	ProductID          string
+	Name               string
+	Goal               string
+	Number             string
+	StartsOn           time.Time
+	EndsOn             time.Time
+	Status             planning.IterationStatus
+	WorkflowID         string
+	WorkflowInstanceID string
+	CreatedBy          string
+	CreatedAt          time.Time
 }
 
 const iterationCols = `id, product_id, name, goal, number, starts_on, ends_on, status, workflow_id, workflow_instance_id, created_by, created_at`
@@ -148,20 +148,20 @@ func CountUnfinishedTasksInIteration(ctx context.Context, q Querier, iterationID
 
 // TaskRow 是任务存储形态。
 type TaskRow struct {
-	ID                  string
-	ProductID           string
-	IterationID         string
-	ParentID            *string
-	Number              string
-	Title               string
-	Description         string
-	Kind                planning.TaskKind
-	AssigneeID          string
-	Priority            planning.Priority
-	WorkflowID          string
-	WorkflowInstanceID  string
-	CreatedBy           string
-	CreatedAt           time.Time
+	ID                 string
+	ProductID          string
+	IterationID        string
+	ParentID           *string
+	Number             string
+	Title              string
+	Description        string
+	Kind               planning.TaskKind
+	AssigneeID         string
+	Priority           planning.Priority
+	WorkflowID         string
+	WorkflowInstanceID string
+	CreatedBy          string
+	CreatedAt          time.Time
 }
 
 const taskCols = `id, product_id, iteration_id, parent_id, number, title, description, kind, assignee_id, priority, workflow_id, workflow_instance_id, created_by, created_at`

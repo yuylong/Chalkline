@@ -11,17 +11,17 @@ type ArtifactKind string
 
 const (
 	KindResearchReport ArtifactKind = "research_report" // 竞品调研、技术调研
-	KindTechSpike      ArtifactKind = "tech_spike"       // 关键技术验证
-	KindSpec           ArtifactKind = "spec"             // 需求规格
-	KindDesign         ArtifactKind = "design"           // 技术设计
+	KindTechSpike      ArtifactKind = "tech_spike"      // 关键技术验证
+	KindSpec           ArtifactKind = "spec"            // 需求规格
+	KindDesign         ArtifactKind = "design"          // 技术设计
 	KindTestPlan       ArtifactKind = "test_plan"       // 测试设计
 	KindTestCases      ArtifactKind = "test_cases"      // 用例集
 	KindTestExecution  ArtifactKind = "test_execution"  // 测试执行记录
 	KindTestReport     ArtifactKind = "test_report"     // 测试报告
 	KindPR             ArtifactKind = "pr"              // 代码改动
-	KindSummary         ArtifactKind = "summary"        // 迭代/任务总结
-	KindPreReview      ArtifactKind = "pre_review"     // AI 预评审自查报告（inline）
-	KindFile           ArtifactKind = "file"           // 其他证据附件
+	KindSummary        ArtifactKind = "summary"         // 迭代/任务总结
+	KindPreReview      ArtifactKind = "pre_review"      // AI 预评审自查报告（inline）
+	KindFile           ArtifactKind = "file"            // 其他证据附件
 )
 
 // Valid 报告材料类型是否已定义。
@@ -95,13 +95,13 @@ type ArtifactMeta struct {
 
 // ArtifactRef 是材料的引用——不是内容。材料与「提交人 + 提交节点」绑定，不可跨节点复用。
 type ArtifactRef struct {
-	Kind       ArtifactKind
-	Provider   ArtifactProvider
-	URL        string // 外部定位；inline 时为空
-	ExternalID string // 外部系统的稳定标识，用于去重与回查，不要求所有 provider 支持
-	Title      string // 快照：便于展示与审计，外部内容变化不回写
-	Content    string // 仅 provider=inline 时承载平台内 Markdown 说明
-	NodeID     string // 绑定提交节点
+	Kind        ArtifactKind
+	Provider    ArtifactProvider
+	URL         string // 外部定位；inline 时为空
+	ExternalID  string // 外部系统的稳定标识，用于去重与回查，不要求所有 provider 支持
+	Title       string // 快照：便于展示与审计，外部内容变化不回写
+	Content     string // 仅 provider=inline 时承载平台内 Markdown 说明
+	NodeID      string // 绑定提交节点
 	SubmittedBy string
 }
 

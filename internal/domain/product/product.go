@@ -29,14 +29,14 @@ func (s Status) Valid() bool { return s == StatusActive || s == StatusArchived }
 
 // Product 是顶层容器。产品本身不跑工作流：产品是迭代的序列。
 type Product struct {
-	ID                          string
-	Key                         Key
-	Name                        string
-	Description                 string
-	Status                      Status
-	DefaultIterationWorkflowID  string // 新建迭代时的默认生命周期模板
-	DefaultTaskWorkflowID       string // 新建任务时的默认模板
-	CreatedBy                   string // 创建人，自动成为该产品的 owner
+	ID                         string
+	Key                        Key
+	Name                       string
+	Description                string
+	Status                     Status
+	DefaultIterationWorkflowID string // 新建迭代时的默认生命周期模板
+	DefaultTaskWorkflowID      string // 新建任务时的默认模板
+	CreatedBy                  string // 创建人，自动成为该产品的 owner
 }
 
 // ErrValidation 表示实体违反不变量。

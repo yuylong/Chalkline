@@ -36,8 +36,8 @@ type Settings struct {
 
 // Node 是模板中的节点。
 type Node struct {
-	ID   string `yaml:"id" json:"id"`
-	Name string `yaml:"name" json:"name"`
+	ID   string   `yaml:"id" json:"id"`
+	Name string   `yaml:"name" json:"name"`
 	Type NodeType `yaml:"type" json:"type"`
 	// Outcome 多终态时必填（done / cancelled）；单终态缺省为 done。
 	Outcome workitem.Outcome `yaml:"outcome,omitempty" json:"outcome,omitempty"`

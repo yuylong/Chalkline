@@ -63,7 +63,7 @@ func TestJWTExpiry(t *testing.T) {
 	if _, err := m.Verify(token); err != nil {
 		t.Fatalf("未过期应通过: %v", err)
 	}
-	m.now = func() time.Time { return time.Unix(1000 + 61, 0) }
+	m.now = func() time.Time { return time.Unix(1000+61, 0) }
 	if _, err := m.Verify(token); err == nil {
 		t.Fatalf("过期令牌应失败")
 	}

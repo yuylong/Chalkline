@@ -16,12 +16,12 @@ const jwtTTL = 12 * time.Hour
 
 // UserView 是成员对外视图（不含 hash）。
 type UserView struct {
-	ID          string         `json:"id"`
-	Username    string         `json:"username"`
-	DisplayName string         `json:"displayName"`
-	Email       string         `json:"email"`
-	Roles       []string       `json:"roles"`
-	Status      string         `json:"status"`
+	ID          string   `json:"id"`
+	Username    string   `json:"username"`
+	DisplayName string   `json:"displayName"`
+	Email       string   `json:"email"`
+	Roles       []string `json:"roles"`
+	Status      string   `json:"status"`
 }
 
 func viewUser(u identity.User) UserView {

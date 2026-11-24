@@ -43,8 +43,8 @@ func (h *handlers) me(w http.ResponseWriter, r *http.Request) {
 }
 
 type createPATReq struct {
-	Name     string `json:"name"`
-	TTLDays  int    `json:"ttlDays"`
+	Name    string `json:"name"`
+	TTLDays int    `json:"ttlDays"`
 }
 
 func (h *handlers) createPAT(w http.ResponseWriter, r *http.Request) {

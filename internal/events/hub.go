@@ -1,5 +1,5 @@
 // Package events 是进程内事件总线：把 outbox 领域事件实时分发给 SSE 连接
-//（M3 实时推送，docs/modules/console.md「实时性」收敛为 SSE）。
+// （M3 实时推送，docs/modules/console.md「实时性」收敛为 SSE）。
 // 本包只做分发，不做持久化与可见性判定——事件来源是 outbox 表（唯一事实），
 // 可见性过滤在 api 层按成员关系完成（不变量 16）。
 package events

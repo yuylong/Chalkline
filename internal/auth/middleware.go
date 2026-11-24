@@ -34,7 +34,7 @@ func ActorFrom(ctx context.Context) (Actor, bool) {
 }
 
 // IdentityProvider 是鉴权所需的存储查询，由 internal/store 实现
-//（auth 经接口依赖存储，不直连数据库，docs/structure.md）。
+// （auth 经接口依赖存储，不直连数据库，docs/structure.md）。
 type IdentityProvider interface {
 	UserByID(ctx context.Context, id string) (identity.User, error)
 	ResolvePAT(ctx context.Context, tokenHash string) (PATInfo, error)
@@ -43,9 +43,9 @@ type IdentityProvider interface {
 
 // PATInfo 是 PAT 解析结论。
 type PATInfo struct {
-	UserID   string
-	Expires  time.Time
-	Revoked  bool
+	UserID  string
+	Expires time.Time
+	Revoked bool
 }
 
 // ErrUnauthorized 鉴权失败（401 包络由中间件输出）。
