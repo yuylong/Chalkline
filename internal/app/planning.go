@@ -607,6 +607,8 @@ type ArtifactView struct {
 	NodeID      string         `json:"nodeId"`
 	SubmittedBy string         `json:"submittedBy"`
 	Snapshot    map[string]any `json:"snapshot,omitempty"`
+	// CreatedAt 提交时间（控制台判定「最新成果物」与历史倒序，RFC3339）。
+	CreatedAt string `json:"createdAt,omitempty"`
 }
 
 // ApprovalView 审批决策投影（按时间升序即审批时间线）。
@@ -700,6 +702,9 @@ func (s *Service) instanceView(ctx context.Context, q store.Querier, instRow sto
 			Kind: string(a.Ref.Kind), Provider: string(a.Ref.Provider),
 			URL: a.Ref.URL, ExternalID: a.Ref.ExternalID, Title: a.Ref.Title,
 			Content: a.Ref.Content, NodeID: a.Ref.NodeID, SubmittedBy: a.Ref.SubmittedBy,
+		}
+		if !a.CreatedAt.IsZero() {
+			av.CreatedAt = a.CreatedAt.UTC().Format(time.RFC3339)
 		}
 		if len(a.Snapshot) > 0 {
 			// 快照是提交时点固化的外部事实（M3），原样透传给控制台与 Agent。

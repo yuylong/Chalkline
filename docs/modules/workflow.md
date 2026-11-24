@@ -129,3 +129,5 @@ MCP：`get_next_action` / `start_step` / `submit_step` / `attach_artifact` / `re
 - 事件经既有 outbox 通道投递（SMTP / Webhook / 订阅），投递失败不阻断流程（不变量 15）。
 
 **材料快照固化**：`submit_step` / `attach_artifact` 在挂接时把快照写入 `artifacts.snapshot`——外部 provider 记 title/version/fetchedAt，inline 记内容 sha256 与长度；实例视图（`InstanceView.artifacts[].snapshot`）透传给控制台与 Agent。评审看到的是提交时点的事实（integrations.md「同步方向」）。
+
+**成果物提交时间**：`InstanceView.artifacts[].createdAt`（RFC3339）随实例视图返回，控制台据此把节点成果物按时间倒序，判定「最新成果物」并组织历史列表。注意 `artifacts` 表对同 `(instance, node, kind)` 只保留一份（`ReplaceArtifact` 先删后插），因此**同类型材料的历史版本不在库内留存**；历史重建依据审计（`workflow.submit_step` / `workflow.attach_artifact`）与快照，控制台展示的「历史」是不同 `kind` 的材料集合。

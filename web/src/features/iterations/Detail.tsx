@@ -13,7 +13,7 @@ import {
   nextActionStatusMeta,
   nodeStatusMeta,
 } from '../../shared/status'
-import { BlockerList, DetailError, PageLoading } from '../../shared/ui'
+import { DetailError, PageLoading } from '../../shared/ui'
 import type {
   Blocker,
   CurrentIterationView,
@@ -25,8 +25,8 @@ import type {
   NodeOpResult,
   TaskView,
 } from '../../shared/types'
-import { ArtifactBrowser, ArtifactSubmitForm } from '../gates/Artifacts'
-import { ReviewActions } from '../gates/ReviewAction'
+import { ArtifactBrowser } from '../gates/Artifacts'
+import { CurrentNodePanel } from '../gates/CurrentNodePanel'
 import TaskBoard from './Board'
 import IterationCharts from './Charts'
 
@@ -218,7 +218,7 @@ export function IterationPane({ iterationId }: { iterationId: string }) {
         )}
       </Card>
 
-      <Card title="阶段操作">
+      <Card title="当前节点（摘要 · 点开看操作与成果物）">
         {wfQuery.data?.terminal ? (
           <Typography.Text type="secondary">
             生命周期已达终态（{wfQuery.data.terminal === 'done' ? '已收尾' : '已取消'}），不可回退。
@@ -226,51 +226,27 @@ export function IterationPane({ iterationId }: { iterationId: string }) {
         ) : actionable.length === 0 ? (
           <Typography.Text type="secondary">当前无可推进阶段。</Typography.Text>
         ) : (
-          actionable.map((n, idx) => (
-            <div
-              key={n.id}
-              style={{
-                borderTop: idx === 0 ? undefined : '1px dashed #f0f0f0',
-                paddingTop: idx === 0 ? 0 : 12,
-                marginTop: idx === 0 ? 0 : 12,
-              }}
-            >
-              <Space>
-                <Typography.Text strong>{n.name}</Typography.Text>
-                <Tag color={nodeStatusMeta[n.status]?.color}>
-                  {nodeStatusMeta[n.status]?.label ?? n.status}
-                </Tag>
-              </Space>
-              <BlockerList blockers={blockersOf(n.id)} />
-              {n.status === 'ready' && (
-                <Button
-                  type="primary"
-                  size="small"
-                  loading={startMut.isPending}
-                  onClick={() => startMut.mutate(n.id)}
-                >
-                  开始阶段
-                </Button>
-              )}
-              {(n.status === 'in_progress' || n.status === 'rejected') && (
-                <ArtifactSubmitForm
-                  scope="iteration"
-                  workItemId={id}
-                  nodeId={n.id}
-                  nodeTitle={n.name}
-                  mode="submit"
-                  onDone={invalidate}
-                />
-              )}
-              {n.status === 'awaiting_review' && (
-                <ReviewActions scope="iteration" workItemId={id} nodeId={n.id} onDone={invalidate} />
-              )}
-            </div>
-          ))
+          <Space direction="vertical" size={10} style={{ width: '100%' }}>
+            {actionable.map((n, idx) => (
+              <CurrentNodePanel
+                key={n.id}
+                scope="iteration"
+                workItemId={id}
+                node={n}
+                artifacts={wfQuery.data?.artifacts}
+                approvals={wfQuery.data?.approvals}
+                blockers={blockersOf(n.id)}
+                defaultExpanded={idx === 0}
+                onStart={n.status === 'ready' ? () => startMut.mutate(n.id) : undefined}
+                starting={startMut.isPending}
+                onDone={invalidate}
+              />
+            ))}
+          </Space>
         )}
       </Card>
 
-      <Card title="阶段成果物（按步骤组织）">
+      <Card title="历史阶段成果物（点击查看正文）">
         <ArtifactBrowser
           artifacts={wfQuery.data?.artifacts}
           nodes={wfQuery.data?.nodes}
