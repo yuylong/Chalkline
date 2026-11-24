@@ -1,54 +1,237 @@
-// 门禁材料：查看列表 + 提交表单。被任务详情与迭代详情复用。
-// 材料是「引用」不是内容：inline 显示文本，其余渲染为可点击链接，
-// 外部系统不可达时不阻断评审（console.md 降级要求）。
-import { App, Button, Card, Empty, Form, Input, Select, Space, Tag, Typography } from 'antd'
+// 门禁材料：按步骤组织的成果物浏览器 + 提交表单。被任务详情、迭代详情
+// 与审批队列复用。材料是「引用」不是内容：inline 显示文本，其余渲染为可
+// 点击链接，外部系统不可达时不阻断评审（console.md 降级要求）。
+import { useQuery } from '@tanstack/react-query'
+import {
+  App,
+  Button,
+  Card,
+  Descriptions,
+  Empty,
+  Form,
+  Input,
+  Modal,
+  Select,
+  Space,
+  Tag,
+  Typography,
+} from 'antd'
 import { useState } from 'react'
-import { apiPost } from '../../shared/api'
-import { ARTIFACT_KINDS, ARTIFACT_PROVIDERS } from '../../shared/status'
-import type { ArtifactRef, NodeOpResult } from '../../shared/types'
+import { apiGet, apiPost } from '../../shared/api'
+import { ARTIFACT_KINDS, ARTIFACT_PROVIDERS, nodeStatusMeta } from '../../shared/status'
+import { ApiErrorBanner, PageLoading } from '../../shared/ui'
+import type { ArtifactRef, InstanceView, NodeOpResult, NodeStateView } from '../../shared/types'
 
-// ---- 查看 ----
+// ---- 成果物浏览器（按步骤组织）----
 
-export function ArtifactList({ artifacts }: { artifacts?: ArtifactRef[] }) {
-  if (!artifacts || artifacts.length === 0) {
-    return (
-      <Empty
-        image={Empty.PRESENTED_IMAGE_SIMPLE}
-        description="暂无材料记录（若后端尚未下发材料明细，可在下方提交表单补充）"
-      />
-    )
-  }
+interface ArtifactDetail {
+  artifact: ArtifactRef
+  nodeName?: string
+}
+
+/** 单条成果物详情弹窗：元数据 + inline 全文 / 外链 + 提交时点快照。 */
+function ArtifactDetailModal({ detail, onClose }: { detail: ArtifactDetail | null; onClose: () => void }) {
+  const a = detail?.artifact
   return (
-    <Space direction="vertical" style={{ width: '100%' }} size={8}>
-      {artifacts.map((a, i) => (
-        <Card key={`${a.nodeId}-${a.kind}-${i}`} size="small">
-          <Space wrap size={[8, 4]}>
-            <Tag color="orange">{a.kind}</Tag>
-            <Tag>{a.provider}</Tag>
-            {a.title && <Typography.Text strong>{a.title}</Typography.Text>}
-          </Space>
+    <Modal
+      open={a !== undefined && a !== null}
+      title={a ? `成果物 · ${detail?.nodeName ?? a.nodeId}` : ''}
+      onCancel={onClose}
+      footer={null}
+      width={680}
+    >
+      {a && (
+        <Space direction="vertical" size={12} style={{ width: '100%' }}>
+          <Descriptions
+            size="small"
+            column={2}
+            items={[
+              { key: 'kind', label: '类型', children: <Tag color="orange">{a.kind}</Tag> },
+              { key: 'provider', label: '来源', children: <Tag>{a.provider}</Tag> },
+              ...(a.title ? [{ key: 'title', label: '标题', children: a.title }] : []),
+              ...(a.externalId ? [{ key: 'externalId', label: '外部 ID', children: a.externalId }] : []),
+              { key: 'node', label: '所属步骤', children: detail?.nodeName ?? a.nodeId },
+              { key: 'submittedBy', label: '提交人', children: a.submittedBy || '—' },
+            ]}
+          />
           {a.url && (
-            <div>
-              <a href={a.url} target="_blank" rel="noreferrer">
-                {a.url}
-              </a>
-            </div>
+            <a href={a.url} target="_blank" rel="noreferrer">
+              {a.url}
+            </a>
           )}
           {a.content && (
             <Typography.Paragraph
-              style={{ whiteSpace: 'pre-wrap', marginTop: 8, marginBottom: 0 }}
-              ellipsis={{ rows: 4, expandable: true, symbol: '展开全文' }}
+              style={{ whiteSpace: 'pre-wrap', marginBottom: 0 }}
+              copyable={{ text: a.content }}
             >
               {a.content}
             </Typography.Paragraph>
           )}
-          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-            节点 {a.nodeId}
-            {a.submittedBy ? ` · 提交人 ${a.submittedBy}` : ''}
-          </Typography.Text>
-        </Card>
-      ))}
-    </Space>
+          {a.snapshot && (
+            <div>
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                提交时点快照（评审看到的是提交时的事实）
+              </Typography.Text>
+              <pre
+                style={{
+                  margin: '4px 0 0',
+                  padding: 8,
+                  background: '#fafafa',
+                  borderRadius: 4,
+                  fontSize: 12,
+                  maxHeight: 240,
+                  overflow: 'auto',
+                }}
+              >
+                {JSON.stringify(a.snapshot, null, 2)}
+              </pre>
+            </div>
+          )}
+        </Space>
+      )}
+    </Modal>
+  )
+}
+
+export interface ArtifactBrowserProps {
+  artifacts?: ArtifactRef[]
+  /** 实例节点（提供步骤名称与模板顺序）。 */
+  nodes?: NodeStateView[]
+  /** 审批场景：待审步骤排最前并高亮。 */
+  focusNodeId?: string
+  /** userId → 显示名（可选）。 */
+  memberNames?: Record<string, string>
+}
+
+/** 成果物浏览器：按工作流步骤分组，逐条点开查看。 */
+export function ArtifactBrowser({ artifacts, nodes, focusNodeId, memberNames }: ArtifactBrowserProps) {
+  const [detail, setDetail] = useState<ArtifactDetail | null>(null)
+
+  if (!artifacts || artifacts.length === 0) {
+    return (
+      <Empty
+        image={Empty.PRESENTED_IMAGE_SIMPLE}
+        description="暂无成果物（节点提交材料后会在此按步骤展示）"
+      />
+    )
+  }
+
+  const names = new Map<string, string>()
+  const order = new Map<string, number>()
+  for (const [i, n] of (nodes ?? []).entries()) {
+    names.set(n.id, n.name)
+    order.set(n.id, i)
+  }
+  const groups = new Map<string, ArtifactRef[]>()
+  for (const a of artifacts) {
+    const list = groups.get(a.nodeId) ?? []
+    list.push(a)
+    groups.set(a.nodeId, list)
+  }
+  const nodeIds = [...groups.keys()].sort((x, y) => {
+    if (focusNodeId) {
+      if (x === focusNodeId) return -1
+      if (y === focusNodeId) return 1
+    }
+    return (order.get(x) ?? Number.MAX_SAFE_INTEGER) - (order.get(y) ?? Number.MAX_SAFE_INTEGER)
+  })
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {nodeIds.map((nodeId) => {
+        const node = (nodes ?? []).find((n) => n.id === nodeId)
+        const meta = node ? nodeStatusMeta[node.status] : undefined
+        const focused = nodeId === focusNodeId
+        return (
+          <Card
+            key={nodeId}
+            size="small"
+            title={
+              <Space size={6}>
+                <span>{names.get(nodeId) ?? nodeId}</span>
+                {meta && <Tag color={meta.color}>{meta.label}</Tag>}
+                {focused && <Tag color="red">待评审</Tag>}
+              </Space>
+            }
+          >
+            <Space direction="vertical" size={6} style={{ width: '100%' }}>
+              {(groups.get(nodeId) ?? []).map((a, i) => (
+                <div
+                  key={`${a.kind}-${i}`}
+                  style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}
+                >
+                  <Space wrap size={[8, 4]}>
+                    <Tag color="orange">{a.kind}</Tag>
+                    <Tag>{a.provider}</Tag>
+                    <Typography.Text ellipsis style={{ maxWidth: 360 }}>
+                      {a.title || a.url || a.externalId || (a.content ? 'inline 内容' : '—')}
+                    </Typography.Text>
+                    {a.submittedBy && (
+                      <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                        {memberNames?.[a.submittedBy] ?? a.submittedBy}
+                      </Typography.Text>
+                    )}
+                  </Space>
+                  <Button
+                    size="small"
+                    type="link"
+                    onClick={() => setDetail({ artifact: a, nodeName: names.get(nodeId) })}
+                  >
+                    查看
+                  </Button>
+                </div>
+              ))}
+            </Space>
+          </Card>
+        )
+      })}
+      <ArtifactDetailModal detail={detail} onClose={() => setDetail(null)} />
+    </div>
+  )
+}
+
+/** 审批队列入口：按工作项拉取实例视图，弹窗内按步骤浏览成果物。 */
+export function WorkItemArtifactsModal({
+  workItemType,
+  workItemId,
+  focusNodeId,
+  open,
+  onClose,
+}: {
+  workItemType: string // task | iteration
+  workItemId: string
+  focusNodeId?: string
+  open: boolean
+  onClose: () => void
+}) {
+  const isTask = workItemType === 'task'
+  // 与详情页共用缓存键：SSE 事件失效与既有缓存直接复用。
+  const { data, isPending, isError, error } = useQuery({
+    queryKey: [isTask ? 'task-workflow' : 'iteration-workflow', workItemId],
+    queryFn: () =>
+      apiGet<InstanceView>(`${isTask ? '/tasks' : '/iterations'}/${workItemId}/workflow`),
+    enabled: open,
+  })
+  return (
+    <Modal
+      open={open}
+      onCancel={onClose}
+      footer={null}
+      width={720}
+      title="成果物（按步骤组织）"
+    >
+      {isPending ? (
+        <PageLoading tip="加载成果物…" />
+      ) : isError ? (
+        <ApiErrorBanner error={error} />
+      ) : (
+        <ArtifactBrowser
+          artifacts={data?.artifacts}
+          nodes={data?.nodes}
+          focusNodeId={focusNodeId}
+        />
+      )}
+    </Modal>
   )
 }
 

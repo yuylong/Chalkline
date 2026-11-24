@@ -40,7 +40,7 @@ import type {
   TaskDetail,
   TaskView,
 } from '../../shared/types'
-import { ArtifactList, ArtifactSubmitForm } from '../gates/Artifacts'
+import { ArtifactBrowser, ArtifactSubmitForm } from '../gates/Artifacts'
 import { ReviewActions } from '../gates/ReviewAction'
 import TaskTree from './components/TaskTree'
 
@@ -264,8 +264,12 @@ export default function TaskDetailPage() {
         )}
       </Card>
 
-      <Card title="门禁材料">
-        <ArtifactList artifacts={t.workflow?.artifacts} />
+      <Card title="成果物（按步骤组织）">
+        <ArtifactBrowser
+          artifacts={t.workflow?.artifacts}
+          nodes={t.workflow?.nodes}
+          memberNames={memberNames}
+        />
       </Card>
 
       <Card title="审批时间线">

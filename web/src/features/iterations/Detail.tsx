@@ -25,7 +25,7 @@ import type {
   NodeOpResult,
   TaskView,
 } from '../../shared/types'
-import { ArtifactSubmitForm } from '../gates/Artifacts'
+import { ArtifactBrowser, ArtifactSubmitForm } from '../gates/Artifacts'
 import { ReviewActions } from '../gates/ReviewAction'
 import TaskBoard from './Board'
 import IterationCharts from './Charts'
@@ -268,6 +268,14 @@ export function IterationPane({ iterationId }: { iterationId: string }) {
             </div>
           ))
         )}
+      </Card>
+
+      <Card title="阶段成果物（按步骤组织）">
+        <ArtifactBrowser
+          artifacts={wfQuery.data?.artifacts}
+          nodes={wfQuery.data?.nodes}
+          memberNames={memberNames}
+        />
       </Card>
 
       <Card title="任务看板（按各任务工作流当前节点分列）">
