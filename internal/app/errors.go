@@ -49,6 +49,9 @@ func StageNotAllowedTask(node, stage string) *Error {
 	return &Error{Status: http.StatusConflict, Code: "STAGE_NOT_ALLOW_TASK",
 		Message: fmt.Sprintf("当前阶段 %s（节点 %s）不允许创建任务，模板未声明 allows_task_creation", stage, node)}
 }
+func TaskNotDeletable(format string, args ...any) *Error {
+	return &Error{Status: http.StatusConflict, Code: "TASK_NOT_DELETABLE", Message: fmt.Sprintf(format, args...)}
+}
 func TreeDepthExceeded(what string, depth, max int) *Error {
 	return &Error{Status: http.StatusUnprocessableEntity, Code: "TREE_DEPTH_EXCEEDED",
 		Message: fmt.Sprintf("%s深度 %d 超过上限 %d", what, depth, max)}

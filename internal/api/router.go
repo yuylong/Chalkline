@@ -97,6 +97,7 @@ func NewRouter(d Deps) http.Handler {
 			g.Get("/tasks", h.listTasks)
 			g.Get("/tasks/{id}", h.getTask)
 			g.Patch("/tasks/{id}", h.updateTask)
+			g.Delete("/tasks/{id}", h.deleteTask)
 			g.Post("/tasks/{id}/children", h.decomposeTask)
 			g.Post("/tasks/{id}/modules", h.linkModule)
 

@@ -9,6 +9,7 @@ import {
   Form,
   Input,
   Modal,
+  Popconfirm,
   Select,
   Space,
   Tag,
@@ -17,7 +18,7 @@ import {
 } from 'antd'
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
-import { apiGet, apiPost } from '../../shared/api'
+import { apiDelete, apiGet, apiPatch, apiPost } from '../../shared/api'
 import {
   ACTIONABLE_STATUSES,
   fmtTime,
@@ -117,6 +118,41 @@ export default function TaskDetailPage() {
     onError: (err: Error) => message.error(err.message),
   })
 
+  // ---- 编辑 / 删除 ----
+  const [editOpen, setEditOpen] = useState(false)
+  const [editForm] = Form.useForm<{
+    title: string
+    description: string
+    priority: string
+    assigneeId?: string
+  }>()
+  const updateMut = useMutation({
+    mutationFn: (v: { title: string; description: string; priority: string; assigneeId?: string }) =>
+      apiPatch<TaskView>(`/tasks/${id}`, {
+        title: v.title,
+        description: v.description,
+        priority: v.priority,
+        assigneeId: v.assigneeId ?? '',
+      }),
+    onSuccess: () => {
+      message.success('任务已更新')
+      setEditOpen(false)
+      invalidate()
+    },
+    onError: (err: Error) => message.error(err.message),
+  })
+  const deleteMut = useMutation({
+    mutationFn: () => apiDelete(`/tasks/${id}`),
+    onSuccess: () => {
+      message.success('任务已删除')
+      const itId = taskQuery.data?.iterationId
+      queryClient.invalidateQueries({ queryKey: ['tasks'] })
+      if (itId) queryClient.invalidateQueries({ queryKey: ['iteration', itId] })
+      navigate(itId ? `/iterations/${itId}` : '/')
+    },
+    onError: (err: Error) => message.error(err.message),
+  })
+
   if (taskQuery.isError) return <DetailError error={taskQuery.error} />
   if (taskQuery.isPending) return <PageLoading />
   const t = taskQuery.data
@@ -129,7 +165,35 @@ export default function TaskDetailPage() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <Card>
+      <Card
+        extra={
+          <Space>
+            <Button
+              size="small"
+              onClick={() => {
+                editForm.setFieldsValue({
+                  title: t.title,
+                  description: t.description,
+                  priority: t.priority,
+                  assigneeId: t.assigneeId || undefined,
+                })
+                setEditOpen(true)
+              }}
+            >
+              编辑
+            </Button>
+            <Popconfirm
+              title="确认删除该任务？"
+              description="仅未终结且无子任务的任务可删除"
+              onConfirm={() => deleteMut.mutate()}
+            >
+              <Button size="small" danger loading={deleteMut.isPending}>
+                删除
+              </Button>
+            </Popconfirm>
+          </Space>
+        }
+      >
         <Space direction="vertical" size={6} style={{ width: '100%' }}>
           <Space wrap>
             <Typography.Title level={4} style={{ margin: 0 }}>
@@ -392,6 +456,47 @@ export default function TaskDetailPage() {
               </>
             )}
           </Form.List>
+        </Form>
+      </Modal>
+
+      <Modal
+        title="编辑任务"
+        open={editOpen}
+        onCancel={() => setEditOpen(false)}
+        confirmLoading={updateMut.isPending}
+        onOk={() => editForm.submit()}
+        destroyOnHidden
+      >
+        <Form
+          form={editForm}
+          layout="vertical"
+          onFinish={(v: { title: string; description: string; priority: string; assigneeId?: string }) =>
+            updateMut.mutate(v)
+          }
+          style={{ marginTop: 16 }}
+        >
+          <Form.Item name="title" label="标题" rules={[{ required: true, message: '请输入标题' }]}>
+            <Input />
+          </Form.Item>
+          <Form.Item name="description" label="描述">
+            <Input.TextArea rows={3} />
+          </Form.Item>
+          <Form.Item name="priority" label="优先级">
+            <Select
+              style={{ width: 160 }}
+              options={PRIORITIES.map((p) => ({ value: p, label: priorityMeta[p]?.label ?? p }))}
+            />
+          </Form.Item>
+          <Form.Item name="assigneeId" label="负责人">
+            <Select
+              style={{ width: 220 }}
+              allowClear
+              showSearch
+              optionFilterProp="label"
+              placeholder="待认领"
+              options={memberOptions}
+            />
+          </Form.Item>
         </Form>
       </Modal>
     </div>

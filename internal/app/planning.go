@@ -902,6 +902,45 @@ func (s *Service) UpdateTask(ctx context.Context, actor Actor, id string, in Tas
 	return out, err
 }
 
+// DeleteTask 删任务：仅限未终结且无子任务的任务（已终结历史保留，呼应不变量
+// 10「不允许静默丢弃」；有子任务须先删子任务）。权限同改任务字段（不变量 4）。
+// 任务流实例随任务一并删除（node_states / gate_approvals / artifacts 外键级联）。
+func (s *Service) DeleteTask(ctx context.Context, actor Actor, id string) error {
+	return s.DB.WithTx(ctx, func(q store.Querier) error {
+		t, err := store.TaskByID(ctx, q, id)
+		if err != nil {
+			return wrapNotFound(err, "任务不存在或不可见")
+		}
+		mc, err := s.mustView(ctx, q, actor, t.ProductID)
+		if err != nil {
+			return err
+		}
+		if err := canWorkTask(mc, actor, t.AssigneeID); err != nil {
+			return err
+		}
+		if status := s.viewTask(ctx, q, t).Status; status != string(planning.TaskOpen) {
+			return TaskNotDeletable("任务 %s 已终结（%s），历史保留不可删除", t.Number, status)
+		}
+		children, err := store.ListChildren(ctx, q, id)
+		if err != nil {
+			return err
+		}
+		if len(children) > 0 {
+			return TaskNotDeletable("任务 %s 有 %d 个子任务，请先删除子任务", t.Number, len(children))
+		}
+		if t.WorkflowInstanceID != "" {
+			if err := store.DeleteInstance(ctx, q, t.WorkflowInstanceID); err != nil {
+				return err
+			}
+		}
+		if err := store.DeleteTask(ctx, q, id); err != nil {
+			return wrapNotFound(err, "任务不存在或不可见")
+		}
+		return audit(ctx, q, actor, "task.delete", "task", id,
+			map[string]any{"number": t.Number, "title": t.Title})
+	})
+}
+
 // LinkModule 增删任务与模块的关联：任务负责人/pm/owner/admin；模块同产品（不变量 2）。
 func (s *Service) LinkModule(ctx context.Context, actor Actor, taskID, moduleID string, add bool) error {
 	return s.DB.WithTx(ctx, func(q store.Querier) error {

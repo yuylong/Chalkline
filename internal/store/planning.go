@@ -301,6 +301,18 @@ func SetTaskInstance(ctx context.Context, q Querier, id, instanceID string) erro
 	return err
 }
 
+// DeleteTask 删任务行（task_modules 随外键级联；实例由调用方先行清理）。
+func DeleteTask(ctx context.Context, q Querier, id string) error {
+	tag, err := q.Exec(ctx, `DELETE FROM tasks WHERE id = $1`, id)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 // TerminalInfoRow 是任务终态投影所需的最小实例信息。
 type TerminalInfoRow struct {
 	WorkItemID     string

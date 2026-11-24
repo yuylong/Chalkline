@@ -59,6 +59,7 @@ type API interface {
 	GetTask(ctx context.Context, actor Actor, id string) (TaskDetail, error)
 	ListTasks(ctx context.Context, actor Actor, f TaskFilter) ([]TaskView, error)
 	UpdateTask(ctx context.Context, actor Actor, id string, in TaskUpdateInput) (TaskView, error)
+	DeleteTask(ctx context.Context, actor Actor, id string) error
 	LinkModule(ctx context.Context, actor Actor, taskID, moduleID string, add bool) error
 
 	// workflow

@@ -2,9 +2,23 @@
 // 展示，点击进入节点详情页）、当前节点摘要、任务看板、进度图表。
 // 另可作为「当前迭代」首页复用（IterationPane 显式传 iterationId）。
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
-import { App, Button, Card, Progress, Space, Tag, Typography } from 'antd'
+import {
+  App,
+  Button,
+  Card,
+  Form,
+  Input,
+  Modal,
+  Progress,
+  Select,
+  Space,
+  Tag,
+  TreeSelect,
+  Typography,
+} from 'antd'
+import { useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router'
-import { apiDelete, apiGet, apiPut } from '../../shared/api'
+import { apiDelete, apiGet, apiPost, apiPut } from '../../shared/api'
 import {
   ACTIONABLE_STATUSES,
   fmtDate,
@@ -13,21 +27,38 @@ import {
   memberNameMap,
   nextActionStatusMeta,
   nodeStatusMeta,
+  PRIORITIES,
+  priorityMeta,
+  TASK_KINDS,
+  taskKindMeta,
+  userLabel,
 } from '../../shared/status'
 import { DetailError, PageLoading } from '../../shared/ui'
 import type {
   Blocker,
+  CreateTaskInput,
   CurrentIterationView,
   InstanceView,
   IterationDetail,
   ListEnvelope,
   MemberView,
+  ModuleView,
   NextActionReport,
   TaskView,
+  WorkflowView,
 } from '../../shared/types'
 import { CurrentNodeSummary } from '../gates/CurrentNodePanel'
 import TaskBoard from './Board'
 import IterationCharts from './Charts'
+
+// TreeSelect treeData 形状（模块树多选，建任务时关联模块用）。
+function moduleTreeData(mods: ModuleView[]): { title: string; value: string; children?: ReturnType<typeof moduleTreeData> }[] {
+  return mods.map((m) => ({
+    title: m.name,
+    value: m.id,
+    children: m.children?.length ? moduleTreeData(m.children) : undefined,
+  }))
+}
 
 export default function IterationDetailRoute() {
   const { id = '' } = useParams()
@@ -91,6 +122,42 @@ export function IterationPane({ iterationId }: { iterationId: string }) {
   })
 
   const tasks = tasksQuery.data?.items ?? []
+
+  // 新建一级任务（POST /iterations/{id}/tasks）：模块树与任务流模板仅在弹窗
+  // 打开时拉取；是否允许建任务由后端按当前阶段 allows_task_creation 校验。
+  const [taskOpen, setTaskOpen] = useState(false)
+  const [taskForm] = Form.useForm<CreateTaskInput>()
+  const modulesQuery = useQuery({
+    queryKey: ['modules', productId],
+    queryFn: () => apiGet<ListEnvelope<ModuleView>>(`/products/${productId}/modules`),
+    enabled: taskOpen && productId !== '',
+  })
+  const workflowsQuery = useQuery({
+    queryKey: ['workflows'],
+    queryFn: () => apiGet<ListEnvelope<WorkflowView>>('/workflows'),
+    enabled: taskOpen,
+  })
+  const createTaskMut = useMutation({
+    mutationFn: (v: CreateTaskInput) =>
+      apiPost<TaskView>(`/iterations/${id}/tasks`, {
+        title: v.title,
+        description: v.description ?? '',
+        kind: v.kind ?? 'dev',
+        priority: v.priority ?? 'normal',
+        assigneeId: v.assigneeId ?? '',
+        moduleIds: v.moduleIds ?? [],
+        workflowId: v.workflowId ?? '',
+      }),
+    onSuccess: () => {
+      message.success('任务已创建')
+      setTaskOpen(false)
+      taskForm.resetFields()
+      queryClient.invalidateQueries({ queryKey: ['tasks', id] })
+      queryClient.invalidateQueries({ queryKey: ['iteration', id] })
+    },
+    onError: (err: Error) => message.error(err.message),
+  })
+
   // 逐任务取实例视图（泳道归类与燃尽时间戳共用，键与任务详情页一致）。
   const wfQueries = useQueries({
     queries: tasks.map((t) => ({
@@ -102,6 +169,10 @@ export function IterationPane({ iterationId }: { iterationId: string }) {
   const wfMap = new Map<string, InstanceView | undefined>()
   tasks.forEach((t, i) => wfMap.set(t.id, wfQueries[i].data))
   const memberNames = memberNameMap(membersQuery.data?.items ?? [])
+  const memberOptions = (membersQuery.data?.items ?? []).map((m) => ({
+    value: m.userId,
+    label: userLabel(m),
+  }))
 
   if (itQuery.isError) return <DetailError error={itQuery.error} />
   if (itQuery.isPending) return <PageLoading />
@@ -231,7 +302,20 @@ export function IterationPane({ iterationId }: { iterationId: string }) {
         )}
       </Card>
 
-      <Card title="任务看板（按各任务工作流当前节点分列）">
+      <Card
+        title="任务看板（按各任务工作流当前节点分列）"
+        extra={
+          <Button
+            size="small"
+            type="primary"
+            onClick={() => setTaskOpen(true)}
+            disabled={wfQuery.data?.terminal != null}
+            title={wfQuery.data?.terminal ? '生命周期已达终态，不可建任务' : undefined}
+          >
+            新建任务
+          </Button>
+        }
+      >
         <TaskBoard tasks={tasks} workflows={wfMap} memberNames={memberNames} loading={wfLoading} />
       </Card>
 
@@ -244,6 +328,78 @@ export function IterationPane({ iterationId }: { iterationId: string }) {
           endsOn={it.endsOn}
         />
       </Card>
+
+      <Modal
+        title="新建任务"
+        open={taskOpen}
+        onCancel={() => setTaskOpen(false)}
+        confirmLoading={createTaskMut.isPending}
+        onOk={() => taskForm.submit()}
+        destroyOnHidden
+      >
+        <Form
+          form={taskForm}
+          layout="vertical"
+          onFinish={(v: CreateTaskInput) => createTaskMut.mutate(v)}
+          style={{ marginTop: 16 }}
+        >
+          <Form.Item
+            name="title"
+            label="标题"
+            rules={[{ required: true, message: '请输入标题' }]}
+            extra="仅当前阶段声明 allows_task_creation 时可创建，否则后端会拒绝并提示"
+          >
+            <Input />
+          </Form.Item>
+          <Form.Item name="description" label="描述（可选）">
+            <Input.TextArea rows={2} />
+          </Form.Item>
+          <Space size={12} wrap>
+            <Form.Item name="kind" label="类型" initialValue="dev">
+              <Select
+                style={{ width: 120 }}
+                options={TASK_KINDS.map((k) => ({ value: k, label: taskKindMeta[k]?.label ?? k }))}
+              />
+            </Form.Item>
+            <Form.Item name="priority" label="优先级" initialValue="normal">
+              <Select
+                style={{ width: 120 }}
+                options={PRIORITIES.map((p) => ({ value: p, label: priorityMeta[p]?.label ?? p }))}
+              />
+            </Form.Item>
+            <Form.Item name="assigneeId" label="负责人（可选）">
+              <Select
+                style={{ width: 160 }}
+                allowClear
+                showSearch
+                optionFilterProp="label"
+                placeholder="待认领"
+                options={memberOptions}
+              />
+            </Form.Item>
+          </Space>
+          <Form.Item name="moduleIds" label="关联模块（可选）">
+            <TreeSelect
+              multiple
+              allowClear
+              treeDefaultExpandAll
+              placeholder="不关联模块"
+              style={{ width: '100%' }}
+              treeData={moduleTreeData(modulesQuery.data?.items ?? [])}
+            />
+          </Form.Item>
+          <Form.Item name="workflowId" label="任务流模板（不选则用产品默认）">
+            <Select
+              allowClear
+              placeholder="产品默认"
+              loading={workflowsQuery.isPending}
+              options={(workflowsQuery.data?.items ?? [])
+                .filter((w) => w.scope === 'task' && w.status === 'active')
+                .map((w) => ({ value: w.id, label: `${w.name}（v${w.version}）` }))}
+            />
+          </Form.Item>
+        </Form>
+      </Modal>
     </div>
   )
 }

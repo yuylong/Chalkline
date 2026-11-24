@@ -29,6 +29,7 @@ REST（M1）：
 | `GET /api/v1/tasks/{id}` | 任务详情：子树、模块、工作流状态、材料、审批 | 该产品成员 |
 | `POST /api/v1/tasks/{id}/children` | 批量拆子任务 | 任务负责人 / `pm` |
 | `PATCH /api/v1/tasks/{id}` | 指派、改优先级、标题 | 任务负责人 / `pm` |
+| `DELETE /api/v1/tasks/{id}` | 删任务（仅未终结且无子任务；实例随任务级联清理，409 `TASK_NOT_DELETABLE`） | 任务负责人 / `pm` |
 | `POST /api/v1/tasks/{id}/modules` | 增删模块关联 | 任务负责人 / `pm` |
 
 MCP：`create_iteration` / `create_task` / `decompose_task` / `assign_task` / `link_module` / `list_iterations` / `list_tasks` / `get_task`（见 [mcp.md](../domain/mcp.md)，权限列与对象级权限表一致）。
@@ -38,6 +39,7 @@ MCP：`create_iteration` / `create_task` / `decompose_task` / `assign_task` / `l
 - **建迭代**：事务内校验调用者是产品成员 + `pm`/`admin` → 分配 `CHK-IT<n>` 编号 → 写 `iterations` → 调 workflow 实例化生命周期模板（写 `workflow_instances` + 起始节点 `ready`）→ 审计。
 - **建任务/拆子任务**：校验当前迭代所处节点 `allows_task_creation`（不变量 5，向 workflow 查实例当前节点）→ 校验子任务与父同产品同迭代（不变量 2）→ 按父级维度分配编号（并发不重复）→ 写 `tasks` → 继承父任务模板/模块 → 实例化任务工作流 → 审计。
 - **任务状态**：不存独立 `status` 字段做真相；读时由 workflow 实例的终态节点投影（`done` / `cancelled`），未到终态为 `open`（model.md「状态投影」）。
+- **删任务**：仅限 `open` 且无子任务的任务（已终结历史保留，呼应不变量 10「不允许静默丢弃」；有子任务须先删子任务）。权限同改任务字段；事务内先删任务流实例（`node_states` / `gate_approvals` / `artifacts` 外键级联）再删 `tasks` 行，最后审计 `task.delete`。
 - **移除迭代（收口）**：迭代进入终态前，其下未终结任务必须显式转移或取消（不变量 10，由 workflow 迭代收口节点 `require_iteration_tasks_done` 拦截）。
 - **当前迭代（个人偏好）**：每人至多一条「当前迭代」，登录后控制台首页直接渲染该迭代看板，省去「产品 → 迭代」逐级点击。设置时校验对该迭代所属产品可见（非成员 404）且迭代非终态；取消幂等。迭代被删除时随外键级联清理；若已失去可见性（成员被移除），读接口按「未设置」返回而不报错。
 

@@ -301,6 +301,20 @@ func (h *handlers) updateTask(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, view)
 }
 
+// deleteTask 删任务：仅未终结且无子任务（规则在 app 层，409 TASK_NOT_DELETABLE）。
+func (h *handlers) deleteTask(w http.ResponseWriter, r *http.Request) {
+	actor, err := h.actor(r)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	if err := h.svc().DeleteTask(r.Context(), actor, pathParam(r, "id")); err != nil {
+		writeAppError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+}
+
 type linkModuleReq struct {
 	ModuleID string `json:"moduleId"`
 	Add      bool   `json:"add"`

@@ -25,6 +25,7 @@ type fakeAPI struct {
 	currentFn func(ctx context.Context, actor app.Actor) (app.CurrentIterationView, error)
 	setCurFn  func(ctx context.Context, actor app.Actor, iterationID string) (app.IterationDetail, error)
 	clearFn   func(ctx context.Context, actor app.Actor) error
+	delTaskFn  func(ctx context.Context, actor app.Actor, id string) error
 }
 
 func (f fakeAPI) Login(ctx context.Context, username, password string) (app.LoginResult, error) {
@@ -41,6 +42,10 @@ func (f fakeAPI) SetCurrentIteration(ctx context.Context, actor app.Actor, itera
 
 func (f fakeAPI) ClearCurrentIteration(ctx context.Context, actor app.Actor) error {
 	return f.clearFn(ctx, actor)
+}
+
+func (f fakeAPI) DeleteTask(ctx context.Context, actor app.Actor, id string) error {
+	return f.delTaskFn(ctx, actor, id)
 }
 
 func testDeps(loginFn func(context.Context, string, string) (app.LoginResult, error)) Deps {
@@ -265,6 +270,46 @@ func TestCurrentIterationEndpoints(t *testing.T) {
 	rec = call(http.MethodDelete, "/api/v1/current-iteration", "")
 	if rec.Code != http.StatusOK || cleared != 1 {
 		t.Fatalf("取消当前迭代应成功，实际 %d", rec.Code)
+	}
+}
+
+// TestDeleteTaskEndpoint 验证删任务端点：成功 200；不可删（已终结/有子任务）
+// 透传 app 层 409 TASK_NOT_DELETABLE 包络。
+func TestDeleteTaskEndpoint(t *testing.T) {
+	d := testDeps(nil)
+	d.Svc = func() app.API {
+		return fakeAPI{delTaskFn: func(_ context.Context, _ app.Actor, id string) error {
+			switch id {
+			case "tsk_ok":
+				return nil
+			case "tsk_done":
+				return app.TaskNotDeletable("任务 CHK-1 已终结（done），历史保留不可删除")
+			default:
+				return app.NotFound("任务不存在或不可见")
+			}
+		}}
+	}
+	r := NewRouter(d)
+
+	del := func(path string) *httptest.ResponseRecorder {
+		rec := httptest.NewRecorder()
+		r.ServeHTTP(rec, httptest.NewRequest(http.MethodDelete, path, nil))
+		return rec
+	}
+
+	rec := del("/api/v1/tasks/tsk_ok")
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"status":"deleted"`) {
+		t.Fatalf("删任务应 200，实际 %d %s", rec.Code, rec.Body.String())
+	}
+
+	rec = del("/api/v1/tasks/tsk_done")
+	if rec.Code != http.StatusConflict || !strings.Contains(rec.Body.String(), `"TASK_NOT_DELETABLE"`) {
+		t.Fatalf("已终结任务应 409 TASK_NOT_DELETABLE，实际 %d %s", rec.Code, rec.Body.String())
+	}
+
+	rec = del("/api/v1/tasks/tsk_missing")
+	if rec.Code != http.StatusNotFound || !strings.Contains(rec.Body.String(), `"NOT_FOUND"`) {
+		t.Fatalf("不存在应 404，实际 %d %s", rec.Code, rec.Body.String())
 	}
 }
 
