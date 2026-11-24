@@ -21,11 +21,26 @@ import (
 
 type fakeAPI struct {
 	app.API
-	loginFn func(ctx context.Context, username, password string) (app.LoginResult, error)
+	loginFn   func(ctx context.Context, username, password string) (app.LoginResult, error)
+	currentFn func(ctx context.Context, actor app.Actor) (app.CurrentIterationView, error)
+	setCurFn  func(ctx context.Context, actor app.Actor, iterationID string) (app.IterationDetail, error)
+	clearFn   func(ctx context.Context, actor app.Actor) error
 }
 
 func (f fakeAPI) Login(ctx context.Context, username, password string) (app.LoginResult, error) {
 	return f.loginFn(ctx, username, password)
+}
+
+func (f fakeAPI) GetCurrentIteration(ctx context.Context, actor app.Actor) (app.CurrentIterationView, error) {
+	return f.currentFn(ctx, actor)
+}
+
+func (f fakeAPI) SetCurrentIteration(ctx context.Context, actor app.Actor, iterationID string) (app.IterationDetail, error) {
+	return f.setCurFn(ctx, actor, iterationID)
+}
+
+func (f fakeAPI) ClearCurrentIteration(ctx context.Context, actor app.Actor) error {
+	return f.clearFn(ctx, actor)
 }
 
 func testDeps(loginFn func(context.Context, string, string) (app.LoginResult, error)) Deps {
@@ -186,6 +201,70 @@ func TestRealAuthChain(t *testing.T) {
 	r.ServeHTTP(rec, req)
 	if rec.Code == http.StatusUnauthorized {
 		t.Fatalf("合法 JWT 不应 401")
+	}
+}
+
+// TestCurrentIterationEndpoints 验证首页「当前迭代」端点：未设置为 null、设置后返回详情、DELETE 幂等。
+func TestCurrentIterationEndpoints(t *testing.T) {
+	current := app.CurrentIterationView{}
+	detail := app.IterationDetail{IterationView: app.IterationView{ID: "itr_1", Number: "CHK-IT1", Name: "迭代一"}}
+	cleared := 0
+
+	d := testDeps(nil)
+	d.Svc = func() app.API {
+		return fakeAPI{
+			currentFn: func(context.Context, app.Actor) (app.CurrentIterationView, error) { return current, nil },
+			setCurFn: func(_ context.Context, _ app.Actor, id string) (app.IterationDetail, error) {
+				if id != "itr_1" {
+					return app.IterationDetail{}, app.Invalid("iterationId 非法")
+				}
+				current = app.CurrentIterationView{Iteration: &detail}
+				return detail, nil
+			},
+			clearFn: func(context.Context, app.Actor) error {
+				current = app.CurrentIterationView{}
+				cleared++
+				return nil
+			},
+		}
+	}
+	r := NewRouter(d)
+
+	call := func(method, path, body string) *httptest.ResponseRecorder {
+		rec := httptest.NewRecorder()
+		var req *http.Request
+		if body == "" {
+			req = httptest.NewRequest(method, path, nil)
+		} else {
+			req = httptest.NewRequest(method, path, bytes.NewBufferString(body))
+			req.Header.Set("Content-Type", "application/json")
+		}
+		r.ServeHTTP(rec, req)
+		return rec
+	}
+
+	// 未设置：iteration 为 null
+	rec := call(http.MethodGet, "/api/v1/current-iteration", "")
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"iteration":null`) {
+		t.Fatalf("未设置应返回 null，实际 %d %s", rec.Code, rec.Body.String())
+	}
+
+	// 设置：PUT 返回迭代详情
+	rec = call(http.MethodPut, "/api/v1/current-iteration", `{"iterationId":"itr_1"}`)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "CHK-IT1") {
+		t.Fatalf("设置当前迭代应返回详情，实际 %d %s", rec.Code, rec.Body.String())
+	}
+
+	// 已设置：GET 返回该迭代
+	rec = call(http.MethodGet, "/api/v1/current-iteration", "")
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "itr_1") {
+		t.Fatalf("已设置应返回迭代，实际 %d %s", rec.Code, rec.Body.String())
+	}
+
+	// 取消：DELETE 幂等成功
+	rec = call(http.MethodDelete, "/api/v1/current-iteration", "")
+	if rec.Code != http.StatusOK || cleared != 1 {
+		t.Fatalf("取消当前迭代应成功，实际 %d", rec.Code)
 	}
 }
 

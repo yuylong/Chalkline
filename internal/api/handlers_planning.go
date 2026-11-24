@@ -85,6 +85,59 @@ func (h *handlers) getIteration(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, view)
 }
 
+// ---- 个人「当前迭代」（docs/modules/planning.md「当前迭代」）----
+// 控制台登录后首页直接展示该迭代看板；未设置时 iteration 为 null。
+
+func (h *handlers) getCurrentIteration(w http.ResponseWriter, r *http.Request) {
+	actor, err := h.actor(r)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	view, err := h.svc().GetCurrentIteration(r.Context(), actor)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, view)
+}
+
+type setCurrentIterationReq struct {
+	IterationID string `json:"iterationId"`
+}
+
+func (h *handlers) putCurrentIteration(w http.ResponseWriter, r *http.Request) {
+	actor, err := h.actor(r)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	var req setCurrentIterationReq
+	if err := decode(r, &req); err != nil {
+		writeAppError(w, err)
+		return
+	}
+	view, err := h.svc().SetCurrentIteration(r.Context(), actor, req.IterationID)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, view)
+}
+
+func (h *handlers) deleteCurrentIteration(w http.ResponseWriter, r *http.Request) {
+	actor, err := h.actor(r)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	if err := h.svc().ClearCurrentIteration(r.Context(), actor); err != nil {
+		writeAppError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "cleared"})
+}
+
 type createTaskReq struct {
 	Title        string   `json:"title"`
 	Description  string   `json:"description"`

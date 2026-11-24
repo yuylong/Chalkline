@@ -9,6 +9,7 @@ import { getToken } from '../shared/api'
 import AuditList from '../features/audit/List'
 import Login from '../features/auth/Login'
 import ProviderConfigs from '../features/integrations/Providers'
+import CurrentIterationPage from '../features/iterations/Current'
 import IterationDetail from '../features/iterations/Detail'
 import ProductDetail from '../features/products/Detail'
 import ProductList from '../features/products/List'
@@ -35,7 +36,8 @@ export default function AppRoutes() {
             </RequireAuth>
           }
         >
-          <Route path="/" element={<ProductList />} />
+          <Route path="/" element={<CurrentIterationPage />} />
+          <Route path="/products" element={<ProductList />} />
           <Route path="/products/:id" element={<ProductDetail />} />
           <Route path="/iterations/:id" element={<IterationDetail />} />
           <Route path="/tasks/:id" element={<TaskDetail />} />

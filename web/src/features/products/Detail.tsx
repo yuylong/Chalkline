@@ -21,10 +21,11 @@ import {
 import dayjs from 'dayjs'
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
-import { apiDelete, apiGet, apiPatch, apiPost } from '../../shared/api'
+import { apiDelete, apiGet, apiPatch, apiPost, apiPut } from '../../shared/api'
 import { fmtDate, fmtTime, iterationStatusMeta, memberRoleMeta, MEMBER_ROLES } from '../../shared/status'
 import { ApiErrorBanner, DetailError, PageLoading } from '../../shared/ui'
 import type {
+  CurrentIterationView,
   IterationView,
   ListEnvelope,
   MemberView,
@@ -134,6 +135,21 @@ export default function ProductDetail() {
       setIterationOpen(false)
       iterationForm.resetFields()
       queryClient.invalidateQueries({ queryKey: ['iterations', id] })
+    },
+    onError: (err: Error) => message.error(err.message),
+  })
+
+  // 当前迭代：在迭代列表里一键设为当前迭代（首页直达），无需先进迭代详情。
+  const { data: current } = useQuery({
+    queryKey: ['current-iteration'],
+    queryFn: () => apiGet<CurrentIterationView>('/current-iteration'),
+  })
+  const setCurrentMut = useMutation({
+    mutationFn: (iterationId: string) =>
+      apiPut<IterationView>('/current-iteration', { iterationId }),
+    onSuccess: () => {
+      message.success('已设为当前迭代，登录后首页直接进入')
+      queryClient.invalidateQueries({ queryKey: ['current-iteration'] })
     },
     onError: (err: Error) => message.error(err.message),
   })
@@ -281,6 +297,29 @@ export default function ProductDetail() {
                 key: 'range',
                 width: 200,
                 render: (_, r) => `${fmtDate(r.startsOn)} ~ ${fmtDate(r.endsOn)}`,
+              },
+              {
+                title: '当前迭代',
+                key: 'current',
+                width: 130,
+                render: (_, r) => {
+                  if (r.status !== 'planned' && r.status !== 'active') return '—'
+                  if (current?.iteration?.id === r.id) return <Tag color="orange">当前迭代</Tag>
+                  return (
+                    <Button
+                      size="small"
+                      type="link"
+                      style={{ padding: 0 }}
+                      loading={setCurrentMut.isPending}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setCurrentMut.mutate(r.id)
+                      }}
+                    >
+                      设为当前
+                    </Button>
+                  )
+                },
               },
             ]}
           />

@@ -1,9 +1,10 @@
 // 迭代详情 + 看板（合并页）：基本信息、阶段泳道（生命周期节点，并行并列
 // 展示）、阶段操作（开始/提交/评审）、任务看板、进度图表。
+// 另可作为「当前迭代」首页复用（IterationPane 显式传 iterationId）。
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { App, Button, Card, Progress, Space, Tag, Typography } from 'antd'
 import { useNavigate, useParams } from 'react-router'
-import { apiGet, apiPost } from '../../shared/api'
+import { apiDelete, apiGet, apiPost, apiPut } from '../../shared/api'
 import {
   ACTIONABLE_STATUSES,
   fmtDate,
@@ -15,6 +16,7 @@ import {
 import { BlockerList, DetailError, PageLoading } from '../../shared/ui'
 import type {
   Blocker,
+  CurrentIterationView,
   InstanceView,
   IterationDetail,
   ListEnvelope,
@@ -28,11 +30,41 @@ import { ReviewActions } from '../gates/ReviewAction'
 import TaskBoard from './Board'
 import IterationCharts from './Charts'
 
-export default function IterationDetail() {
+export default function IterationDetailRoute() {
   const { id = '' } = useParams()
+  return <IterationPane iterationId={id} />
+}
+
+/** IterationPane 渲染单个迭代的完整看板；被路由页与「当前迭代」首页共用。 */
+export function IterationPane({ iterationId }: { iterationId: string }) {
+  const id = iterationId
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { message } = App.useApp()
+
+  // 个人「当前迭代」：标记当前迭代并提供设置/取消入口。
+  const currentQuery = useQuery({
+    queryKey: ['current-iteration'],
+    queryFn: () => apiGet<CurrentIterationView>('/current-iteration'),
+  })
+  const isCurrent = currentQuery.data?.iteration?.id === id
+
+  const setCurrentMut = useMutation({
+    mutationFn: () => apiPut<IterationDetail>('/current-iteration', { iterationId: id }),
+    onSuccess: () => {
+      message.success('已设为当前迭代，登录后首页直接进入')
+      queryClient.invalidateQueries({ queryKey: ['current-iteration'] })
+    },
+    onError: (err: Error) => message.error(err.message),
+  })
+  const clearCurrentMut = useMutation({
+    mutationFn: () => apiDelete('/current-iteration'),
+    onSuccess: () => {
+      message.success('已取消当前迭代')
+      queryClient.invalidateQueries({ queryKey: ['current-iteration'] })
+    },
+    onError: (err: Error) => message.error(err.message),
+  })
 
   const itQuery = useQuery({
     queryKey: ['iteration', id],
@@ -103,7 +135,24 @@ export default function IterationDetail() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <Card>
+      <Card
+        extra={
+          it.status === 'planned' || it.status === 'active' ? (
+            isCurrent ? (
+              <Space>
+                <Tag color="orange">当前迭代</Tag>
+                <Button size="small" loading={clearCurrentMut.isPending} onClick={() => clearCurrentMut.mutate()}>
+                  取消当前迭代
+                </Button>
+              </Space>
+            ) : (
+              <Button size="small" type="primary" loading={setCurrentMut.isPending} onClick={() => setCurrentMut.mutate()}>
+                设为当前迭代
+              </Button>
+            )
+          ) : undefined
+        }
+      >
         <Space direction="vertical" size={6} style={{ width: '100%' }}>
           <Space wrap>
             <Typography.Title level={4} style={{ margin: 0 }}>

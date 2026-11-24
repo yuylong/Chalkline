@@ -142,6 +142,11 @@ export interface IterationDetail extends IterationView {
   workflowName: string
 }
 
+/** 个人「当前迭代」：登录后首页直接展示该迭代看板；未设置为 null。 */
+export interface CurrentIterationView {
+  iteration: IterationDetail | null
+}
+
 export interface TaskView {
   id: string
   productId: string

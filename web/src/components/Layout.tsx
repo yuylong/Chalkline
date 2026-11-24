@@ -1,4 +1,5 @@
-// 登录后布局：侧边导航（产品/待审批/审计/Webhook）+ 用户名下拉（登出）。
+// 登录后布局：侧边导航（当前迭代/审批 ｜ 产品/审计 ｜ 用户管理/Provider 管理/
+// 工作流管理/Webhook 订阅）+ 用户名下拉（登出）。
 // M3：订阅 SSE 事件流，事件到达即失效相关缓存（轮询仍兜底）。
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Avatar, Badge, Dropdown, Layout as AntLayout, Menu, Typography } from 'antd'
@@ -42,6 +43,8 @@ export default function Layout() {
           queryClient.invalidateQueries({ queryKey: ['iteration'] })
           queryClient.invalidateQueries({ queryKey: ['iteration-workflow'] })
           queryClient.invalidateQueries({ queryKey: ['next-action', 'iteration'] })
+          // 首页「当前迭代」随迭代推进刷新。
+          queryClient.invalidateQueries({ queryKey: ['current-iteration'] })
           break
         case 'product':
           queryClient.invalidateQueries({ queryKey: ['products'] })
@@ -56,6 +59,8 @@ export default function Layout() {
 
   const isAdmin = whoami?.user.roles.includes('admin') ?? false
 
+  // 菜单顺序：当前迭代、审批 ｜ 产品、审计 ｜ 用户管理、Provider 管理、工作流管理、Webhook 订阅。
+  // 管理项仅 admin 可见（后端仍会拒绝非 admin 请求）。
   const selected = location.pathname.startsWith('/reviews')
     ? '/reviews'
     : location.pathname.startsWith('/audit')
@@ -68,9 +73,16 @@ export default function Layout() {
             ? '/workflows'
             : location.pathname.startsWith('/integrations')
               ? '/integrations'
-              : location.pathname === '/' || location.pathname.startsWith('/products')
-                ? '/'
-                : location.pathname
+              : location.pathname.startsWith('/products')
+                ? '/products'
+                : '/' // 首页（当前迭代）以及迭代/任务详情都归属「当前迭代」
+
+  const adminItems = isAdmin
+    ? [
+        { key: '/users', label: '用户管理' },
+        { key: '/integrations', label: 'Provider 管理' },
+      ]
+    : []
 
   return (
     <AntLayout style={{ minHeight: '100vh' }}>
@@ -87,24 +99,22 @@ export default function Layout() {
           mode="inline"
           selectedKeys={[selected]}
           items={[
-            { key: '/', label: '产品' },
+            { key: '/', label: '当前迭代' },
             {
               key: '/reviews',
               label: (
                 <Badge count={pendingCount} size="small" offset={[10, 0]}>
-                  待审批
+                  审批
                 </Badge>
               ),
             },
-            ...(isAdmin
-              ? [
-                  { key: '/users', label: '用户管理' },
-                  { key: '/integrations', label: 'Provider 配置' },
-                  { key: '/audit', label: '审计' },
-                  { key: '/webhooks', label: 'Webhook 订阅' },
-                ]
-              : []),
-            { key: '/workflows', label: '工作流' },
+            { type: 'divider' },
+            { key: '/products', label: '产品' },
+            ...(isAdmin ? [{ key: '/audit', label: '审计' }] : []),
+            { type: 'divider' },
+            ...adminItems,
+            { key: '/workflows', label: '工作流管理' },
+            ...(isAdmin ? [{ key: '/webhooks', label: 'Webhook 订阅' }] : []),
           ]}
           onClick={({ key }) => navigate(key)}
         />
