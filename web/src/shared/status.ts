@@ -69,6 +69,25 @@ export function fmtDate(iso?: string): string {
   return d.isValid() ? d.format('YYYY-MM-DD') : iso
 }
 
+/** 用户展示名：显示名（用户名）；无显示名时仅用户名。全站用户位置统一用此格式。 */
+export function userLabel(u: { displayName?: string; username: string }): string {
+  return u.displayName ? `${u.displayName}（${u.username}）` : u.username
+}
+
+/** userId → 展示名映射（userLabel 格式）。 */
+export function memberNameMap(
+  members: { userId: string; displayName?: string; username: string }[],
+): Record<string, string> {
+  const m: Record<string, string> = {}
+  for (const mem of members) m[mem.userId] = userLabel(mem)
+  return m
+}
+
+/** 按映射取用户展示名；查不到（成员已移除等）给「未知用户」，不露出内部 ID。 */
+export function memberNameOf(names: Record<string, string>, userId?: string): string {
+  return userId ? (names[userId] ?? '未知用户') : '—'
+}
+
 /** 材料类型（workitem.ArtifactKind）。 */
 export const ARTIFACT_KINDS: { value: string; label: string }[] = [
   { value: 'research_report', label: '调研报告 research_report' },

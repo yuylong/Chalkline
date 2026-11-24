@@ -9,7 +9,7 @@
 import { Button, Empty, Space, Tag, Timeline, Typography } from 'antd'
 import { useMemo, useState } from 'react'
 import { Markdown, MarkdownInlineSummary } from '../../shared/markdown'
-import { ACTIONABLE_STATUSES, fmtTime, nodeStatusMeta } from '../../shared/status'
+import { ACTIONABLE_STATUSES, fmtTime, memberNameOf, nodeStatusMeta } from '../../shared/status'
 import { BlockerList } from '../../shared/ui'
 import type { ApprovalRecord, ArtifactRef, Blocker, NodeStateView } from '../../shared/types'
 import { ArtifactSubmitForm } from './Artifacts'
@@ -25,7 +25,7 @@ function sortByTimeDesc(list: ArtifactRef[]): ArtifactRef[] {
 }
 
 /** 单条成果物正文：inline 走 Markdown 渲染，其余给外链。 */
-function ArtifactBody({ artifact }: { artifact: ArtifactRef }) {
+function ArtifactBody({ artifact, memberNames }: { artifact: ArtifactRef; memberNames?: Record<string, string> }) {
   return (
     <Space direction="vertical" size={8} style={{ width: '100%' }}>
       <Space wrap size={[8, 4]}>
@@ -38,7 +38,7 @@ function ArtifactBody({ artifact }: { artifact: ArtifactRef }) {
         )}
         {artifact.submittedBy && (
           <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-            提交人 {artifact.submittedBy}
+            提交人 {memberNameOf(memberNames ?? {}, artifact.submittedBy)}
           </Typography.Text>
         )}
       </Space>
@@ -64,7 +64,15 @@ function ArtifactBody({ artifact }: { artifact: ArtifactRef }) {
 }
 
 /** 某节点的评审意见时间线（历史成果物点选后一并展示）。 */
-function NodeApprovals({ approvals, nodeId }: { approvals?: ApprovalRecord[]; nodeId: string }) {
+function NodeApprovals({
+  approvals,
+  nodeId,
+  memberNames,
+}: {
+  approvals?: ApprovalRecord[]
+  nodeId: string
+  memberNames?: Record<string, string>
+}) {
   const list = (approvals ?? []).filter((a) => a.nodeId === nodeId)
   if (list.length === 0) {
     return (
@@ -81,7 +89,7 @@ function NodeApprovals({ approvals, nodeId }: { approvals?: ApprovalRecord[]; no
         children: (
           <div>
             <Space size={6}>
-              <Typography.Text strong>{a.reviewerId}</Typography.Text>
+              <Typography.Text strong>{memberNameOf(memberNames ?? {}, a.reviewerId)}</Typography.Text>
               <Tag color={a.decision === 'approve' ? 'green' : 'red'}>
                 {a.decision === 'approve' ? '通过' : '驳回'}
               </Tag>
@@ -171,6 +179,8 @@ export interface CurrentNodeDetailProps {
   artifacts?: ArtifactRef[]
   approvals?: ApprovalRecord[]
   blockers?: Blocker[]
+  /** userId → 展示名（评审人与提交人显示用）。 */
+  memberNames?: Record<string, string>
   /** 开始节点动作（ready 状态时展示「开始阶段」按钮）。 */
   onStart?: () => void
   starting?: boolean
@@ -189,6 +199,7 @@ export function CurrentNodeDetail({
   artifacts,
   approvals,
   blockers,
+  memberNames,
   onStart,
   starting,
   onDone,
@@ -262,7 +273,7 @@ export function CurrentNodeDetail({
         <Typography.Text strong>最新成果物</Typography.Text>
         <div style={{ marginTop: 8 }}>
           {latest ? (
-            <ArtifactBody artifact={latest} />
+            <ArtifactBody artifact={latest} memberNames={memberNames} />
           ) : (
             <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="该阶段尚无成果物" />
           )}
@@ -314,7 +325,7 @@ export function CurrentNodeDetail({
                     </div>
                     {active && (
                       <div style={{ padding: '8px 8px 0' }}>
-                        <ArtifactBody artifact={a} />
+                        <ArtifactBody artifact={a} memberNames={memberNames} />
                       </div>
                     )}
                   </div>
@@ -327,7 +338,7 @@ export function CurrentNodeDetail({
               评审意见（本阶段）
             </Typography.Text>
             <div style={{ marginTop: 6 }}>
-              <NodeApprovals approvals={approvals} nodeId={node.id} />
+              <NodeApprovals approvals={approvals} nodeId={node.id} memberNames={memberNames} />
             </div>
           </div>
         </div>

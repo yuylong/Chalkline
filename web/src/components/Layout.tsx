@@ -7,6 +7,7 @@ import { useEffect } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router'
 import { apiGet, setToken } from '../shared/api'
 import { openEventStream } from '../shared/events'
+import { userLabel } from '../shared/status'
 import type { ListEnvelope, PendingReviewView, WhoamiView } from '../shared/types'
 
 const REVIEW_POLL_MS = 10_000
@@ -154,7 +155,7 @@ export default function Layout() {
                 {(whoami?.user.displayName || whoami?.user.username || '?').slice(0, 1)}
               </Avatar>
               <Typography.Text>
-                {whoami?.user.displayName || whoami?.user.username || '…'}
+                {whoami ? userLabel(whoami.user) : '…'}
               </Typography.Text>
             </span>
           </Dropdown>

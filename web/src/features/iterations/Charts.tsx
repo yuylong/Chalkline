@@ -17,6 +17,7 @@ import {
   YAxis,
 } from 'recharts'
 import type { InstanceView, MemberView, TaskView } from '../../shared/types'
+import { userLabel } from '../../shared/status'
 
 interface ChartsProps {
   tasks: TaskView[]
@@ -96,7 +97,7 @@ export default function IterationCharts({ tasks, workflows, members, startsOn, e
 
   const nameOf = (uid: string) => {
     const m = members.find((x) => x.userId === uid)
-    return m ? m.displayName || m.username : uid
+    return m ? userLabel(m) : '未知用户'
   }
   const loadMap = new Map<string, number>()
   for (const t of tasks) {

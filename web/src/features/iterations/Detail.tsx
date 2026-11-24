@@ -10,6 +10,7 @@ import {
   fmtDate,
   fmtTime,
   iterationStatusMeta,
+  memberNameMap,
   nextActionStatusMeta,
   nodeStatusMeta,
 } from '../../shared/status'
@@ -100,10 +101,7 @@ export function IterationPane({ iterationId }: { iterationId: string }) {
   const wfLoading = wfQueries.some((q) => q.isPending)
   const wfMap = new Map<string, InstanceView | undefined>()
   tasks.forEach((t, i) => wfMap.set(t.id, wfQueries[i].data))
-  const memberNames: Record<string, string> = {}
-  for (const m of membersQuery.data?.items ?? []) {
-    memberNames[m.userId] = m.displayName || m.username
-  }
+  const memberNames = memberNameMap(membersQuery.data?.items ?? [])
 
   if (itQuery.isError) return <DetailError error={itQuery.error} />
   if (itQuery.isPending) return <PageLoading />

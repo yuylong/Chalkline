@@ -22,7 +22,7 @@ import dayjs from 'dayjs'
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { apiDelete, apiGet, apiPatch, apiPost, apiPut } from '../../shared/api'
-import { fmtDate, fmtTime, iterationStatusMeta, memberRoleMeta, MEMBER_ROLES } from '../../shared/status'
+import { fmtDate, fmtTime, iterationStatusMeta, memberRoleMeta, memberNameMap, memberNameOf, MEMBER_ROLES, userLabel } from '../../shared/status'
 import { ApiErrorBanner, DetailError, PageLoading } from '../../shared/ui'
 import type {
   CurrentIterationView,
@@ -181,12 +181,13 @@ export default function ProductDetail() {
   })
   const candidateOptions = (candidates.data?.items ?? []).map((u) => ({
     value: u.id,
-    label: u.displayName ? `${u.displayName}（${u.username}）` : u.username,
+    label: userLabel(u),
   }))
 
   if (detail.isError) return <DetailError error={detail.error} />
   if (detail.isPending) return <PageLoading />
   const p = detail.data
+  const memberNames = memberNameMap(p.members)
   const myRole = p.members.find((m) => m.userId === whoami?.user.id)?.role
   const isAdmin = whoami?.user.roles.includes('admin') === true
   const canManageMembers = isAdmin || myRole === 'owner'
@@ -222,7 +223,7 @@ export default function ProductDetail() {
             { key: 'itwf', label: '默认迭代工作流', children: wfName(p.defaultIterationWorkflowId) },
             { key: 'tswf', label: '默认任务工作流', children: wfName(p.defaultTaskWorkflowId) },
             { key: 'created', label: '创建时间', children: fmtTime(p.createdAt) },
-            { key: 'createdBy', label: '创建人', children: p.createdBy },
+            { key: 'createdBy', label: '创建人', children: memberNameOf(memberNames, p.createdBy) },
           ]}
         />
       </Card>
@@ -307,8 +308,11 @@ export default function ProductDetail() {
           pagination={false}
           dataSource={p.members}
           columns={[
-            { title: '用户', dataIndex: 'username', width: 140 },
-            { title: '显示名', dataIndex: 'displayName' },
+            {
+              title: '成员',
+              key: 'user',
+              render: (_, r) => userLabel(r),
+            },
             {
               title: '产品角色',
               dataIndex: 'role',

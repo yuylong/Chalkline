@@ -4,6 +4,7 @@ import { App, Button, Card, Form, Input, Typography } from 'antd'
 import { useState } from 'react'
 import { useNavigate } from 'react-router'
 import { apiLogin, setToken } from '../../shared/api'
+import { userLabel } from '../../shared/status'
 
 export default function Login() {
   const navigate = useNavigate()
@@ -14,7 +15,7 @@ export default function Login() {
     mutationFn: (v: { username: string; password: string }) => apiLogin(v.username, v.password),
     onSuccess: (result) => {
       setToken(result.token)
-      message.success(`欢迎，${result.user.displayName}`)
+      message.success(`欢迎，${userLabel(result.user)}`)
       navigate('/', { replace: true })
     },
     onError: (err: Error) => setError(err.message),

@@ -19,9 +19,18 @@ import {
 import { useState } from 'react'
 import { apiGet, apiPost } from '../../shared/api'
 import { Markdown, MarkdownInlineSummary } from '../../shared/markdown'
-import { ARTIFACT_KINDS, ARTIFACT_PROVIDERS, nodeStatusMeta } from '../../shared/status'
+import { ARTIFACT_KINDS, ARTIFACT_PROVIDERS, memberNameMap, memberNameOf, nodeStatusMeta } from '../../shared/status'
 import { ApiErrorBanner, PageLoading } from '../../shared/ui'
-import type { ArtifactRef, InstanceView, NodeOpResult, NodeStateView } from '../../shared/types'
+import type {
+  ArtifactRef,
+  InstanceView,
+  IterationDetail,
+  ListEnvelope,
+  MemberView,
+  NodeOpResult,
+  NodeStateView,
+  TaskDetail,
+} from '../../shared/types'
 
 // ---- 成果物浏览器（按步骤组织）----
 
@@ -31,7 +40,15 @@ interface ArtifactDetail {
 }
 
 /** 单条成果物详情弹窗：元数据 + inline 全文 / 外链 + 提交时点快照。 */
-function ArtifactDetailModal({ detail, onClose }: { detail: ArtifactDetail | null; onClose: () => void }) {
+function ArtifactDetailModal({
+  detail,
+  memberNames,
+  onClose,
+}: {
+  detail: ArtifactDetail | null
+  memberNames?: Record<string, string>
+  onClose: () => void
+}) {
   const a = detail?.artifact
   return (
     <Modal
@@ -52,7 +69,11 @@ function ArtifactDetailModal({ detail, onClose }: { detail: ArtifactDetail | nul
               ...(a.title ? [{ key: 'title', label: '标题', children: a.title }] : []),
               ...(a.externalId ? [{ key: 'externalId', label: '外部 ID', children: a.externalId }] : []),
               { key: 'node', label: '所属步骤', children: detail?.nodeName ?? a.nodeId },
-              { key: 'submittedBy', label: '提交人', children: a.submittedBy || '—' },
+              {
+                key: 'submittedBy',
+                label: '提交人',
+                children: a.submittedBy ? memberNameOf(memberNames ?? {}, a.submittedBy) : '—',
+              },
             ]}
           />
           {a.url && (
@@ -185,7 +206,7 @@ export function ArtifactBrowser({ artifacts, nodes, focusNodeId, memberNames }: 
                     )}
                     {a.submittedBy && (
                       <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                        {memberNames?.[a.submittedBy] ?? a.submittedBy}
+                        {memberNameOf(memberNames ?? {}, a.submittedBy)}
                       </Typography.Text>
                     )}
                   </Space>
@@ -202,7 +223,11 @@ export function ArtifactBrowser({ artifacts, nodes, focusNodeId, memberNames }: 
           </Card>
         )
       })}
-      <ArtifactDetailModal detail={detail} onClose={() => setDetail(null)} />
+      <ArtifactDetailModal
+        detail={detail}
+        memberNames={memberNames}
+        onClose={() => setDetail(null)}
+      />
     </div>
   )
 }
@@ -229,6 +254,22 @@ export function WorkItemArtifactsModal({
       apiGet<InstanceView>(`${isTask ? '/tasks' : '/iterations'}/${workItemId}/workflow`),
     enabled: open,
   })
+  // 提交人展示需要成员名：先取工作项拿 productId，再取产品成员（评审人必为产品成员）。
+  const { data: item } = useQuery({
+    queryKey: [isTask ? 'task' : 'iteration', workItemId],
+    queryFn: (): Promise<TaskDetail | IterationDetail> =>
+      isTask
+        ? apiGet<TaskDetail>(`/tasks/${workItemId}`)
+        : apiGet<IterationDetail>(`/iterations/${workItemId}`),
+    enabled: open,
+  })
+  const productId = item?.productId ?? ''
+  const { data: members } = useQuery({
+    queryKey: ['members', productId],
+    queryFn: () => apiGet<ListEnvelope<MemberView>>(`/products/${productId}/members`),
+    enabled: open && productId !== '',
+  })
+  const memberNames = memberNameMap(members?.items ?? [])
   return (
     <Modal
       open={open}
@@ -246,6 +287,7 @@ export function WorkItemArtifactsModal({
           artifacts={data?.artifacts}
           nodes={data?.nodes}
           focusNodeId={focusNodeId}
+          memberNames={memberNames}
         />
       )}
     </Modal>

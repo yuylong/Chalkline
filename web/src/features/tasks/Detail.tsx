@@ -21,6 +21,8 @@ import { apiGet, apiPost } from '../../shared/api'
 import {
   ACTIONABLE_STATUSES,
   fmtTime,
+  memberNameMap,
+  memberNameOf,
   nextActionStatusMeta,
   nodeStatusMeta,
   priorityMeta,
@@ -28,6 +30,7 @@ import {
   taskStatusMeta,
   TASK_KINDS,
   PRIORITIES,
+  userLabel,
 } from '../../shared/status'
 import { BlockerList, DetailError, PageLoading } from '../../shared/ui'
 import type {
@@ -65,13 +68,10 @@ export default function TaskDetailPage() {
     queryFn: () => apiGet<ListEnvelope<MemberView>>(`/products/${productId}/members`),
     enabled: productId !== '',
   })
-  const memberNames: Record<string, string> = {}
-  for (const m of membersQuery.data?.items ?? []) {
-    memberNames[m.userId] = m.displayName || m.username
-  }
+  const memberNames = memberNameMap(membersQuery.data?.items ?? [])
   const memberOptions = (membersQuery.data?.items ?? []).map((m) => ({
     value: m.userId,
-    label: m.displayName || m.username,
+    label: userLabel(m),
   }))
 
   const invalidate = () => {
@@ -125,7 +125,7 @@ export default function TaskDetailPage() {
   const blockersOf = (nodeId: string): Blocker[] | undefined =>
     nextQuery.data?.nextActions.find((a) => a.nodeId === nodeId)?.blockers
   const approvals = t.workflow?.approvals
-  const assignee = t.assigneeId ? (memberNames[t.assigneeId] ?? t.assigneeId) : '未指派'
+  const assignee = t.assigneeId ? memberNameOf(memberNames, t.assigneeId) : '未指派'
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -282,7 +282,7 @@ export default function TaskDetailPage() {
                 <div>
                   <Space>
                     <Typography.Text strong>
-                      {memberNames[a.reviewerId] ?? a.reviewerId}
+                      {memberNameOf(memberNames, a.reviewerId)}
                     </Typography.Text>
                     <Tag color={a.decision === 'approve' ? 'green' : 'red'}>
                       {a.decision === 'approve' ? '通过' : '驳回'}

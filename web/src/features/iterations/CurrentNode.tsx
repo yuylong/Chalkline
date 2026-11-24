@@ -8,11 +8,13 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { App, Button, Card, Result, Space, Tag, Typography } from 'antd'
 import { useLocation, useNavigate, useParams } from 'react-router'
 import { apiGet, apiPost } from '../../shared/api'
-import { fmtTime, nodeStatusMeta } from '../../shared/status'
+import { fmtTime, memberNameMap, nodeStatusMeta } from '../../shared/status'
 import { DetailError, PageLoading } from '../../shared/ui'
 import type {
   InstanceView,
   IterationDetail,
+  ListEnvelope,
+  MemberView,
   NextActionReport,
   NodeOpResult,
 } from '../../shared/types'
@@ -41,6 +43,14 @@ export default function IterationCurrentNodePage() {
     queryKey: ['next-action', 'iteration', id],
     queryFn: () => apiGet<NextActionReport>(`/iterations/${id}/next-action`),
   })
+  // 评审人 / 提交人展示用：产品成员名映射（查询键与迭代页一致，共享缓存）。
+  const productId = itQuery.data?.productId ?? ''
+  const membersQuery = useQuery({
+    queryKey: ['members', productId],
+    queryFn: () => apiGet<ListEnvelope<MemberView>>(`/products/${productId}/members`),
+    enabled: productId !== '',
+  })
+  const memberNames = memberNameMap(membersQuery.data?.items ?? [])
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ['iteration', id] })
@@ -110,6 +120,7 @@ export default function IterationCurrentNodePage() {
           artifacts={wfQuery.data.artifacts}
           approvals={wfQuery.data.approvals}
           blockers={blockers}
+          memberNames={memberNames}
           onStart={node.status === 'ready' ? () => startMut.mutate() : undefined}
           starting={startMut.isPending}
           onDone={invalidate}

@@ -50,7 +50,7 @@ type AuditFilter struct {
 	Offset      int
 }
 
-// AuditRow 是审计检索结果行（联用户表补展示名）。
+// AuditRow 是审计检索结果行（联用户表补展示名，格式「显示名（用户名）」；用户已删时回退 actor_id）。
 type AuditRow struct {
 	ID          int64
 	ActorID     string
@@ -122,7 +122,8 @@ func auditLimitOffset(f AuditFilter) (int, int) {
 func ListAuditLogs(ctx context.Context, q Querier, f AuditFilter) ([]AuditRow, error) {
 	where, args := auditWhere(f)
 	limit, offset := auditLimitOffset(f)
-	sql := `SELECT a.id, a.actor_id, COALESCE(u.display_name, u.username, a.actor_id),
+	sql := `SELECT a.id, a.actor_id,
+	               COALESCE(NULLIF(u.display_name, '') || '（' || u.username || '）', u.username, a.actor_id),
 	               a.action, a.subject_type, a.subject_id, a.payload, a.created_at
 	          FROM audit_logs a LEFT JOIN users u ON u.id = a.actor_id` +
 		where + ` ORDER BY a.id DESC LIMIT ` + strconv.Itoa(limit) + ` OFFSET ` + strconv.Itoa(offset)
