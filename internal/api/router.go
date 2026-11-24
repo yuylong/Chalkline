@@ -89,6 +89,10 @@ func NewRouter(d Deps) http.Handler {
 			g.Post("/products/{pid}/iterations", h.createIteration)
 			g.Get("/iterations/{id}", h.getIteration)
 			g.Post("/iterations/{id}/tasks", h.createTask)
+			// 个人「当前迭代」：首页直接展示该迭代看板（每人一条，覆盖即替换）。
+			g.Get("/current-iteration", h.getCurrentIteration)
+			g.Put("/current-iteration", h.putCurrentIteration)
+			g.Delete("/current-iteration", h.deleteCurrentIteration)
 			g.Get("/tasks", h.listTasks)
 			g.Get("/tasks/{id}", h.getTask)
 			g.Patch("/tasks/{id}", h.updateTask)

@@ -22,6 +22,9 @@ REST（M1）：
 | `GET /api/v1/products/{pid}/iterations` | 迭代列表，可按状态过滤 | 该产品成员 |
 | `POST /api/v1/products/{pid}/iterations` | 建迭代（实例化工作流） | `pm` / `admin` |
 | `GET /api/v1/iterations/{id}` | 迭代详情 + 当前阶段进度 | 该产品成员 |
+| `GET /api/v1/current-iteration` | 我的当前迭代（未设置返回 `null`） | 登录用户 |
+| `PUT /api/v1/current-iteration` | 设为当前迭代（须对该产品可见、非终态） | 该产品成员 |
+| `DELETE /api/v1/current-iteration` | 取消当前迭代（幂等） | 登录用户 |
 | `POST /api/v1/iterations/{id}/tasks` | 建一级任务（校验当前阶段允许建任务） | `pm` / `admin` / 产品成员 |
 | `GET /api/v1/tasks/{id}` | 任务详情：子树、模块、工作流状态、材料、审批 | 该产品成员 |
 | `POST /api/v1/tasks/{id}/children` | 批量拆子任务 | 任务负责人 / `pm` |
@@ -36,6 +39,7 @@ MCP：`create_iteration` / `create_task` / `decompose_task` / `assign_task` / `l
 - **建任务/拆子任务**：校验当前迭代所处节点 `allows_task_creation`（不变量 5，向 workflow 查实例当前节点）→ 校验子任务与父同产品同迭代（不变量 2）→ 按父级维度分配编号（并发不重复）→ 写 `tasks` → 继承父任务模板/模块 → 实例化任务工作流 → 审计。
 - **任务状态**：不存独立 `status` 字段做真相；读时由 workflow 实例的终态节点投影（`done` / `cancelled`），未到终态为 `open`（model.md「状态投影」）。
 - **移除迭代（收口）**：迭代进入终态前，其下未终结任务必须显式转移或取消（不变量 10，由 workflow 迭代收口节点 `require_iteration_tasks_done` 拦截）。
+- **当前迭代（个人偏好）**：每人至多一条「当前迭代」，登录后控制台首页直接渲染该迭代看板，省去「产品 → 迭代」逐级点击。设置时校验对该迭代所属产品可见（非成员 404）且迭代非终态；取消幂等。迭代被删除时随外键级联清理；若已失去可见性（成员被移除），读接口按「未设置」返回而不报错。
 
 ## 数据
 
@@ -44,6 +48,7 @@ M1 新建迁移：
 - `iterations`：`id` / `product_id` / `name` / `goal` / `number`（`CHK-IT<n>`）/ `starts_on` / `ends_on` / `status` / `workflow_instance_id` / 时间戳；`(product_id, number)` 唯一。
 - `tasks`：`id` / `product_id` / `iteration_id` / `number`（多级）/ `parent_id` / `title` / `description` / `kind` / `assignee_id` / `priority` / `workflow_instance_id` / 时间戳；编号不可变。
 - `task_modules`：`task_id` + `module_id` 联合主键；模块必须与任务同产品（不变量 2）。
+- `user_current_iterations`（0010）：`user_id` 主键（每人一条）/ `iteration_id`（外键级联删除）/ `updated_at`。
 - 编号分配：用 Postgres sequence 或计数器表按「产品（顶层任务）/ 父任务（子任务）」维度单调递增，**永不复用、永不重排**（不变量 3）。
 
 > 工作流实例与节点状态表归 workflow 模块，本模块只存外键 `workflow_instance_id`。

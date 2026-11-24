@@ -48,6 +48,10 @@ type API interface {
 	CreateIteration(ctx context.Context, actor Actor, productID string, in CreateIterationInput) (IterationView, error)
 	ListIterations(ctx context.Context, actor Actor, productID string, status *planning.IterationStatus) ([]IterationView, error)
 	GetIteration(ctx context.Context, actor Actor, id string) (IterationDetail, error)
+	// 个人「当前迭代」偏好：首页直接展示该迭代看板。
+	GetCurrentIteration(ctx context.Context, actor Actor) (CurrentIterationView, error)
+	SetCurrentIteration(ctx context.Context, actor Actor, iterationID string) (IterationDetail, error)
+	ClearCurrentIteration(ctx context.Context, actor Actor) error
 	CreateTask(ctx context.Context, actor Actor, in CreateTaskInput) (TaskView, error)
 	DecomposeTask(ctx context.Context, actor Actor, parentTaskID string, children []CreateTaskInput) ([]TaskView, error)
 	GetTask(ctx context.Context, actor Actor, id string) (TaskDetail, error)
