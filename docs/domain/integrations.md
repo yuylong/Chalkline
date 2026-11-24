@@ -81,7 +81,7 @@ Redmine 明确**不反向回写状态**：流程状态的唯一事实来源是 C
 
 投递规则：
 
-- 静态通道（环境变量 `CHALKLINE_WEBHOOK_URL` / SMTP）：指数退避重试，最多 5 次，超过标记 `failed` 并在控制台告警。
+- 静态通道（环境变量 `CHALKLINE_WEBHOOK_URL` / SMTP）：指数退避重试，最多 5 次，超过标记 `failed` 并在控制台告警。SMTP 发件服务器与账号可经管理台「邮箱配置」维护（见下节），环境变量仍是默认值与回退来源。
 - **Webhook 订阅（M3）**：投递器每轮读取 `webhook_subscriptions` 中 `active` 的订阅，按 `event_types` 过滤后 POST 到各自 URL，带 `X-Chalkline-Subscription-Id` 与 `X-Chalkline-Signature` 头；**尽力而为**——单个订阅失败只记在该订阅行（`last_error`），不阻断事件流转，也不触发事件重试。
 - **投递失败不阻断流程**：门禁判定不依赖通知是否送达。
 - 事件内容只含 id、标题、链接、操作者，不携带正文。
@@ -101,9 +101,18 @@ Redmine 明确**不反向回写状态**：流程状态的唯一事实来源是 C
 - **推**：Webhook 订阅（上节）。事件只含元数据，外部系统需要细节时再经 REST 回查。
 - 不做匿名访问、不做独立 API Key 体系：单团队部署下，成员身份 + PAT 已覆盖全部外部消费方；新增凭据形态只会增加泄露面。
 
+## 邮箱配置（M4）
+
+admin 在控制台「邮箱配置」页（位于 Webhook 订阅之前）或 REST（`GET/PATCH /api/v1/integration/smtp`）维护发件服务器：`enabled` / `host` / `port` / `username` / `from` 与发件密码。
+
+- **密码存储**：AES-GCM 加密落库（`smtp_configs.password_enc`），密钥来自 `CHALKLINE_SECRET_KEY`（未设置回退 `CHALKLINE_JWT_SECRET`）；API 永不回显，只报「已配置 / 未配置」。这是「凭据不落库」的唯一例外（AGENT 红线 8 / tech.md 约束 10）。
+- **合并语义**：未保存过或字段留空 = 沿用环境变量默认值（`CHALKLINE_SMTP_*`）；`enabled=false` 即整体停发；密码提交空串 = 清除库内密码（回退环境变量）。
+- **收件人**：仍经 `CHALKLINE_NOTIFY_EMAILS` 配置（页面只读展示），不进库。
+- **生效时机**：投递器每轮投递前重新解析生效配置，保存后无需重启；密钥变更导致解密失败时按「密码未配置」降级并告警，不阻断投递。
+
 ## 安全
 
-- 各 provider 的 `baseUrl` 与凭据存环境变量或密钥文件，**不落库存明文**。
+- 各 provider 的 `baseUrl` 与凭据存环境变量或密钥文件，**不落库存明文**。唯一例外：SMTP 发件密码可经管理台保存，以 AES-GCM 加密落库（密钥 `CHALKLINE_SECRET_KEY`，未设置回退 `CHALKLINE_JWT_SECRET`），API 永不回显、不进日志。
 - 出站请求做域名白名单校验，禁止跟随任意重定向（防 SSRF）。
 - Webhook 载荷带签名头，接收方可校验。
 - 邮件只发内网 SMTP，默认关闭对外直发。

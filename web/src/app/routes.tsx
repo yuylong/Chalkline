@@ -15,6 +15,7 @@ import IterationDetail from '../features/iterations/Detail'
 import ProductDetail from '../features/products/Detail'
 import ProductList from '../features/products/List'
 import ReviewQueue from '../features/reviews/Queue'
+import SmtpConfig from '../features/smtp/Config'
 import TaskDetail from '../features/tasks/Detail'
 import UserList from '../features/users/List'
 import WebhookList from '../features/webhooks/List'
@@ -45,6 +46,7 @@ export default function AppRoutes() {
           <Route path="/tasks/:id" element={<TaskDetail />} />
           <Route path="/reviews" element={<ReviewQueue />} />
           <Route path="/audit" element={<AuditList />} />
+          <Route path="/smtp" element={<SmtpConfig />} />
           <Route path="/webhooks" element={<WebhookList />} />
           <Route path="/users" element={<UserList />} />
           <Route path="/workflows" element={<WorkflowList />} />

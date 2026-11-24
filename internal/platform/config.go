@@ -1,4 +1,4 @@
-// Package platform 提供横切基础设施：配置、日志、数据库迁移。
+// Package platform 提供横切基础设施：配置、日志、数据库迁移、静态凭据加密。
 // 它可以被所有层使用，但不得反向 import 业务包（见 docs/structure.md 分层边界）。
 package platform
 
@@ -26,6 +26,9 @@ type Config struct {
 	WriteTimeout time.Duration
 	// JWT 签名密钥；未设置时进程启动生成临时密钥并告警（重启后会话失效，生产必须设置）。
 	JWTSecret string
+	// 静态凭据加密密钥（CHALKLINE_SECRET_KEY；未设置回退 JWTSecret）。
+	// 用途：SMTP 发件密码加密落库（红线 8 唯一例外，见 secret.go）。
+	SecretKey string
 	// 首启 admin 引导凭据（可选）：users 表为空且二者非空时自动创建 admin。
 	AdminUsername string
 	AdminPassword string
@@ -75,6 +78,7 @@ func Load() (Config, error) {
 		ReadTimeout:     envDuration("CHALKLINE_READ_TIMEOUT", 30*time.Second),
 		WriteTimeout:    envDuration("CHALKLINE_WRITE_TIMEOUT", 60*time.Second),
 		JWTSecret:       os.Getenv("CHALKLINE_JWT_SECRET"),
+		SecretKey:      envString("CHALKLINE_SECRET_KEY", os.Getenv("CHALKLINE_JWT_SECRET")),
 		AdminUsername:   os.Getenv("CHALKLINE_ADMIN_USERNAME"),
 		AdminPassword:   os.Getenv("CHALKLINE_ADMIN_PASSWORD"),
 
