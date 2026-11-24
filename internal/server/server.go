@@ -14,6 +14,7 @@ import (
 	"github.com/yuylong/Chalkline/internal/app"
 	"github.com/yuylong/Chalkline/internal/auth"
 	"github.com/yuylong/Chalkline/internal/domain/identity"
+	"github.com/yuylong/Chalkline/internal/domain/workitem"
 	"github.com/yuylong/Chalkline/internal/events"
 	"github.com/yuylong/Chalkline/internal/integration"
 	"github.com/yuylong/Chalkline/internal/integration/notify"
@@ -64,13 +65,24 @@ func Run(ctx context.Context) error {
 
 	// 集成装配（M2）：出站白名单客户端 + provider 注册表（git/svn/outline/redmine）。
 	// 白名单为空时拒绝一切出站：Snapshot 全部降级，Validate 只做本地校验。
+	// M3：注册表叠加运行时配置解析——管理台保存的启停/baseURL 立即生效（凭据仍只读环境变量）。
 	safeClient := integration.NewSafeClient(cfg.OutboundAllowlist)
 	artifactGate := integration.NewRegistry(
 		integration.NewGitProvider(safeClient),
 		integration.NewSVNProvider(safeClient),
 		integration.NewOutlineProvider(safeClient, cfg.OutlineBaseURL, cfg.OutlineToken),
 		integration.NewRedmineProvider(safeClient, cfg.RedmineBaseURL, cfg.RedmineToken),
-	)
+	).WithConfig(func(ctx context.Context, kind workitem.ArtifactProvider) (integration.ProviderConfig, bool) {
+		db, ok := state.snapshot()
+		if !ok {
+			return integration.ProviderConfig{}, false // 未就绪：按默认启用
+		}
+		row, err := store.ProviderConfigByKind(ctx, db.Q(), string(kind))
+		if err != nil {
+			return integration.ProviderConfig{}, false // 未配置/查询失败：按默认启用
+		}
+		return integration.ProviderConfig{Enabled: row.Enabled, BaseURL: row.BaseURL}, true
+	})
 
 	var svcMu sync.RWMutex
 	var svc app.API
@@ -93,6 +105,12 @@ func Run(ctx context.Context) error {
 						s := app.NewService(db, logger, jwt, artifactGate, app.Options{
 							ReviewSLA:        cfg.ReviewSLA,
 							ReviewEscalation: cfg.ReviewEscalation,
+							ProviderDefaults: []app.ProviderDefault{
+								{Kind: "git", Label: "Git / GitLab / Gitea"},
+								{Kind: "svn", Label: "SVN"},
+								{Kind: "outline", Label: "Outline", BaseURL: cfg.OutlineBaseURL, TokenRequired: true, TokenConfigured: cfg.OutlineToken != ""},
+								{Kind: "redmine", Label: "Redmine", BaseURL: cfg.RedmineBaseURL, TokenRequired: true, TokenConfigured: cfg.RedmineToken != ""},
+							},
 						})
 						created, berr := s.BootstrapAdmin(ctx, cfg.AdminUsername, cfg.AdminPassword)
 						if berr != nil {
@@ -138,10 +156,10 @@ func Run(ctx context.Context) error {
 	mcpHandler := mcp.NewHandler(mcp.Deps{Logger: logger, Svc: getSvc})
 
 	srv := &http.Server{
-		Addr:          cfg.Addr,
-		Handler:       newRouter(logger, state, getSvc, authmw, mcpHandler, eventHub),
-		ReadTimeout:   cfg.ReadTimeout,
-		WriteTimeout:  cfg.WriteTimeout,
+		Addr:         cfg.Addr,
+		Handler:      newRouter(logger, state, getSvc, authmw, mcpHandler, eventHub),
+		ReadTimeout:  cfg.ReadTimeout,
+		WriteTimeout: cfg.WriteTimeout,
 	}
 
 	errCh := make(chan error, 1)

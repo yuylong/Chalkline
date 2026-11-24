@@ -25,6 +25,13 @@ func NewOutlineProvider(c *safeClient, baseURL, token string) *OutlineProvider {
 
 func (o *OutlineProvider) Kind() workitem.ArtifactProvider { return workitem.ProviderOutline }
 
+// WithBaseURL 返回覆盖 baseURL 的副本（管理台配置热应用，不修改共享实例）。
+func (o *OutlineProvider) WithBaseURL(baseURL string) Provider {
+	cp := *o
+	cp.baseURL = strings.TrimRight(baseURL, "/")
+	return &cp
+}
+
 // Validate：URL 合法（domain 已保证）+ 私网地址拦截；不出站、不要求 Outline 实时可访问。
 func (o *OutlineProvider) Validate(_ context.Context, ref workitem.ArtifactRef) error {
 	if ref.URL == "" {

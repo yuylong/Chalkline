@@ -62,9 +62,15 @@ export default function Layout() {
       ? '/audit'
       : location.pathname.startsWith('/webhooks')
         ? '/webhooks'
-        : location.pathname === '/' || location.pathname.startsWith('/products')
-          ? '/'
-          : location.pathname
+        : location.pathname.startsWith('/users')
+          ? '/users'
+          : location.pathname.startsWith('/workflows')
+            ? '/workflows'
+            : location.pathname.startsWith('/integrations')
+              ? '/integrations'
+              : location.pathname === '/' || location.pathname.startsWith('/products')
+                ? '/'
+                : location.pathname
 
   return (
     <AntLayout style={{ minHeight: '100vh' }}>
@@ -92,10 +98,13 @@ export default function Layout() {
             },
             ...(isAdmin
               ? [
+                  { key: '/users', label: '用户管理' },
+                  { key: '/integrations', label: 'Provider 配置' },
                   { key: '/audit', label: '审计' },
                   { key: '/webhooks', label: 'Webhook 订阅' },
                 ]
               : []),
+            { key: '/workflows', label: '工作流' },
           ]}
           onClick={({ key }) => navigate(key)}
         />

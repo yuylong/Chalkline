@@ -28,6 +28,9 @@
 | `tasks` | 任务树（多级拆解）、任务详情（节点状态、材料、审批） | planning + workflow |
 | `gates` | 门禁材料查看与提交、审批操作 | workflow |
 | `reviews` | 待我审批队列、审批历史 | workflow + identity |
+| `users` | 用户管理（admin）：成员列表、新建、改角色/启禁用、重置密码 | identity |
+| `workflows` | 工作流模板：列表、YAML 编辑（新建/更新）、导入/导出、归档 | workflow |
+| `integrations` | Provider 配置（admin）：启停与 baseURL 可视化维护 | integration |
 
 ## 核心流程
 
@@ -94,3 +97,9 @@
 - **审计页**（admin）：`/audit` 全局检索（操作者/动作/主体/产品/时间范围 + 分页），载荷 JSON 展示；产品内审计走 `GET /products/{id}/audit-logs`（REST，成员可用）。
 - **Webhook 订阅页**（admin）：`/webhooks` 订阅 CRUD、启停开关、最近投递结果展示。
 - **审批队列**：条目展示等待时长，超期（评审 SLA）标红。
+
+### 管理能力（M3 补全）
+
+- **用户管理**（admin，`/users`）：成员列表、新建（用户名不可改）、改全局角色/启禁用、重置密码；权限判定在后端（非 admin 403）。
+- **工作流模板**（`/workflows`）：列表（按 scope 过滤）、YAML 新建/更新（服务端 DAG 与门禁校验，更新自动升版本）、导入（冲突换 id/升版本）、导出下载、归档。
+- **Provider 配置**（admin，`/integrations`）：`enabled` 与 `baseURL` 可视化维护并持久化（`integration_provider_configs`），保存后 `integration.Registry` 运行时生效；**凭据仍只读环境变量**，页面仅展示「是否已配置」，不显示/编辑 token。
