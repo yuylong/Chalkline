@@ -92,7 +92,7 @@
 - 国际化是否在 M2 做？→ **已定**：先中文（antd ConfigProvider + dayjs zh-CN），i18n 框架预留。
 - JWT 存储位置？→ **已定**：仅内存，刷新页面回登录页；不落 localStorage/sessionStorage。
 - 材料/审批数据来源？→ **已定**：由实例视图（`InstanceView.artifacts` / `.approvals`）随任务/迭代详情返回，前端不做二次聚合。- **评审时如何看成果物？**→ **已定**：审批队列每条待办提供「查看成果物」弹窗（复用实例视图缓存键，SSE 自动刷新）；任务/迭代详情提供按步骤分组的成果物卡片，待审步骤置顶。
-- inline 成果物如何渲染？→ **已定**：按 Markdown 渲染（`react-markdown`，`web/src/shared/markdown.tsx` 统一组件）；列表行内显示纯文本摘要，详情弹窗显示完整渲染，附「复制原文」。
+- inline 成果物如何渲染？→ **已定**：按 Markdown 渲染（`react-markdown` + `remark-gfm`，`web/src/shared/markdown.tsx` 统一组件）。必须启用 `remark-gfm`：`react-markdown` 默认只解析 CommonMark，**GFM 表格语法会退化成竖线纯文本**；表格横向滚动由外层包装容器承担（不能在 `<table>` 上用 `display:block`，会破坏列宽与 `border-collapse`），列对齐透传 GFM 的 `:---:`/`:---:`/`---:` 语法。列表行内显示纯文本摘要，详情弹窗显示完整渲染，附「复制原文」。
 - 迭代页如何组织阶段成果物？→ **已定**：`gates/CurrentNodePanel.tsx`——摘要可折叠，展开后就地展示最新成果物正文（不弹窗）、历史版本与评审意见；「最新」由 `ArtifactRef.createdAt` 倒序判定（后端 `ArtifactView` 透传）。
 ## M3 增量：实时推送与规模化视图
 
