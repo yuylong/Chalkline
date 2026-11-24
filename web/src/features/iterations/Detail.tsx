@@ -1,5 +1,5 @@
 // 迭代详情 + 看板（合并页）：基本信息、阶段泳道（生命周期节点，并行并列
-// 展示）、当前节点摘要（点击进入节点详情页）、任务看板、进度图表。
+// 展示，点击进入节点详情页）、当前节点摘要、任务看板、进度图表。
 // 另可作为「当前迭代」首页复用（IterationPane 显式传 iterationId）。
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { App, Button, Card, Progress, Space, Tag, Typography } from 'antd'
@@ -24,7 +24,6 @@ import type {
   NextActionReport,
   TaskView,
 } from '../../shared/types'
-import { ArtifactBrowser } from '../gates/Artifacts'
 import { CurrentNodeSummary } from '../gates/CurrentNodePanel'
 import TaskBoard from './Board'
 import IterationCharts from './Charts'
@@ -179,9 +178,16 @@ export function IterationPane({ iterationId }: { iterationId: string }) {
                 <Card
                   key={n.id}
                   size="small"
+                  hoverable
+                  onClick={() =>
+                    navigate(`/iterations/${id}/node/${n.id}`, {
+                      state: { from: location.pathname + location.search },
+                    })
+                  }
                   style={{
                     minWidth: 140,
                     flex: '1 1 140px',
+                    cursor: 'pointer',
                     borderColor: active ? '#1677ff' : undefined,
                   }}
                 >
@@ -200,7 +206,7 @@ export function IterationPane({ iterationId }: { iterationId: string }) {
         )}
       </Card>
 
-      <Card title="当前节点摘要（点击进入节点详情页）">
+      <Card title="当前节点摘要">
         {wfQuery.data?.terminal ? (
           <Typography.Text type="secondary">
             生命周期已达终态（{wfQuery.data.terminal === 'done' ? '已收尾' : '已取消'}），不可回退。
@@ -225,14 +231,6 @@ export function IterationPane({ iterationId }: { iterationId: string }) {
             ))}
           </Space>
         )}
-      </Card>
-
-      <Card title="历史阶段成果物（点击查看正文）">
-        <ArtifactBrowser
-          artifacts={wfQuery.data?.artifacts}
-          nodes={wfQuery.data?.nodes}
-          memberNames={memberNames}
-        />
       </Card>
 
       <Card title="任务看板（按各任务工作流当前节点分列）">
