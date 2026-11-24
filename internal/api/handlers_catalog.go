@@ -131,6 +131,21 @@ func (h *handlers) listMembers(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"items": items})
 }
 
+// listMemberCandidates 列可加入产品的成员（下拉候选）：产品 owner / admin。
+func (h *handlers) listMemberCandidates(w http.ResponseWriter, r *http.Request) {
+	actor, err := h.actor(r)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	items, err := h.svc().ListMemberCandidates(r.Context(), actor, pathParam(r, "id"))
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
 type upsertMemberReq struct {
 	UserID string `json:"userId"`
 	Role   string `json:"role"`
@@ -188,8 +203,8 @@ func (h *handlers) listModules(w http.ResponseWriter, r *http.Request) {
 
 type createModuleReq struct {
 	ParentID  string `json:"parentId"`
-	Name     string `json:"name"`
-	SortOrder int   `json:"sortOrder"`
+	Name      string `json:"name"`
+	SortOrder int    `json:"sortOrder"`
 }
 
 func (h *handlers) createModule(w http.ResponseWriter, r *http.Request) {

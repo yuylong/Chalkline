@@ -36,6 +36,8 @@ type API interface {
 	GetOverview(ctx context.Context, actor Actor) (OverviewView, error)
 	ListVisibleProductIDs(ctx context.Context, actor Actor) ([]string, error)
 	ListMembers(ctx context.Context, actor Actor, productID string) ([]MemberView, error)
+	// ListMemberCandidates 添加成员时的候选用户（产品 owner / admin）。
+	ListMemberCandidates(ctx context.Context, actor Actor, productID string) ([]UserView, error)
 	UpsertMember(ctx context.Context, actor Actor, productID, userID string, role product.MemberRole) error
 	RemoveMember(ctx context.Context, actor Actor, productID, userID string) error
 	CreateModule(ctx context.Context, actor Actor, productID, parentID, name string, sortOrder int) (ModuleView, error)

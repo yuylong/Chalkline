@@ -76,6 +76,7 @@ func NewRouter(d Deps) http.Handler {
 			g.Get("/overview", h.getOverview)
 			g.Get("/products/{id}/audit-logs", h.auditLogs)
 			g.Get("/products/{id}/members", h.listMembers)
+			g.Get("/products/{id}/member-candidates", h.listMemberCandidates)
 			g.Post("/products/{id}/members", h.upsertMember)
 			g.Delete("/products/{id}/members/{uid}", h.removeMember)
 			g.Get("/products/{id}/modules", h.listModules)

@@ -24,6 +24,7 @@ REST（M1）：
 | `GET /api/v1/products/{id}` | 产品详情：模块树、默认工作流 | 该产品成员 / `admin` |
 | `PATCH /api/v1/products/{id}` | 改名、设默认模板、归档 | 产品 `owner` / `admin` |
 | `GET /api/v1/products/{id}/members` | 成员与产品角色 | 该产品成员 / `admin` |
+| `GET /api/v1/products/{id}/member-candidates` | 可加入本产品的成员候选（启用且尚未加入），供控制台下拉选择 | 产品 `owner` / `admin` |
 | `POST /api/v1/products/{id}/members` | 加入成员 / 调角色 | 产品 `owner` / `admin` |
 | `DELETE /api/v1/products/{id}/members/{uid}` | 移除成员（未终结任务须先转派） | 产品 `owner` / `admin` |
 | `POST /api/v1/products/{id}/modules` | 建模块 | 产品 `owner` / `pm` / `admin` |

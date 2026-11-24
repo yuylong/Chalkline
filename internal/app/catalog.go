@@ -26,10 +26,10 @@ type ProductLite struct {
 type ProductView struct {
 	ProductLite
 	Description                string `json:"description"`
-	DefaultIterationWorkflowID  string `json:"defaultIterationWorkflowId"`
-	DefaultTaskWorkflowID       string `json:"defaultTaskWorkflowId"`
-	CreatedBy                   string `json:"createdBy"`
-	CreatedAt                   string `json:"createdAt"`
+	DefaultIterationWorkflowID string `json:"defaultIterationWorkflowId"`
+	DefaultTaskWorkflowID      string `json:"defaultTaskWorkflowId"`
+	CreatedBy                  string `json:"createdBy"`
+	CreatedAt                  string `json:"createdAt"`
 }
 
 func viewProduct(p store.ProductRow) ProductView {
@@ -61,7 +61,7 @@ func (s *Service) CreateProduct(ctx context.Context, actor Actor, in CreateProdu
 	}
 	row := store.ProductRow{
 		ID: p.ID, Key: string(p.Key), Name: p.Name, Description: p.Description,
-		Status: product.StatusActive,
+		Status:                     product.StatusActive,
 		DefaultIterationWorkflowID: "wf-iteration-lifecycle", // 内置默认模板
 		DefaultTaskWorkflowID:      "wf-task-standard",
 		CreatedBy:                  p.CreatedBy,
@@ -127,8 +127,8 @@ type DocumentView struct {
 // ProductDetail 是产品详情：模块树、成员、文档。
 type ProductDetail struct {
 	ProductView
-	Members []MemberView `json:"members"`
-	Modules []ModuleView `json:"modules"` // 树根数组
+	Members  []MemberView  `json:"members"`
+	Modules  []ModuleView  `json:"modules"` // 树根数组
 	Document *DocumentView `json:"document,omitempty"`
 }
 
@@ -296,6 +296,29 @@ func (s *Service) ListMembers(ctx context.Context, actor Actor, productID string
 			UserID: m.UserID, Username: m.Username, DisplayName: m.DisplayName,
 			Role: string(m.MemberRole), CreatedAt: m.CreatedAt.UTC().Format(time.RFC3339),
 		})
+	}
+	return out, nil
+}
+
+// ListMemberCandidates 列「可加入本产品的成员」候选（产品 owner / admin）。
+// 控制台添加成员改为下拉选择，避免要求用户手填 usr_ 前缀的 id；
+// 判定与 UpsertMember 一致：先过产品可见性（非成员 404），再要 owner / admin。
+func (s *Service) ListMemberCandidates(ctx context.Context, actor Actor, productID string) ([]UserView, error) {
+	q := s.DB.Q()
+	mc, err := s.mustView(ctx, q, actor, productID)
+	if err != nil {
+		return nil, err
+	}
+	if err := canManageProduct(mc); err != nil {
+		return nil, err
+	}
+	users, err := store.ListActiveUsersNotInProduct(ctx, q, productID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]UserView, 0, len(users))
+	for _, u := range users {
+		out = append(out, viewUser(u))
 	}
 	return out, nil
 }

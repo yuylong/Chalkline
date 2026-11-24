@@ -32,6 +32,7 @@ import type {
   ModuleView,
   ProductDetail,
   ProductView,
+  UserView,
   WhoamiView,
   WorkflowView,
 } from '../../shared/types'
@@ -107,6 +108,7 @@ export default function ProductDetail() {
       memberForm.resetFields()
       queryClient.invalidateQueries({ queryKey: ['product', id] })
       queryClient.invalidateQueries({ queryKey: ['members', id] })
+      queryClient.invalidateQueries({ queryKey: ['member-candidates', id] })
     },
     onError: (err: Error) => message.error(err.message),
   })
@@ -117,6 +119,7 @@ export default function ProductDetail() {
       message.success('成员已移除')
       queryClient.invalidateQueries({ queryKey: ['product', id] })
       queryClient.invalidateQueries({ queryKey: ['members', id] })
+      queryClient.invalidateQueries({ queryKey: ['member-candidates', id] })
     },
     onError: (err: Error) => message.error(err.message),
   })
@@ -170,12 +173,24 @@ export default function ProductDetail() {
     onError: (err: Error) => message.error(err.message),
   })
 
+  // 添加成员改为下拉选择：候选 = 尚未加入本产品的启用成员（产品 owner / admin 可查）。
+  const candidates = useQuery({
+    queryKey: ['member-candidates', id],
+    queryFn: () => apiGet<ListEnvelope<UserView>>(`/products/${id}/member-candidates`),
+    enabled: memberOpen,
+  })
+  const candidateOptions = (candidates.data?.items ?? []).map((u) => ({
+    value: u.id,
+    label: u.displayName ? `${u.displayName}（${u.username}）` : u.username,
+  }))
+
   if (detail.isError) return <DetailError error={detail.error} />
   if (detail.isPending) return <PageLoading />
   const p = detail.data
   const myRole = p.members.find((m) => m.userId === whoami?.user.id)?.role
-  const canArchive =
-    p.status === 'active' && (whoami?.user.roles.includes('admin') || myRole === 'owner')
+  const isAdmin = whoami?.user.roles.includes('admin') === true
+  const canManageMembers = isAdmin || myRole === 'owner'
+  const canArchive = p.status === 'active' && canManageMembers
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -225,7 +240,16 @@ export default function ProductDetail() {
 
       <Card
         title={`成员（${p.members.length}）`}
-        extra={<Button size="small" onClick={() => setMemberOpen(true)}>添加成员</Button>}
+        extra={
+          <Button
+            size="small"
+            onClick={() => setMemberOpen(true)}
+            disabled={!canManageMembers}
+            title={canManageMembers ? undefined : '仅产品负责人或管理员可添加成员'}
+          >
+            添加成员
+          </Button>
+        }
       >
         <Table<MemberView>
           rowKey="userId"
@@ -238,10 +262,28 @@ export default function ProductDetail() {
             {
               title: '产品角色',
               dataIndex: 'role',
-              width: 110,
-              render: (v: string) => {
-                const m = memberRoleMeta[v]
-                return m ? <Tag color={m.color}>{m.label}</Tag> : v
+              width: 150,
+              render: (v: string, record) => {
+                // 有管理权时可直接改角色（复用 upsert 接口）；否则只读展示。
+                if (!canManageMembers) {
+                  const m = memberRoleMeta[v]
+                  return m ? <Tag color={m.color}>{m.label}</Tag> : v
+                }
+                return (
+                  <Select
+                    size="small"
+                    value={v}
+                    style={{ width: 120 }}
+                    loading={upsertMemberMut.isPending}
+                    onChange={(role) =>
+                      upsertMemberMut.mutate({ userId: record.userId, role })
+                    }
+                    options={MEMBER_ROLES.map((r) => ({
+                      value: r,
+                      label: memberRoleMeta[r]?.label ?? r,
+                    }))}
+                  />
+                )
               },
             },
             { title: '加入时间', dataIndex: 'createdAt', width: 160, render: (v: string) => fmtTime(v) },
@@ -363,10 +405,18 @@ export default function ProductDetail() {
         <Form form={memberForm} layout="vertical" onFinish={(v) => upsertMemberMut.mutate(v)} style={{ marginTop: 16 }}>
           <Form.Item
             name="userId"
-            label="用户 ID（usr_ 前缀）"
-            rules={[{ required: true, message: '请输入用户 ID' }]}
+            label="选择成员"
+            rules={[{ required: true, message: '请选择成员' }]}
+            extra={candidates.isError ? '候选列表加载失败，请重试' : undefined}
           >
-            <Input placeholder="usr_xxxxxxxx" />
+            <Select
+              showSearch
+              optionFilterProp="label"
+              placeholder="输入姓名或用户名搜索"
+              loading={candidates.isPending}
+              options={candidateOptions}
+              notFoundContent={candidates.isPending ? '加载中…' : '没有可加入的成员'}
+            />
           </Form.Item>
           <Form.Item name="role" label="产品角色" initialValue="member" rules={[{ required: true }]}>
             <Select
