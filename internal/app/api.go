@@ -79,6 +79,10 @@ type API interface {
 	ListWebhooks(ctx context.Context, actor Actor) ([]WebhookView, error)
 	UpdateWebhook(ctx context.Context, actor Actor, id string, in UpdateWebhookInput) (WebhookView, error)
 	DeleteWebhook(ctx context.Context, actor Actor, id string) error
+
+	// integration（M3 provider 配置，admin；凭据仍只读环境变量）
+	ListProviderConfigs(ctx context.Context, actor Actor) ([]ProviderConfigView, error)
+	UpdateProviderConfig(ctx context.Context, actor Actor, kind string, in ProviderConfigInput) (ProviderConfigView, error)
 }
 
 // 编译期保证 *Service 实现 API。

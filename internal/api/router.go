@@ -41,7 +41,7 @@ func NewRouter(d Deps) http.Handler {
 	r.Use(RequestLogger(d.Logger))
 	r.Use(Recoverer(d.Logger))
 
-	r.Get("/healthz", healthz) // 存活：进程在即 200
+	r.Get("/healthz", healthz)  // 存活：进程在即 200
 	r.Get("/readyz", readyz(d)) // 就绪：数据库连通 + 迁移完成
 
 	h := &handlers{deps: d}
@@ -133,6 +133,10 @@ func NewRouter(d Deps) http.Handler {
 				admin.Post("/webhooks", h.createWebhook)
 				admin.Patch("/webhooks/{id}", h.updateWebhook)
 				admin.Delete("/webhooks/{id}", h.deleteWebhook)
+
+				// M3：集成 provider 配置（admin；凭据仍只读环境变量）
+				admin.Get("/integration/providers", h.listProviderConfigs)
+				admin.Patch("/integration/providers/{kind}", h.updateProviderConfig)
 			})
 		})
 	})

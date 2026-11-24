@@ -32,6 +32,21 @@ export interface WhoamiView {
   via: string
 }
 
+/** 管理台：建成员入参（admin）。 */
+export interface CreateUserInput {
+  username: string
+  displayName: string
+  email: string
+  password: string
+  roles: string[]
+}
+
+/** 管理台：改角色 / 启禁用（admin）。 */
+export interface UpdateUserInput {
+  roles: string[]
+  status: string // active | disabled
+}
+
 // ---- catalog ----
 
 export interface ProductView {
@@ -159,6 +174,15 @@ export interface WorkflowView {
   definition?: string // JSON 文本，仅详情返回
 }
 
+/** 模板导出产物（YAML 与创建/更新入参同构，可直接再导入）。 */
+export interface WorkflowExport {
+  id: string
+  scope: string
+  name: string
+  version: number
+  yaml: string
+}
+
 /** 材料引用（ArtifactRef）。M2 起随实例视图返回（InstanceView.artifacts）。 */
 export interface ArtifactRef {
   kind: string
@@ -257,6 +281,25 @@ export interface WebhookView {
   lastDeliveryAt?: string
   lastDeliveryOk?: boolean
   lastError?: string
+}
+
+// ---- M3：集成 provider 配置（admin；凭据只读环境变量）----
+
+export interface ProviderConfigView {
+  kind: string
+  label: string
+  enabled: boolean
+  baseUrl: string // 生效值（库内覆盖优先）
+  envBaseUrl: string // 环境变量默认值（只读提示）
+  tokenRequired: boolean
+  tokenConfigured: boolean
+  updatedBy?: string
+  updatedAt?: string
+}
+
+export interface ProviderConfigUpdate {
+  enabled?: boolean
+  baseUrl?: string
 }
 
 // ---- M3：SSE 事件流 ----

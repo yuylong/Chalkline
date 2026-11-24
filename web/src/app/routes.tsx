@@ -8,12 +8,15 @@ import Layout from '../components/Layout'
 import { getToken } from '../shared/api'
 import AuditList from '../features/audit/List'
 import Login from '../features/auth/Login'
+import ProviderConfigs from '../features/integrations/Providers'
 import IterationDetail from '../features/iterations/Detail'
 import ProductDetail from '../features/products/Detail'
 import ProductList from '../features/products/List'
 import ReviewQueue from '../features/reviews/Queue'
 import TaskDetail from '../features/tasks/Detail'
+import UserList from '../features/users/List'
 import WebhookList from '../features/webhooks/List'
+import WorkflowList from '../features/workflows/List'
 
 function RequireAuth({ children }: { children: ReactElement }) {
   if (!getToken()) return <Navigate to="/login" replace />
@@ -39,6 +42,9 @@ export default function AppRoutes() {
           <Route path="/reviews" element={<ReviewQueue />} />
           <Route path="/audit" element={<AuditList />} />
           <Route path="/webhooks" element={<WebhookList />} />
+          <Route path="/users" element={<UserList />} />
+          <Route path="/workflows" element={<WorkflowList />} />
+          <Route path="/integrations" element={<ProviderConfigs />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

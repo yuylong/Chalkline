@@ -40,18 +40,22 @@ type Service struct {
 	ReviewSLA time.Duration
 	// ReviewEscalation 升级阈值（M3：超过即升级给产品 owner/admin；0 = 默认 72h）。
 	ReviewEscalation time.Duration
+	// ProviderDefaults 是环境变量提供的集成 provider 默认配置（M3 管理台展示与环境提示）。
+	ProviderDefaults []ProviderDefault
 }
 
-// Options 是 NewService 的可选配置（M3 评审 SLA）。
+// Options 是 NewService 的可选配置（M3 评审 SLA 与集成默认值）。
 type Options struct {
-	ReviewSLA         time.Duration
-	ReviewEscalation  time.Duration
+	ReviewSLA        time.Duration
+	ReviewEscalation time.Duration
+	ProviderDefaults []ProviderDefault
 }
 
 // NewService 组装服务。gate 可为 nil：此时材料只做 domain 格式校验。
 func NewService(db *store.DB, log *slog.Logger, jwt *auth.JWTManager, gate ArtifactGate, opts Options) *Service {
 	return &Service{DB: db, Log: log, JWT: jwt, Now: time.Now, Gate: gate,
-		ReviewSLA: opts.ReviewSLA, ReviewEscalation: opts.ReviewEscalation}
+		ReviewSLA: opts.ReviewSLA, ReviewEscalation: opts.ReviewEscalation,
+		ProviderDefaults: opts.ProviderDefaults}
 }
 
 // newID 生成带类型前缀的短 id（mcp.md：所有 ID 带类型前缀）。

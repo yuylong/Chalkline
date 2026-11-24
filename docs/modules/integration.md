@@ -42,7 +42,8 @@ type Provider interface {
 
 - `outbox_events`（M0 `0001_platform_baseline.sql` 已建，M2 `0007_integration.sql` 增加 `next_attempt_at`）：`id` / `event_type` / `payload`（id、标题、链接、操作者，不携带正文）/ `status`（pending/sent/failed）/ `attempts` / `last_error` / `next_attempt_at` / 时间戳。
 - `external_links`（`0007_integration.sql` 已建）：`subject_type` / `subject_id` / `provider` / `external_id` / `url`，唯一键 `(subject_type, subject_id, provider, external_id)`，用于 Redmine issue 回写、Outline 文档归属等稳定关联（见 model.md「ExternalLink」）；store 提供 `UpsertExternalLink` / `ListExternalLinks`。
-- 各 provider 的 `base_url` 与凭据：环境变量/密钥文件，**不入库**。
+- `integration_provider_configs`（`0009_provider_config.sql`）：`provider` / `enabled` / `base_url` / `updated_by` / `updated_at`。只存启停与地址覆盖，**不存凭据**；无行 = 使用环境变量默认值。
+- 各 provider 的 `base_url` 与凭据：环境变量/密钥文件，**不入库**（base_url 可由管理台覆盖并持久化，凭据永不入库）。
 
 ## 不变量（本模块保证）
 
@@ -76,7 +77,7 @@ type Provider interface {
 ## 开放问题
 
 - 各适配器的优先级：M2 先做 `outline` + `git`（门禁材料最常用），`redmine`/`svn` 按需？→ **已定**：M2 四个全部实现，Validate 均为本地校验（不出站），Snapshot 仅 outline/redmine 做，且白名单为空时零出站。
-- 是否需要配置化的 provider 启停与 base_url 管理界面？→ **已定**：先环境变量（`CHALKLINE_OUTLINE_*` / `CHALKLINE_REDMINE_*`），M3 评估管理 UI。
+- 是否需要配置化的 provider 启停与 base_url 管理界面？→ **已定并交付**：M3 控制台 `/integrations` + `integration_provider_configs`（凭据仍只读环境变量，见下「Provider 配置可视化」）。
 - `next_attempt_at` 与 `attempts` 的语义？→ **已定**：`attempts` 累计失败次数，`next_attempt_at` 控制下次可投递时间（指数退避），达到 5 次标 `failed`。
 
 ## M3 增量：Webhook 订阅管理与开放 API 策略
@@ -89,3 +90,10 @@ type Provider interface {
 - **开放 API**：REST + PAT 即开放 API（拉），Webhook 订阅即推送（推）；不做匿名访问与独立 API Key。
 - 代码：`internal/store/webhooks.go`、`internal/app/webhooks.go`、`internal/api/handlers_scale.go`、`notify/dispatcher.go`（`SubscriptionSource`）；迁移 `0008_scale.sql`。
 - 测试：`notify/dispatcher_subs_test.go`（event_types 过滤、订阅失败不阻断事件、签名头）。
+
+## M3 增量：Provider 配置可视化（已交付）
+
+- **表**：`integration_provider_configs`（迁移 `0009_provider_config.sql`）只存 `provider` / `enabled` / `base_url` / `updated_by` / `updated_at`；**凭据不落库**。
+- **REST（admin）**：`GET /api/v1/integration/providers`、`PATCH /api/v1/integration/providers/{kind}`；仅 `enabled` 与 `baseUrl` 可改，`baseUrl` 必须为 http(s) 且不得内嵌凭据。
+- **运行时生效**：`integration.Registry.WithConfig` 注入解析器（server 组装层读 store）；停用 → 跳过外部快照（本地格式与私网/回环校验仍执行）；`baseURL` 非空 → 以不可变副本覆盖环境变量值。未写入行 = 使用环境变量默认值。
+- **控制台**：`/integrations`（admin）展示 label、生效 baseURL、环境变量默认值、凭据是否已配置（布尔）、启停开关与最近更新人/时间。
