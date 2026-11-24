@@ -1,10 +1,10 @@
 // 迭代详情 + 看板（合并页）：基本信息、阶段泳道（生命周期节点，并行并列
-// 展示）、阶段操作（开始/提交/评审）、任务看板、进度图表。
+// 展示）、当前节点摘要（点击进入节点详情页）、任务看板、进度图表。
 // 另可作为「当前迭代」首页复用（IterationPane 显式传 iterationId）。
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { App, Button, Card, Progress, Space, Tag, Typography } from 'antd'
-import { useNavigate, useParams } from 'react-router'
-import { apiDelete, apiGet, apiPost, apiPut } from '../../shared/api'
+import { useLocation, useNavigate, useParams } from 'react-router'
+import { apiDelete, apiGet, apiPut } from '../../shared/api'
 import {
   ACTIONABLE_STATUSES,
   fmtDate,
@@ -22,11 +22,10 @@ import type {
   ListEnvelope,
   MemberView,
   NextActionReport,
-  NodeOpResult,
   TaskView,
 } from '../../shared/types'
 import { ArtifactBrowser } from '../gates/Artifacts'
-import { CurrentNodePanel } from '../gates/CurrentNodePanel'
+import { CurrentNodeSummary } from '../gates/CurrentNodePanel'
 import TaskBoard from './Board'
 import IterationCharts from './Charts'
 
@@ -39,6 +38,7 @@ export default function IterationDetailRoute() {
 export function IterationPane({ iterationId }: { iterationId: string }) {
   const id = iterationId
   const navigate = useNavigate()
+  const location = useLocation()
   const queryClient = useQueryClient()
   const { message } = App.useApp()
 
@@ -105,24 +105,6 @@ export function IterationPane({ iterationId }: { iterationId: string }) {
   for (const m of membersQuery.data?.items ?? []) {
     memberNames[m.userId] = m.displayName || m.username
   }
-
-  const invalidate = () => {
-    queryClient.invalidateQueries({ queryKey: ['iteration', id] })
-    queryClient.invalidateQueries({ queryKey: ['iteration-workflow', id] })
-    queryClient.invalidateQueries({ queryKey: ['next-action', 'iteration', id] })
-    queryClient.invalidateQueries({ queryKey: ['reviews'] })
-    queryClient.invalidateQueries({ queryKey: ['tasks'] })
-  }
-
-  const startMut = useMutation({
-    mutationFn: (nodeId: string) =>
-      apiPost<NodeOpResult>(`/iterations/${id}/steps/start`, { nodeId, expectedVersion: 0 }),
-    onSuccess: (res) => {
-      message.success(`阶段「${res.node.name}」已开始`)
-      invalidate()
-    },
-    onError: (err: Error) => message.error(err.message),
-  })
 
   if (itQuery.isError) return <DetailError error={itQuery.error} />
   if (itQuery.isPending) return <PageLoading />
@@ -218,7 +200,7 @@ export function IterationPane({ iterationId }: { iterationId: string }) {
         )}
       </Card>
 
-      <Card title="当前节点（摘要 · 点开看操作与成果物）">
+      <Card title="当前节点摘要（点击进入节点详情页）">
         {wfQuery.data?.terminal ? (
           <Typography.Text type="secondary">
             生命周期已达终态（{wfQuery.data.terminal === 'done' ? '已收尾' : '已取消'}），不可回退。
@@ -227,19 +209,18 @@ export function IterationPane({ iterationId }: { iterationId: string }) {
           <Typography.Text type="secondary">当前无可推进阶段。</Typography.Text>
         ) : (
           <Space direction="vertical" size={10} style={{ width: '100%' }}>
-            {actionable.map((n, idx) => (
-              <CurrentNodePanel
+            {actionable.map((n) => (
+              <CurrentNodeSummary
                 key={n.id}
-                scope="iteration"
-                workItemId={id}
                 node={n}
                 artifacts={wfQuery.data?.artifacts}
                 approvals={wfQuery.data?.approvals}
                 blockers={blockersOf(n.id)}
-                defaultExpanded={idx === 0}
-                onStart={n.status === 'ready' ? () => startMut.mutate(n.id) : undefined}
-                starting={startMut.isPending}
-                onDone={invalidate}
+                onClick={() =>
+                  navigate(`/iterations/${id}/node/${n.id}`, {
+                    state: { from: location.pathname + location.search },
+                  })
+                }
               />
             ))}
           </Space>
