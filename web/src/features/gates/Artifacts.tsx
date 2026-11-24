@@ -18,6 +18,7 @@ import {
 } from 'antd'
 import { useState } from 'react'
 import { apiGet, apiPost } from '../../shared/api'
+import { Markdown, MarkdownInlineSummary } from '../../shared/markdown'
 import { ARTIFACT_KINDS, ARTIFACT_PROVIDERS, nodeStatusMeta } from '../../shared/status'
 import { ApiErrorBanner, PageLoading } from '../../shared/ui'
 import type { ArtifactRef, InstanceView, NodeOpResult, NodeStateView } from '../../shared/types'
@@ -60,12 +61,22 @@ function ArtifactDetailModal({ detail, onClose }: { detail: ArtifactDetail | nul
             </a>
           )}
           {a.content && (
-            <Typography.Paragraph
-              style={{ whiteSpace: 'pre-wrap', marginBottom: 0 }}
-              copyable={{ text: a.content }}
-            >
-              {a.content}
-            </Typography.Paragraph>
+            <div>
+              <Typography.Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>
+                内容（Markdown 渲染）
+              </Typography.Text>
+              <div style={{ border: '1px solid #f0f0f0', borderRadius: 6, padding: '8px 12px' }}>
+                <Markdown text={a.content} />
+              </div>
+              <Button
+                size="small"
+                type="text"
+                style={{ marginTop: 4 }}
+                onClick={() => navigator.clipboard?.writeText(a.content ?? '')}
+              >
+                复制原文
+              </Button>
+            </div>
           )}
           {a.snapshot && (
             <div>
@@ -163,9 +174,15 @@ export function ArtifactBrowser({ artifacts, nodes, focusNodeId, memberNames }: 
                   <Space wrap size={[8, 4]}>
                     <Tag color="orange">{a.kind}</Tag>
                     <Tag>{a.provider}</Tag>
-                    <Typography.Text ellipsis style={{ maxWidth: 360 }}>
-                      {a.title || a.url || a.externalId || (a.content ? 'inline 内容' : '—')}
-                    </Typography.Text>
+                    {a.title || a.url || a.externalId ? (
+                      <Typography.Text ellipsis style={{ maxWidth: 360 }}>
+                        {a.title || a.url || a.externalId}
+                      </Typography.Text>
+                    ) : a.content ? (
+                      <MarkdownInlineSummary text={a.content} />
+                    ) : (
+                      <Typography.Text type="secondary">—</Typography.Text>
+                    )}
                     {a.submittedBy && (
                       <Typography.Text type="secondary" style={{ fontSize: 12 }}>
                         {memberNames?.[a.submittedBy] ?? a.submittedBy}
