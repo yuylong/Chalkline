@@ -74,8 +74,7 @@
 
 1. 前端脚手架：Vite + React 19 + TS + Ant Design 5 + TanStack Query + Recharts，接入 `web/src/shared/api.ts` 与路由。
 2. 登录页 + JWT 管理（与 identity 登录端点联调）。
-3. `products` feature：列表、详情（模块树、成员）。
-4. `iterations` feature：看板（阶段泳道、并行分支）、详情。
+3. `products` feature：列表、详情（模块树、成员）。4. `iterations` feature：看板（阶段泳道、并行分支）、详情。
 5. `tasks` feature：任务树（多级展开）、详情（节点状态/材料/审批时间线）。
 6. `reviews` feature：待审批队列 + 审批操作（approve/reject + 驳回理由）。
 7. `gates` feature：材料查看与提交、`pre_review` 自查报告展示。
@@ -107,6 +106,6 @@
 
 ### 管理能力（M3 补全）
 
-- **用户管理**（admin，`/users`）：成员列表、新建（用户名不可改）、改全局角色/启禁用、重置密码；权限判定在后端（非 admin 403）。
-- **工作流模板**（`/workflows`）：列表（按 scope 过滤）、YAML 新建/更新（服务端 DAG 与门禁校验，更新自动升版本）、导入（冲突换 id/升版本）、导出下载、归档。
+- **产品成员**（产品详情页）：添加成员用下拉选择（候选来自 `GET /products/{id}/member-candidates`，仅列出启用且尚未加入的成员），不再要求手填 `usr_` id；角色可在成员表中直接改（复用 upsert 接口）。非产品 `owner` / `admin` 时入口禁用，避免无效请求。
+- **用户管理**（admin，`/users`）：成员列表、新建（用户名不可改）、改全局角色/启禁用、重置密码；权限判定在后端（非 admin 403）。- **工作流模板**（`/workflows`）：列表（按 scope 过滤）、YAML 新建/更新（服务端 DAG 与门禁校验，更新自动升版本）、导入（冲突换 id/升版本）、导出下载、归档。
 - **Provider 配置**（admin，`/integrations`）：`enabled` 与 `baseURL` 可视化维护并持久化（`integration_provider_configs`），保存后 `integration.Registry` 运行时生效；**凭据仍只读环境变量**，页面仅展示「是否已配置」，不显示/编辑 token。

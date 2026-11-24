@@ -64,6 +64,28 @@ func ListUsers(ctx context.Context, q Querier) ([]identity.User, error) {
 	return scanAll(ctx, q, `SELECT `+userCols+` FROM users ORDER BY username`, scanUser)
 }
 
+// ListActiveUsersNotInProduct 列尚未加入某产品的启用成员。
+// 供「添加产品成员」的下拉候选：产品 owner 无需知道 usr_ id，也不能看到全量用户
+// （权限在 app 层按 canManageProduct 判定，这里只做受限投影，不读取 password_hash）。
+func ListActiveUsersNotInProduct(ctx context.Context, q Querier, productID string) ([]identity.User, error) {
+	return scanAll(ctx, q,
+		`SELECT u.id, u.username, u.display_name, u.email, u.roles, u.status
+		 FROM users u
+		 WHERE u.status = $1
+		   AND NOT EXISTS (
+		     SELECT 1 FROM product_members pm WHERE pm.product_id = $2 AND pm.user_id = u.id)
+		 ORDER BY u.username`,
+		func(row rowScanner) (identity.User, error) {
+			var u identity.User
+			var roles []string
+			if err := row.Scan(&u.ID, &u.Username, &u.DisplayName, &u.Email, &roles, &u.Status); err != nil {
+				return identity.User{}, err
+			}
+			u.Roles = ToRoles(roles)
+			return u, nil
+		}, string(identity.UserActive), productID)
+}
+
 // UpdateUser 更新角色与状态（重置角色须至少保留一个合法角色，由 app 校验）。
 func UpdateUser(ctx context.Context, q Querier, id string, roles identity.Roles, status identity.UserStatus) error {
 	tag, err := q.Exec(ctx, `UPDATE users SET roles = $2, status = $3, updated_at = now() WHERE id = $1`,
