@@ -1,18 +1,21 @@
-// 审批队列：待我确认的门禁，10 秒轮询；每条可「通过」或「驳回（必填理由）」。
-// 操作后由 ReviewActions 统一失效相关缓存，队列随轮询/失效刷新。
+// 审批队列：待我确认的门禁，10 秒轮询；每条可「查看成果物」「通过」或
+// 「驳回（必填理由）」。操作后由 ReviewActions 统一失效相关缓存。
 import { useQuery } from '@tanstack/react-query'
-import { Card, Progress, Table, Tag, Typography } from 'antd'
+import { Button, Card, Progress, Space, Table, Tag, Typography } from 'antd'
+import { useState } from 'react'
 import { useNavigate } from 'react-router'
 import { apiGet } from '../../shared/api'
 import { fmtTime } from '../../shared/status'
 import { ApiErrorBanner } from '../../shared/ui'
 import type { ListEnvelope, PendingReviewView } from '../../shared/types'
 import { ReviewActions } from '../gates/ReviewAction'
+import { WorkItemArtifactsModal } from '../gates/Artifacts'
 
 const REVIEW_POLL_MS = 10_000
 
 export default function ReviewQueue() {
   const navigate = useNavigate()
+  const [artifactTarget, setArtifactTarget] = useState<PendingReviewView | null>(null)
   const { data, isPending, isError, error } = useQuery({
     queryKey: ['reviews', 'pending'],
     queryFn: () => apiGet<ListEnvelope<PendingReviewView>>('/reviews/pending'),
@@ -92,18 +95,30 @@ export default function ReviewQueue() {
             {
               title: '操作',
               key: 'op',
-              width: 220,
+              width: 300,
               render: (_, r) => (
-                <ReviewActions
-                  scope={r.workItemType === 'task' ? 'task' : 'iteration'}
-                  workItemId={r.workItemId}
-                  nodeId={r.nodeId}
-                />
+                <Space>
+                  <Button size="small" onClick={() => setArtifactTarget(r)}>
+                    查看成果物
+                  </Button>
+                  <ReviewActions
+                    scope={r.workItemType === 'task' ? 'task' : 'iteration'}
+                    workItemId={r.workItemId}
+                    nodeId={r.nodeId}
+                  />
+                </Space>
               ),
             },
           ]}
         />
       )}
+      <WorkItemArtifactsModal
+        workItemType={artifactTarget?.workItemType ?? 'task'}
+        workItemId={artifactTarget?.workItemId ?? ''}
+        focusNodeId={artifactTarget?.nodeId}
+        open={artifactTarget !== null}
+        onClose={() => setArtifactTarget(null)}
+      />
     </Card>
   )
 }
