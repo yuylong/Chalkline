@@ -1,4 +1,4 @@
-// 产品详情：基本信息、模块树（只读 + 新建）、成员表、迭代列表（跳看板）。
+// 产品详情：基本信息、迭代列表（跳看板）、成员表、模块树（只读 + 新建）。
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   App,
@@ -228,13 +228,63 @@ export default function ProductDetail() {
       </Card>
 
       <Card
-        title="模块树"
-        extra={<Button size="small" onClick={() => setModuleOpen(true)}>新建模块</Button>}
+        title="迭代"
+        extra={<Button size="small" type="primary" onClick={() => setIterationOpen(true)}>新建迭代</Button>}
       >
-        {p.modules.length ? (
-          <Tree treeData={toTreeNodes(p.modules)} defaultExpandAll blockNode />
+        {iterations.isError ? (
+          <ApiErrorBanner error={iterations.error} />
         ) : (
-          <Typography.Text type="secondary">暂无模块</Typography.Text>
+          <Table<IterationView>
+            rowKey="id"
+            size="small"
+            loading={iterations.isPending}
+            pagination={false}
+            dataSource={iterations.data?.items ?? []}
+            onRow={(record) => ({ onClick: () => navigate(`/iterations/${record.id}`), style: { cursor: 'pointer' } })}
+            columns={[
+              { title: '编号', dataIndex: 'number', width: 110 },
+              { title: '名称', dataIndex: 'name' },
+              { title: '目标', dataIndex: 'goal', ellipsis: true, render: (v: string) => v || '—' },
+              {
+                title: '状态',
+                dataIndex: 'status',
+                width: 90,
+                render: (v: string) => {
+                  const m = iterationStatusMeta[v]
+                  return m ? <Tag color={m.color}>{m.label}</Tag> : v
+                },
+              },
+              {
+                title: '起止',
+                key: 'range',
+                width: 200,
+                render: (_, r) => `${fmtDate(r.startsOn)} ~ ${fmtDate(r.endsOn)}`,
+              },
+              {
+                title: '当前迭代',
+                key: 'current',
+                width: 130,
+                render: (_, r) => {
+                  if (r.status !== 'planned' && r.status !== 'active') return '—'
+                  if (current?.iteration?.id === r.id) return <Tag color="orange">当前迭代</Tag>
+                  return (
+                    <Button
+                      size="small"
+                      type="link"
+                      style={{ padding: 0 }}
+                      loading={setCurrentMut.isPending}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setCurrentMut.mutate(r.id)
+                      }}
+                    >
+                      设为当前
+                    </Button>
+                  )
+                },
+              },
+            ]}
+          />
         )}
       </Card>
 
@@ -308,63 +358,13 @@ export default function ProductDetail() {
       </Card>
 
       <Card
-        title="迭代"
-        extra={<Button size="small" type="primary" onClick={() => setIterationOpen(true)}>新建迭代</Button>}
+        title="模块树"
+        extra={<Button size="small" onClick={() => setModuleOpen(true)}>新建模块</Button>}
       >
-        {iterations.isError ? (
-          <ApiErrorBanner error={iterations.error} />
+        {p.modules.length ? (
+          <Tree treeData={toTreeNodes(p.modules)} defaultExpandAll blockNode />
         ) : (
-          <Table<IterationView>
-            rowKey="id"
-            size="small"
-            loading={iterations.isPending}
-            pagination={false}
-            dataSource={iterations.data?.items ?? []}
-            onRow={(record) => ({ onClick: () => navigate(`/iterations/${record.id}`), style: { cursor: 'pointer' } })}
-            columns={[
-              { title: '编号', dataIndex: 'number', width: 110 },
-              { title: '名称', dataIndex: 'name' },
-              { title: '目标', dataIndex: 'goal', ellipsis: true, render: (v: string) => v || '—' },
-              {
-                title: '状态',
-                dataIndex: 'status',
-                width: 90,
-                render: (v: string) => {
-                  const m = iterationStatusMeta[v]
-                  return m ? <Tag color={m.color}>{m.label}</Tag> : v
-                },
-              },
-              {
-                title: '起止',
-                key: 'range',
-                width: 200,
-                render: (_, r) => `${fmtDate(r.startsOn)} ~ ${fmtDate(r.endsOn)}`,
-              },
-              {
-                title: '当前迭代',
-                key: 'current',
-                width: 130,
-                render: (_, r) => {
-                  if (r.status !== 'planned' && r.status !== 'active') return '—'
-                  if (current?.iteration?.id === r.id) return <Tag color="orange">当前迭代</Tag>
-                  return (
-                    <Button
-                      size="small"
-                      type="link"
-                      style={{ padding: 0 }}
-                      loading={setCurrentMut.isPending}
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        setCurrentMut.mutate(r.id)
-                      }}
-                    >
-                      设为当前
-                    </Button>
-                  )
-                },
-              },
-            ]}
-          />
+          <Typography.Text type="secondary">暂无模块</Typography.Text>
         )}
       </Card>
 
