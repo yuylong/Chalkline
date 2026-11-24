@@ -1,7 +1,7 @@
 // Package mcp 是编码 Agent 接入平台的唯一入口：streamable HTTP + PAT 鉴权。
 // 工具只做协议转换——参数校验在领域层，业务规则不得写在这里（AGENT.md 红线 3）。
 // 错误统一为 {"error":{"code","message","details"}} 包络，作为工具结果文本返回
-//（MCP 协议内业务错误经 CallToolResult.IsError 承载；传输层 401 由鉴权中间件负责）。
+// （MCP 协议内业务错误经 CallToolResult.IsError 承载；传输层 401 由鉴权中间件负责）。
 package mcp
 
 import (
@@ -84,7 +84,7 @@ func (r workItemRef) scope() (workitem.Scope, error) {
 
 type artifactArg struct {
 	Kind       string `json:"kind"`
-	Provider    string `json:"provider"`
+	Provider   string `json:"provider"`
 	URL        string `json:"url,omitempty"`
 	ExternalID string `json:"externalId,omitempty"`
 	Title      string `json:"title,omitempty"`
@@ -345,21 +345,21 @@ func (d Deps) registerReadTools(s *mcp.Server) {
 
 func (d Deps) registerWriteTools(s *mcp.Server) {
 	mcp.AddTool[struct {
-		ProductID string `json:"productId"`
-		Name      string `json:"name"`
-		Goal      string `json:"goal,omitempty"`
-		StartsOn  string `json:"startsOn"`
-		EndsOn    string `json:"endsOn"`
+		ProductID  string `json:"productId"`
+		Name       string `json:"name"`
+		Goal       string `json:"goal,omitempty"`
+		StartsOn   string `json:"startsOn"`
+		EndsOn     string `json:"endsOn"`
 		WorkflowID string `json:"workflowId,omitempty"`
 	}, any](s, &mcp.Tool{
 		Name:        "chalkline_create_iteration",
 		Description: "建迭代（一条新生命周期），返回服务端分配的 <key>-IT<n> 编号并实例化生命周期工作流。",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in struct {
-		ProductID string `json:"productId"`
-		Name      string `json:"name"`
-		Goal      string `json:"goal,omitempty"`
-		StartsOn  string `json:"startsOn"`
-		EndsOn    string `json:"endsOn"`
+		ProductID  string `json:"productId"`
+		Name       string `json:"name"`
+		Goal       string `json:"goal,omitempty"`
+		StartsOn   string `json:"startsOn"`
+		EndsOn     string `json:"endsOn"`
 		WorkflowID string `json:"workflowId,omitempty"`
 	}) (*mcp.CallToolResult, any, error) {
 		svc, actor, err := d.svc(ctx)
@@ -498,10 +498,10 @@ func (d Deps) registerWriteTools(s *mcp.Server) {
 
 	mcp.AddTool[struct {
 		workItemRef
-		NodeID          string         `json:"nodeId"`
-		Artifacts       []artifactArg  `json:"artifacts"`
-		Note            string         `json:"note,omitempty"`
-		ExpectedVersion int64          `json:"expectedVersion,omitempty"`
+		NodeID          string        `json:"nodeId"`
+		Artifacts       []artifactArg `json:"artifacts"`
+		Note            string        `json:"note,omitempty"`
+		ExpectedVersion int64         `json:"expectedVersion,omitempty"`
 	}, any](s, &mcp.Tool{
 		Name:        "chalkline_submit_step",
 		Description: "提交节点，携带材料与说明；缺材料 422、门禁不足进入 awaiting_review。重复提交同节点返回当前状态（幂等）。",
@@ -533,8 +533,8 @@ func (d Deps) registerWriteTools(s *mcp.Server) {
 
 	mcp.AddTool[struct {
 		workItemRef
-		NodeID   string       `json:"nodeId"`
-		Artifact artifactArg  `json:"artifact"`
+		NodeID   string      `json:"nodeId"`
+		Artifact artifactArg `json:"artifact"`
 	}, any](s, &mcp.Tool{
 		Name:        "chalkline_attach_artifact",
 		Description: "挂接材料引用：provider + url/externalId，或 inline 内容。替换已进入评审的材料会重置该节点审批收集。",

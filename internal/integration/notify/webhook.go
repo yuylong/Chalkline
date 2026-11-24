@@ -23,13 +23,13 @@ type Webhook struct {
 	Secret string
 	// SubscriptionID 非空时输出 X-Chalkline-Subscription-Id，接收方区分订阅来源。
 	SubscriptionID string
-	Client *http.Client
+	Client         *http.Client
 }
 
 func (w *Webhook) Name() string { return "webhook" }
 
 // webhookPayload 是投递载荷：只含 id、类型、主体、payload 与时间，不携带正文
-//（docs/domain/integrations.md「事件与投递」）。
+// （docs/domain/integrations.md「事件与投递」）。
 type webhookPayload struct {
 	ID          int64          `json:"id"`
 	EventType   string         `json:"event_type"`

@@ -25,7 +25,7 @@ import (
 
 // WorkflowView 是模板视图。
 type WorkflowView struct {
-	ID        string `json:"id"`
+	ID         string `json:"id"`
 	Scope      string `json:"scope"`
 	Name       string `json:"name"`
 	Version    int    `json:"version"`
@@ -150,11 +150,11 @@ func (s *Service) ArchiveWorkflow(ctx context.Context, actor Actor, id string) e
 
 // WorkflowExport 是模板导出产物：YAML 文本（与创建/更新入参同构，可直接再导入）。
 type WorkflowExport struct {
-	ID        string `json:"id"`
-	Scope     string `json:"scope"`
-	Name      string `json:"name"`
-	Version   int    `json:"version"`
-	YAML      string `json:"yaml"`
+	ID      string `json:"id"`
+	Scope   string `json:"scope"`
+	Name    string `json:"name"`
+	Version int    `json:"version"`
+	YAML    string `json:"yaml"`
 }
 
 // ExportWorkflow 导出模板为 YAML（登录即可读；导出是读操作，不写审计）。
@@ -276,20 +276,20 @@ func (s *Service) loadInstance(ctx context.Context, q store.Querier, wtype worki
 
 // NodeOpResult 是节点操作的统一产物。
 type NodeOpResult struct {
-	Node       NodeStateView `json:"node"`
-	Gate       *GateResultView `json:"gate,omitempty"`
-	Instance   InstanceView  `json:"instance"`
+	Node     NodeStateView   `json:"node"`
+	Gate     *GateResultView `json:"gate,omitempty"`
+	Instance InstanceView    `json:"instance"`
 }
 
 // GateResultView 是门禁裁决视图（GATE_BLOCKED 细节与评审人列表）。
 type GateResultView struct {
-	Passed           bool     `json:"passed"`
-	Approvals        int      `json:"approvals"`
-	ApprovalsNeeded  int      `json:"approvalsNeeded"`
-	PendingRejects   []string `json:"pendingRejects,omitempty"`
-	MissingArtifacts []string `json:"missingArtifacts,omitempty"`
-	ChildrenBlocked  bool     `json:"childrenBlocked,omitempty"`
-	IterationBlocked bool     `json:"iterationBlocked,omitempty"`
+	Passed            bool     `json:"passed"`
+	Approvals         int      `json:"approvals"`
+	ApprovalsNeeded   int      `json:"approvalsNeeded"`
+	PendingRejects    []string `json:"pendingRejects,omitempty"`
+	MissingArtifacts  []string `json:"missingArtifacts,omitempty"`
+	ChildrenBlocked   bool     `json:"childrenBlocked,omitempty"`
+	IterationBlocked  bool     `json:"iterationBlocked,omitempty"`
 	EligibleReviewers []string `json:"eligibleReviewers,omitempty"`
 }
 
@@ -326,7 +326,7 @@ func (s *Service) StartStep(ctx context.Context, actor Actor, wtype workitem.Sco
 // ArtifactInput 是材料引用入参（provider+url/externalId 或 inline content）。
 type ArtifactInput struct {
 	Kind       string `json:"kind"`
-	Provider    string `json:"provider"`
+	Provider   string `json:"provider"`
 	URL        string `json:"url,omitempty"`
 	ExternalID string `json:"externalId,omitempty"`
 	Title      string `json:"title,omitempty"`
@@ -581,7 +581,7 @@ func readySet(i *workflow.Instance) map[string]bool {
 }
 
 // emitReadyEvents 对新进入 ready 的节点写 node.ready 事件
-//（docs/domain/integrations.md「事件与投递」：通知提交人可开始下一步）。
+// （docs/domain/integrations.md「事件与投递」：通知提交人可开始下一步）。
 func emitReadyEvents(ctx context.Context, q store.Querier, wtype workitem.Scope, workItemID string, before map[string]bool, i *workflow.Instance) error {
 	for id, st := range i.Nodes {
 		if st.Status == workitem.StatusReady && !before[id] {
@@ -955,16 +955,16 @@ func (s *Service) canOperateWorkItem(ctx context.Context, q store.Querier, actor
 
 // PendingReviewView 是待我审批的门禁条目。
 type PendingReviewView struct {
-	WorkItemType string   `json:"workItemType"`
-	WorkItemID   string   `json:"workItemId"`
-	Title        string    `json:"title"`
-	NodeID       string   `json:"nodeId"`
-	NodeName     string   `json:"nodeName"`
-	ApprovalsNeeded int   `json:"approvalsNeeded"`
-	CurrentApprovals int  `json:"currentApprovals"`
-	Roles        []string `json:"roles"`
-	AwaitingSince string  `json:"awaitingSince,omitempty"` // 进入评审时间（M3）
-	Overdue      bool     `json:"overdue"`                 // 超过评审 SLA（M3）
+	WorkItemType     string   `json:"workItemType"`
+	WorkItemID       string   `json:"workItemId"`
+	Title            string   `json:"title"`
+	NodeID           string   `json:"nodeId"`
+	NodeName         string   `json:"nodeName"`
+	ApprovalsNeeded  int      `json:"approvalsNeeded"`
+	CurrentApprovals int      `json:"currentApprovals"`
+	Roles            []string `json:"roles"`
+	AwaitingSince    string   `json:"awaitingSince,omitempty"` // 进入评审时间（M3）
+	Overdue          bool     `json:"overdue"`                 // 超过评审 SLA（M3）
 }
 
 // ListPendingReviews 我是评审人、待我确认的门禁（chalkline_get_pending_reviews）。
@@ -1036,7 +1036,7 @@ func (s *Service) ListPendingReviews(ctx context.Context, actor Actor) ([]Pendin
 			WorkItemType: string(a.WorkItemType), WorkItemID: a.WorkItemID, Title: title,
 			NodeID: a.NodeID, NodeName: node.Name,
 			ApprovalsNeeded: node.Gate.Approvals, CurrentApprovals: current,
-			Roles: roleNames(node.Gate.Roles),
+			Roles:         roleNames(node.Gate.Roles),
 			AwaitingSince: a.EnteredAt.UTC().Format(time.RFC3339),
 			Overdue:       s.Now().Sub(a.EnteredAt) > s.reviewSLA(),
 		})

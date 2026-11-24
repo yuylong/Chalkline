@@ -28,13 +28,13 @@ type CurrentNodeView struct {
 // Blocker 是阻塞项明细，type ∈ artifact_missing | approval_missing | pending_reject |
 // children_not_done | iteration_tasks_not_done。
 type Blocker struct {
-	Type      string               `json:"type"`
-	Kind      workitem.ArtifactKind `json:"kind,omitempty"`
-	Required  int                  `json:"required,omitempty"`
-	Current   int                  `json:"current,omitempty"`
-	Roles     []identity.Role      `json:"roles,omitempty"`
-	ReviewerID string               `json:"reviewer_id,omitempty"`
-	Message   string               `json:"message"`
+	Type       string                `json:"type"`
+	Kind       workitem.ArtifactKind `json:"kind,omitempty"`
+	Required   int                   `json:"required,omitempty"`
+	Current    int                   `json:"current,omitempty"`
+	Roles      []identity.Role       `json:"roles,omitempty"`
+	ReviewerID string                `json:"reviewer_id,omitempty"`
+	Message    string                `json:"message"`
 }
 
 // ActionView 是单个节点的下一步动作。

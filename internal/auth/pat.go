@@ -27,4 +27,6 @@ func HashPAT(token string) string {
 }
 
 // IsPAT 报告令牌是否为 PAT 形态（与 JWT 区分的入口判定）。
-func IsPAT(token string) bool { return len(token) > len(PATPrefix) && token[:len(PATPrefix)] == PATPrefix }
+func IsPAT(token string) bool {
+	return len(token) > len(PATPrefix) && token[:len(PATPrefix)] == PATPrefix
+}

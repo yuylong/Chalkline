@@ -13,8 +13,8 @@ import (
 	"github.com/yuylong/Chalkline/internal/workflow"
 	"github.com/yuylong/Chalkline/migrations"
 
-	_ "github.com/jackc/pgx/v5/stdlib" // database/sql 驱动（goose 迁移用）
 	"github.com/jackc/pgx/v5/pgxpool"
+	_ "github.com/jackc/pgx/v5/stdlib" // database/sql 驱动（goose 迁移用）
 )
 
 // DB 持有连接池；M1 起在其上叠加 sqlc 生成的 Queries。
@@ -68,7 +68,7 @@ func (db *DB) Migrate(ctx context.Context) error {
 }
 
 // SeedBuiltinWorkflows 首启种子：内置模板写入 workflows 表，已存在则跳过
-//（内置模板入库后可编辑，种子不覆盖用户的修改）。
+// （内置模板入库后可编辑，种子不覆盖用户的修改）。
 func (db *DB) SeedBuiltinWorkflows(ctx context.Context) error {
 	builtins, err := workflow.LoadBuiltins()
 	if err != nil {

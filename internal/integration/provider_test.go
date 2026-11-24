@@ -46,7 +46,7 @@ func TestRegistryRoutesByProvider(t *testing.T) {
 }
 
 // TestGitValidateRejectsPrivateHosts Validate 只做本地校验：私网/回环/元数据地址拒绝
-//（SSRF 底线），公网任意 host 均放行（白名单只约束 Snapshot 出站，见下一测试）。
+// （SSRF 底线），公网任意 host 均放行（白名单只约束 Snapshot 出站，见下一测试）。
 func TestGitValidateRejectsPrivateHosts(t *testing.T) {
 	all := NewGitProvider(NewSafeClient([]string{"*"}))
 	ctx := context.Background()
@@ -73,7 +73,7 @@ func TestGitValidateRejectsPrivateHosts(t *testing.T) {
 }
 
 // TestSnapshotNoOutboundByDefault 白名单为空（默认）时 Snapshot 不产生任何网络请求
-//（Validate 不出站，Snapshot 过白名单被拦后降级为引用快照）。
+// （Validate 不出站，Snapshot 过白名单被拦后降级为引用快照）。
 func TestSnapshotNoOutboundByDefault(t *testing.T) {
 	var hits atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -215,7 +215,7 @@ func TestTailOfURL(t *testing.T) {
 	cases := map[string]string{
 		"https://x.com/a/b/c": "c",
 		"https://x.com/a/":    "a",
-		"https://x.com":      "x.com",
+		"https://x.com":       "x.com",
 	}
 	for in, want := range cases {
 		if got := tailOfURL(in); got != want {

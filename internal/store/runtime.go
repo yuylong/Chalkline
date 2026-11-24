@@ -18,7 +18,7 @@ import (
 
 // WorkflowRow 是模板行。
 type WorkflowRow struct {
-	ID        string
+	ID         string
 	Scope      workitem.Scope
 	Name       string
 	Version    int
@@ -115,13 +115,13 @@ func defJSON(def workflow.Definition) []byte {
 
 // InstanceRow 是实例行。
 type InstanceRow struct {
-	ID             string
-	WorkflowID     string
+	ID              string
+	WorkflowID      string
 	WorkflowVersion int
-	WorkItemType   workitem.Scope
-	WorkItemID     string
-	DefinitionJSON json.RawMessage
-	TerminalNodeID string
+	WorkItemType    workitem.Scope
+	WorkItemID      string
+	DefinitionJSON  json.RawMessage
+	TerminalNodeID  string
 }
 
 // InsertInstance 在事务内创建实例与全部初始节点状态。
@@ -187,11 +187,11 @@ func ListApprovals(ctx context.Context, q Querier, instanceID string) ([]workite
 
 // ArtifactRow 是材料行（含 DB id 便于管理）。
 type ArtifactRow struct {
-	ID          string
-	InstanceID  string
-	Ref         workitem.ArtifactRef
-	Snapshot    json.RawMessage
-	CreatedAt   time.Time
+	ID         string
+	InstanceID string
+	Ref        workitem.ArtifactRef
+	Snapshot   json.RawMessage
+	CreatedAt  time.Time
 }
 
 // ListArtifacts 取实例全部材料。
@@ -335,7 +335,7 @@ type OverdueAwaitingRow struct {
 }
 
 // ListOverdueAwaiting 列 entered_at 早于 cutoff 的全部 awaiting_review 节点
-//（SLA 监控器每轮调用；不改任何节点状态，红线 1）。
+// （SLA 监控器每轮调用；不改任何节点状态，红线 1）。
 func ListOverdueAwaiting(ctx context.Context, q Querier, cutoff time.Time) ([]OverdueAwaitingRow, error) {
 	return scanAll(ctx, q,
 		`SELECT wi.id, ns.node_id, wi.work_item_type, wi.work_item_id,

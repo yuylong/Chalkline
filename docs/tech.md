@@ -59,6 +59,8 @@ go test ./...                    # 单元测试
 go test -tags=integration ./...  # 集成测试（需 testcontainers）
 go vet ./...                     # 静态检查
 golangci-lint run                # 代码规范
+make fmt                         # 格式化 Go 源码（gofmt -w）
+make fmt-check                   # 校验 Go 源码格式（不合规即失败，CI 用）
 sqlc generate                    # 由 SQL 生成仓储代码
 goose -dir migrations up         # 应用迁移
 cd web && pnpm dev               # 前端开发服务器
@@ -86,3 +88,13 @@ docker compose -f deploy/docker-compose.yml up -d
 - 所有对外 API 输入输出使用显式 DTO，不直接序列化领域实体。
 - 数据库列名 `snake_case`，Go 字段 `CamelCase`，JSON 字段 `camelCase`。
 - 领域层不 import `database/sql`、`net/http`、任何 MCP 包。
+
+## 行尾与格式化
+
+**行尾统一 LF**，由仓库根 `.gitattributes` 强制（`* text=auto eol=lf`，Windows 脚本除外）。Windows 开发者的 `core.autocrlf=true` 会让工作区出现 CRLF，但**入库内容始终是 LF**。
+
+**Go 源码必须通过 `gofmt`**：`make fmt` 就地格式化，`make fmt-check` 校验（CI 用）。
+
+> 注意：Windows 下 `gofmt -l` 会把「工作区 CRLF、索引 LF」的文件整篇报为不合规（假阳性）。判定真实格式问题应以索引内容或 `make fmt-check` 为准，而非直接看 `gofmt -l` 的文件列表。
+
+**中文注释与字段对齐**：`gofmt` 按 rune 宽度对齐结构体标签，中文占两个显示宽度但只算一个 rune，因此含中文行尾注释的结构体会与「按显示宽度对齐」的编辑器结果差一个空格。以 `gofmt` 输出为准，不要手动对齐。

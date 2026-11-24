@@ -97,9 +97,9 @@ type ReviewDecision struct {
 	NodeID     string
 	ReviewerID string
 	// Decision 取值 approve / reject。
-	Decision Decision
-	Comment  string        // 驳回必填
-	Roles    identity.Roles // 评审人当时的全局角色（判定资格用，由 app 层在写入时固化）
+	Decision  Decision
+	Comment   string         // 驳回必填
+	Roles     identity.Roles // 评审人当时的全局角色（判定资格用，由 app 层在写入时固化）
 	CreatedAt time.Time
 }
 

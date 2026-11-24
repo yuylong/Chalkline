@@ -215,7 +215,7 @@ func (h *handlers) startStep(w http.ResponseWriter, r *http.Request, wtype worki
 
 type artifactDTO struct {
 	Kind       string `json:"kind"`
-	Provider    string `json:"provider"`
+	Provider   string `json:"provider"`
 	URL        string `json:"url,omitempty"`
 	ExternalID string `json:"externalId,omitempty"`
 	Title      string `json:"title,omitempty"`

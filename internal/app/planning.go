@@ -154,10 +154,10 @@ func (s *Service) ListIterations(ctx context.Context, actor Actor, productID str
 // IterationDetail 是迭代详情：当前阶段 + 进度。
 type IterationDetail struct {
 	IterationView
-	CurrentNodes   []NodeStateView `json:"currentNodes"`
-	ProgressPct    int             `json:"progressPct"` // passed / 可达节点
-	OpenTasks      int64           `json:"openTasks"`
-	WorkflowName   string          `json:"workflowName"`
+	CurrentNodes []NodeStateView `json:"currentNodes"`
+	ProgressPct  int             `json:"progressPct"` // passed / 可达节点
+	OpenTasks    int64           `json:"openTasks"`
+	WorkflowName string          `json:"workflowName"`
 }
 
 // NodeStateView 是节点状态视图（含乐观锁版本）。
@@ -281,15 +281,15 @@ func taskStatusOf(terminalNodeID string, defJSON []byte) planning.TaskStatus {
 
 // CreateTaskInput 建任务入参（ParentTaskID 非空即拆解）。
 type CreateTaskInput struct {
-	IterationID string
+	IterationID  string
 	ParentTaskID string
-	Title       string
-	Description string
-	Kind        planning.TaskKind
-	Priority    planning.Priority
-	AssigneeID  string // 可选
-	ModuleIDs   []string
-	WorkflowID  string // 可选；子任务默认继承父任务模板
+	Title        string
+	Description  string
+	Kind         planning.TaskKind
+	Priority     planning.Priority
+	AssigneeID   string // 可选
+	ModuleIDs    []string
+	WorkflowID   string // 可选；子任务默认继承父任务模板
 }
 
 // CreateTask 建任务：校验当前迭代阶段 allows_task_creation（不变量 5）、
@@ -579,21 +579,21 @@ func (s *Service) DecomposeTask(ctx context.Context, actor Actor, parentTaskID s
 // TaskDetail 是任务详情：子树、模块、工作流状态。
 type TaskDetail struct {
 	TaskView
-	Children  []TaskView   `json:"children"`
-	Modules   []ModuleView `json:"modules"`
-	Workflow  *InstanceView `json:"workflow,omitempty"`
+	Children []TaskView    `json:"children"`
+	Modules  []ModuleView  `json:"modules"`
+	Workflow *InstanceView `json:"workflow,omitempty"`
 }
 
 // InstanceView 是实例视图：模板 + 各节点状态 + 终态 + 材料/审批投影
-//（console.md「任务详情：节点状态/材料/审批时间线」——M2 起随实例查询返回）。
+// （console.md「任务详情：节点状态/材料/审批时间线」——M2 起随实例查询返回）。
 type InstanceView struct {
-	WorkflowID string          `json:"workflowId"`
-	Scope       string         `json:"scope"`
+	WorkflowID  string          `json:"workflowId"`
+	Scope       string          `json:"scope"`
 	Nodes       []NodeStateView `json:"nodes"`
-	Terminal    string         `json:"terminal,omitempty"` // done / cancelled
-	ProgressPct int            `json:"progressPct"`
-	Artifacts   []ArtifactView `json:"artifacts,omitempty"`
-	Approvals   []ApprovalView `json:"approvals,omitempty"`
+	Terminal    string          `json:"terminal,omitempty"` // done / cancelled
+	ProgressPct int             `json:"progressPct"`
+	Artifacts   []ArtifactView  `json:"artifacts,omitempty"`
+	Approvals   []ApprovalView  `json:"approvals,omitempty"`
 }
 
 // ArtifactView 材料投影：引用元数据，inline 附带内容；snapshot 为提交时点固化的快照（M3）。

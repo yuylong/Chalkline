@@ -179,7 +179,7 @@ func TestUnknownWorkItemTypeRejected(t *testing.T) {
 		return app.WhoamiView{}, nil
 	})
 	code, out := callMCP(t, h, "tools/call", map[string]any{
-		"name": "chalkline_get_next_action",
+		"name":      "chalkline_get_next_action",
 		"arguments": map[string]any{"workItemType": "order", "workItemId": "x"},
 	})
 	if code != http.StatusOK {
