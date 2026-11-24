@@ -142,6 +142,10 @@ func NewRouter(d Deps) http.Handler {
 				// M3：集成 provider 配置（admin；凭据仍只读环境变量）
 				admin.Get("/integration/providers", h.listProviderConfigs)
 				admin.Patch("/integration/providers/{kind}", h.updateProviderConfig)
+
+				// M4：邮箱配置（admin；密码 AES-GCM 加密落库，永不回显）
+				admin.Get("/integration/smtp", h.getSMTPConfig)
+				admin.Patch("/integration/smtp", h.updateSMTPConfig)
 			})
 		})
 	})

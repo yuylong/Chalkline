@@ -1,5 +1,5 @@
 // 登录后布局：侧边导航（当前迭代/审批 ｜ 产品/审计 ｜ 用户管理/Provider 管理/
-// 工作流管理/Webhook 订阅）+ 用户名下拉（登出）。
+// 工作流管理/邮箱配置/Webhook 订阅）+ 用户名下拉（登出）。
 // M3：订阅 SSE 事件流，事件到达即失效相关缓存（轮询仍兜底）。
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Avatar, Badge, Dropdown, Layout as AntLayout, Menu, Typography } from 'antd'
@@ -59,13 +59,15 @@ export default function Layout() {
 
   const isAdmin = whoami?.user.roles.includes('admin') ?? false
 
-  // 菜单顺序：当前迭代、审批 ｜ 产品、审计 ｜ 用户管理、Provider 管理、工作流管理、Webhook 订阅。
-  // 管理项仅 admin 可见（后端仍会拒绝非 admin 请求）。
+  // 菜单顺序：当前迭代、审批 ｜ 产品、审计 ｜ 用户管理、Provider 管理、工作流管理、
+  // 邮箱配置、Webhook 订阅。管理项仅 admin 可见（后端仍会拒绝非 admin 请求）。
   const selected = location.pathname.startsWith('/reviews')
     ? '/reviews'
     : location.pathname.startsWith('/audit')
       ? '/audit'
-      : location.pathname.startsWith('/webhooks')
+      : location.pathname.startsWith('/smtp')
+        ? '/smtp'
+        : location.pathname.startsWith('/webhooks')
         ? '/webhooks'
         : location.pathname.startsWith('/users')
           ? '/users'
@@ -114,7 +116,12 @@ export default function Layout() {
             { type: 'divider' },
             ...adminItems,
             { key: '/workflows', label: '工作流管理' },
-            ...(isAdmin ? [{ key: '/webhooks', label: 'Webhook 订阅' }] : []),
+            ...(isAdmin
+              ? [
+                  { key: '/smtp', label: '邮箱配置' },
+                  { key: '/webhooks', label: 'Webhook 订阅' },
+                ]
+              : []),
           ]}
           onClick={({ key }) => navigate(key)}
         />

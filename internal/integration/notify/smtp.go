@@ -13,8 +13,9 @@ import (
 )
 
 // SMTP 是邮件通道：只对需要人工关注的门禁事件发送（gate.pending / node.rejected /
-// iteration.closed），收件人由 CHALKLINE_NOTIFY_EMAILS 配置。
-// 只发配置的内网 SMTP（docs/domain/integrations.md「安全」）；凭据不落库。
+// iteration.closed）。只发配置的内网 SMTP（docs/domain/integrations.md「安全」）。
+// M4 起生效配置可经管理台维护：Resolve 非空时每轮投递前重新解析（保存即生效，
+// 无需重启）；nil 则用下方静态字段（环境变量直配，测试同）。
 type SMTP struct {
 	Host     string // CHALKLINE_SMTP_HOST
 	Port     int    // CHALKLINE_SMTP_PORT，默认 25
@@ -23,6 +24,20 @@ type SMTP struct {
 	From     string // CHALKLINE_SMTP_FROM
 	To       []string
 	Timeout  time.Duration // 默认 10s
+
+	// Resolve 运行时解析生效配置（server 组装层注入 app 层合并结果）。
+	// 收件人（To）仍来自构造时的环境变量配置，不经 Resolve。
+	Resolve func(ctx context.Context) (SMTPRuntime, bool)
+}
+
+// SMTPRuntime 是运行时解析出的生效发件配置。
+type SMTPRuntime struct {
+	Enabled  bool
+	Host     string
+	Port     int
+	Username string
+	Password string
+	From     string
 }
 
 // notifyEvents 是发送邮件的事件集合；其余事件只走 webhook。
@@ -56,20 +71,31 @@ func (m *SMTP) Send(ctx context.Context, ev store.OutboxRow) error {
 	if !ok {
 		return nil // 非邮件事件：视为成功，交给其他通道
 	}
-	if m.Host == "" || len(m.To) == 0 || m.From == "" {
-		// 邮件未配置：门禁事件也不该因此阻断 webhook 投递。
+	host, port, username, password, from := m.Host, m.port(), m.Username, m.Password, m.From
+	if m.Resolve != nil {
+		cfg, ok := m.Resolve(ctx)
+		if !ok || !cfg.Enabled {
+			return nil // 未启用：静默跳过，不阻断其他通道
+		}
+		host, port, username, password, from = cfg.Host, cfg.Port, cfg.Username, cfg.Password, cfg.From
+		if port == 0 {
+			port = 25
+		}
+	}
+	if host == "" || from == "" || len(m.To) == 0 {
+		// 邮件未配置完整：门禁事件也不该因此阻断 webhook 投递。
 		return nil
 	}
-	msg, err := m.buildMessage(ev, label)
+	msg, err := m.buildMessage(from, ev, label)
 	if err != nil {
 		return err
 	}
-	addr := net.JoinHostPort(m.Host, fmt.Sprintf("%d", m.port()))
-	return m.sendMail(ctx, addr, msg)
+	addr := net.JoinHostPort(host, fmt.Sprintf("%d", port))
+	return m.sendMail(ctx, addr, host, username, password, from, msg)
 }
 
 // buildMessage 构造纯文本邮件（正文为事件元数据 JSON，不携带业务正文）。
-func (m *SMTP) buildMessage(ev store.OutboxRow, label string) ([]byte, error) {
+func (m *SMTP) buildMessage(from string, ev store.OutboxRow, label string) ([]byte, error) {
 	meta, err := json.Marshal(map[string]any{
 		"event_type":   ev.EventType,
 		"subject_type": ev.SubjectType,
@@ -81,7 +107,7 @@ func (m *SMTP) buildMessage(ev store.OutboxRow, label string) ([]byte, error) {
 		return nil, err
 	}
 	var b strings.Builder
-	b.WriteString("From: " + m.From + "\r\n")
+	b.WriteString("From: " + from + "\r\n")
 	b.WriteString("To: " + strings.Join(m.To, ", ") + "\r\n")
 	b.WriteString("Subject: [Chalkline] " + label + "\r\n")
 	b.WriteString("MIME-Version: 1.0\r\n")
@@ -92,7 +118,7 @@ func (m *SMTP) buildMessage(ev store.OutboxRow, label string) ([]byte, error) {
 }
 
 // sendMail 带 deadline 的 SMTP 投递（net/smtp.SendMail 无超时控制，自行实现拨号）。
-func (m *SMTP) sendMail(ctx context.Context, addr string, msg []byte) error {
+func (m *SMTP) sendMail(ctx context.Context, addr, host, username, password, from string, msg []byte) error {
 	d := net.Dialer{Timeout: m.timeout()}
 	conn, err := d.DialContext(ctx, "tcp", addr)
 	if err != nil {
@@ -100,21 +126,20 @@ func (m *SMTP) sendMail(ctx context.Context, addr string, msg []byte) error {
 	}
 	deadline := time.Now().Add(m.timeout())
 	_ = conn.SetDeadline(deadline)
-	c, err := smtp.NewClient(conn, m.Host)
+	c, err := smtp.NewClient(conn, host)
 	if err != nil {
 		_ = conn.Close()
 		return fmt.Errorf("smtp 握手失败: %w", err)
 	}
 	defer func() { _ = c.Quit() }()
 
-	var auth smtp.Auth
-	if m.Username != "" {
-		auth = smtp.PlainAuth("", m.Username, m.Password, m.Host)
+	if username != "" {
+		auth := smtp.PlainAuth("", username, password, host)
 		if err := c.Auth(auth); err != nil {
 			return fmt.Errorf("smtp 认证失败: %w", err)
 		}
 	}
-	if err := c.Mail(m.From); err != nil {
+	if err := c.Mail(from); err != nil {
 		return fmt.Errorf("smtp MAIL FROM 失败: %w", err)
 	}
 	for _, to := range m.To {

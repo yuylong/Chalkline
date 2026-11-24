@@ -1,0 +1,189 @@
+// 邮箱配置（admin）：SMTP 发件服务器可视化维护，保存后投递器下一轮即生效。
+// 密码经后端 AES-GCM 加密落库（密钥 CHALKLINE_SECRET_KEY），本页只显示
+// 「已配置 / 未配置」，永不回显明文；收件人仍经 CHALKLINE_NOTIFY_EMAILS 配置。
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { App, Button, Card, Form, Input, InputNumber, Popconfirm, Space, Switch, Tag, Typography } from 'antd'
+import { useEffect } from 'react'
+import { apiGet, apiPatch } from '../../shared/api'
+import { fmtTime } from '../../shared/status'
+import { ApiErrorBanner } from '../../shared/ui'
+import type { SMTPConfigUpdate, SMTPConfigView } from '../../shared/types'
+
+interface SmtpForm {
+  enabled: boolean
+  host: string
+  port: number
+  username: string
+  from: string
+  password?: string
+}
+
+export default function SmtpConfig() {
+  const queryClient = useQueryClient()
+  const { message } = App.useApp()
+  const [form] = Form.useForm<SmtpForm>()
+
+  const { data, isPending, isError, error } = useQuery({
+    queryKey: ['smtp-config'],
+    queryFn: () => apiGet<SMTPConfigView>('/integration/smtp'),
+  })
+
+  useEffect(() => {
+    if (data) {
+      form.setFieldsValue({
+        enabled: data.enabled,
+        host: data.host,
+        port: data.port,
+        username: data.username,
+        from: data.from,
+        password: '',
+      })
+    }
+  }, [data, form])
+
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['smtp-config'] })
+
+  const saveMut = useMutation({
+    mutationFn: (v: SmtpForm) => {
+      const body: SMTPConfigUpdate = {
+        enabled: v.enabled,
+        host: v.host.trim(),
+        port: v.port,
+        username: v.username.trim(),
+        from: v.from.trim(),
+      }
+      if (v.password && v.password.trim() !== '') body.password = v.password
+      return apiPatch<SMTPConfigView>('/integration/smtp', body)
+    },
+    onSuccess: () => {
+      message.success('邮箱配置已保存（下一轮投递即生效）')
+      form.setFieldValue('password', '')
+      void invalidate()
+    },
+    onError: (err: Error) => message.error(err.message),
+  })
+
+  const clearPwMut = useMutation({
+    mutationFn: () => apiPatch<SMTPConfigView>('/integration/smtp', { password: '' }),
+    onSuccess: () => {
+      message.success('已清除保存的密码（回退环境变量 CHALKLINE_SMTP_PASSWORD）')
+      void invalidate()
+    },
+    onError: (err: Error) => message.error(err.message),
+  })
+
+  return (
+    <Card
+      title="邮箱配置（SMTP 发件）"
+      extra={
+        <Typography.Text type="secondary">
+          密码加密落库（CHALKLINE_SECRET_KEY），永不回显；收件人经 CHALKLINE_NOTIFY_EMAILS 配置
+        </Typography.Text>
+      }
+    >
+      {isError ? (
+        <ApiErrorBanner error={error} />
+      ) : (
+        <Form<SmtpForm>
+          form={form}
+          layout="vertical"
+          onFinish={(v) => saveMut.mutate(v)}
+          disabled={isPending || saveMut.isPending}
+          style={{ maxWidth: 560 }}
+        >
+          <Form.Item name="enabled" label="启用邮件通知" valuePropName="checked">
+            <Switch />
+          </Form.Item>
+          <Form.Item
+            name="host"
+            label="SMTP 服务器"
+            extra={data?.envHost ? `留空沿用环境变量默认值：${data.envHost}` : '留空 = 未配置（环境变量亦未设置）'}
+            rules={[
+              {
+                validator: (_, v: string) => {
+                  const s = (v ?? '').trim()
+                  if (!s) return Promise.resolve()
+                  if (/[ /@:]/.test(s) || s.includes('://')) {
+                    return Promise.reject(new Error('应为纯主机名（不含协议与端口）'))
+                  }
+                  return Promise.resolve()
+                },
+              },
+            ]}
+          >
+            <Input placeholder="smtp.example.com" />
+          </Form.Item>
+          <Form.Item name="port" label="端口" extra="0 = 默认 25">
+            <InputNumber min={0} max={65535} style={{ width: 160 }} />
+          </Form.Item>
+          <Form.Item name="username" label="账号（可选）">
+            <Input autoComplete="off" />
+          </Form.Item>
+          <Form.Item
+            name="password"
+            label="密码"
+            extra={
+              <Space size={8}>
+                {data?.passwordConfigured ? <Tag color="green">已配置</Tag> : <Tag color="orange">未配置</Tag>}
+                <Popconfirm
+                  title="确认清除已保存的密码？"
+                  description="清除后回退环境变量 CHALKLINE_SMTP_PASSWORD"
+                  onConfirm={() => clearPwMut.mutate()}
+                >
+                  <Button size="small" danger loading={clearPwMut.isPending}>
+                    清除已存密码
+                  </Button>
+                </Popconfirm>
+              </Space>
+            }
+          >
+            <Input.Password placeholder="留空 = 不修改已保存的密码" autoComplete="new-password" />
+          </Form.Item>
+          <Form.Item
+            name="from"
+            label="发件人地址"
+            extra={data?.envFrom ? `留空沿用环境变量默认值：${data.envFrom}` : '留空 = 未配置（环境变量亦未设置）'}
+            rules={[
+              {
+                validator: (_, v: string) => {
+                  const s = (v ?? '').trim()
+                  if (!s) return Promise.resolve()
+                  return /^[^\s@]+@[^\s@]+$/.test(s)
+                    ? Promise.resolve()
+                    : Promise.reject(new Error('不是合法邮箱地址'))
+                },
+              },
+            ]}
+          >
+            <Input placeholder="chalk@example.com" />
+          </Form.Item>
+
+          <Form.Item label="通知收件人（只读，经 CHALKLINE_NOTIFY_EMAILS 配置）">
+            {data?.envRecipients.length ? (
+              <Space size={4} wrap>
+                {data.envRecipients.map((r) => (
+                  <Tag key={r}>{r}</Tag>
+                ))}
+              </Space>
+            ) : (
+              <Tag color="orange">未配置收件人（邮件将不会发出）</Tag>
+            )}
+          </Form.Item>
+
+          <Form.Item style={{ marginBottom: 0 }}>
+            <Space>
+              <Button type="primary" htmlType="submit" loading={saveMut.isPending}>
+                保存配置
+              </Button>
+              {data?.updatedAt && (
+                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                  最近更新：{fmtTime(data.updatedAt)}
+                </Typography.Text>
+              )}
+            </Space>
+          </Form.Item>
+        </Form>
+      )}
+    </Card>
+  )
+}

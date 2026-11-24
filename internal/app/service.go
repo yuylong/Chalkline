@@ -42,20 +42,27 @@ type Service struct {
 	ReviewEscalation time.Duration
 	// ProviderDefaults 是环境变量提供的集成 provider 默认配置（M3 管理台展示与环境提示）。
 	ProviderDefaults []ProviderDefault
+	// SMTPDefaults 是环境变量提供的 SMTP 发件默认值（M4 邮箱配置；Password 只进内存）。
+	SMTPDefaults SMTPEnvDefaults
+	// SecretKey 是静态凭据加密密钥（M4：SMTP 密码加密落库；来自 CHALKLINE_SECRET_KEY）。
+	SecretKey string
 }
 
-// Options 是 NewService 的可选配置（M3 评审 SLA 与集成默认值）。
+// Options 是 NewService 的可选配置（M3 评审 SLA 与集成默认值；M4 邮箱配置）。
 type Options struct {
 	ReviewSLA        time.Duration
 	ReviewEscalation time.Duration
 	ProviderDefaults []ProviderDefault
+	SMTPDefaults     SMTPEnvDefaults
+	SecretKey        string
 }
 
 // NewService 组装服务。gate 可为 nil：此时材料只做 domain 格式校验。
 func NewService(db *store.DB, log *slog.Logger, jwt *auth.JWTManager, gate ArtifactGate, opts Options) *Service {
 	return &Service{DB: db, Log: log, JWT: jwt, Now: time.Now, Gate: gate,
 		ReviewSLA: opts.ReviewSLA, ReviewEscalation: opts.ReviewEscalation,
-		ProviderDefaults: opts.ProviderDefaults}
+		ProviderDefaults: opts.ProviderDefaults,
+		SMTPDefaults: opts.SMTPDefaults, SecretKey: opts.SecretKey}
 }
 
 // newID 生成带类型前缀的短 id（mcp.md：所有 ID 带类型前缀）。
