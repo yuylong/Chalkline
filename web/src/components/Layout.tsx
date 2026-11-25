@@ -62,12 +62,13 @@ export default function Layout() {
 
   // 菜单顺序：当前迭代、审批 ｜ 产品、审计、MCP 接入 ｜ 用户管理、Provider 管理、工作流管理、Webhook 订阅。
   // 管理项仅 admin 可见（后端仍会拒绝非 admin 请求）；MCP 接入对全员开放（PAT 属个人凭据）。
+  // 页面路由用 /mcpconfig，与 MCP 服务端点 POST /mcp 区分（nginx 把 /mcp 反代给 api）。
   const selected = location.pathname.startsWith('/reviews')
     ? '/reviews'
     : location.pathname.startsWith('/audit')
       ? '/audit'
-      : location.pathname.startsWith('/mcp')
-        ? '/mcp'
+      : location.pathname.startsWith('/mcpconfig')
+        ? '/mcpconfig'
       : location.pathname.startsWith('/smtp')
         ? '/smtp'
         : location.pathname.startsWith('/webhooks')
@@ -116,7 +117,7 @@ export default function Layout() {
             { type: 'divider' },
             { key: '/products', label: '产品' },
             ...(isAdmin ? [{ key: '/audit', label: '审计' }] : []),
-            { key: '/mcp', label: 'MCP 接入' },
+            { key: '/mcpconfig', label: 'MCP 接入' },
             { type: 'divider' },
             ...adminItems,
             { key: '/workflows', label: '工作流管理' },

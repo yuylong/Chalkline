@@ -46,7 +46,7 @@ export default function AppRoutes() {
           <Route path="/iterations/:id/node/:nodeId" element={<IterationCurrentNode />} />
           <Route path="/tasks/:id" element={<TaskDetail />} />
           <Route path="/reviews" element={<ReviewQueue />} />
-          <Route path="/mcp" element={<McpKeys />} />
+          <Route path="/mcpconfig" element={<McpKeys />} />
           <Route path="/audit" element={<AuditList />} />
           <Route path="/smtp" element={<SmtpConfig />} />
           <Route path="/webhooks" element={<WebhookList />} />
