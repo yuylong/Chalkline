@@ -109,6 +109,7 @@ admin 在控制台「邮箱配置」页（位于 Webhook 订阅之前）或 REST
 - **TLS/STARTTLS**：`tlsMode` ∈ `none`（明文，默认）/ `starttls`（连接后 EHLO 协商升级，587 常用）/ `tls`（隐式 TLS，465 常用）；`tlsSkipVerify` 跳过证书校验，**仅限内网自签证书场景**，公网 SMTP 必须关闭。
 - **合并语义**：未保存过或字段留空 = 沿用环境变量默认值（`CHALKLINE_SMTP_*`，TLS 默认值来自 `CHALKLINE_SMTP_TLS` / `CHALKLINE_SMTP_TLS_SKIP_VERIFY`）；`enabled=false` 即整体停发；密码提交空串 = 清除库内密码（回退环境变量）；`tlsMode` 提交空串 = 清除库内设置（回退环境变量）。
 - **收件人**：仍经 `CHALKLINE_NOTIFY_EMAILS` 配置（页面只读展示），不进库。
+- **测试邮件**：`POST /api/v1/integration/smtp/test`（admin，控制台「发送测试邮件」按钮）用当前生效配置向收件人发送一封测试邮件，即时验证连通性；失败返回可展示的错误（拨号/握手/认证/TLS 各阶段），并写审计 `integration.smtp.test`。
 - **生效时机**：投递器每轮投递前重新解析生效配置，保存后无需重启；密钥变更导致解密失败时按「密码未配置」降级并告警，不阻断投递。
 
 ## 安全

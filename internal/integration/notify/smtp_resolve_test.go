@@ -59,3 +59,28 @@ func TestSMTPResolveIncomplete(t *testing.T) {
 		t.Fatalf("配置不完整应静默成功: %v", err)
 	}
 }
+
+// TestSMTPSendTest 测试邮件走完整投递路径：主题与收件人按入参落盘。
+func TestSMTPSendTest(t *testing.T) {
+	var mail safeBuffer
+	l, err := newInmemorySMTP(&mail)
+	if err != nil {
+		t.Fatalf("起桩失败: %v", err)
+	}
+	defer func() { _ = l.Close() }()
+	go serveSMTP(l, &mail) //nolint:errcheck // 测试桩
+
+	m := &SMTP{Timeout: 2 * time.Second}
+	cfg := SMTPRuntime{Enabled: true, Host: "127.0.0.1",
+		Port: l.Addr().(*net.TCPAddr).Port, From: "chalk@example.com", TLSMode: "none"}
+	if err := m.SendTest(context.Background(), cfg, []string{"pm@example.com"}); err != nil {
+		t.Fatalf("测试邮件发送失败: %v", err)
+	}
+	got := mail.String()
+	if !strings.Contains(got, "Subject: [Chalkline] 测试邮件") {
+		t.Fatalf("测试邮件应含固定主题: %q", got)
+	}
+	if !strings.Contains(got, "To: pm@example.com") {
+		t.Fatalf("测试邮件应发给指定收件人: %q", got)
+	}
+}

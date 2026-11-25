@@ -46,6 +46,9 @@ type Service struct {
 	SMTPDefaults SMTPEnvDefaults
 	// SecretKey 是静态凭据加密密钥（M4：SMTP 密码加密落库；来自 CHALKLINE_SECRET_KEY）。
 	SecretKey string
+	// SMTPTestSend 是测试邮件发送通道（依赖倒置：notify.SMTP 实现，server 组装层注入；
+	// nil 时测试发送报内部错误，不影响其余用例）。
+	SMTPTestSend func(ctx context.Context, rt SMTPRuntime, recipients []string) error
 }
 
 // Options 是 NewService 的可选配置（M3 评审 SLA 与集成默认值；M4 邮箱配置）。
@@ -55,6 +58,8 @@ type Options struct {
 	ProviderDefaults []ProviderDefault
 	SMTPDefaults     SMTPEnvDefaults
 	SecretKey        string
+	// SMTPTestSend 注入测试邮件发送通道（server 组装层用 notify.SMTP 实现）。
+	SMTPTestSend func(ctx context.Context, rt SMTPRuntime, recipients []string) error
 }
 
 // NewService 组装服务。gate 可为 nil：此时材料只做 domain 格式校验。
@@ -62,7 +67,8 @@ func NewService(db *store.DB, log *slog.Logger, jwt *auth.JWTManager, gate Artif
 	return &Service{DB: db, Log: log, JWT: jwt, Now: time.Now, Gate: gate,
 		ReviewSLA: opts.ReviewSLA, ReviewEscalation: opts.ReviewEscalation,
 		ProviderDefaults: opts.ProviderDefaults,
-		SMTPDefaults: opts.SMTPDefaults, SecretKey: opts.SecretKey}
+		SMTPDefaults:     opts.SMTPDefaults, SecretKey: opts.SecretKey,
+		SMTPTestSend: opts.SMTPTestSend}
 }
 
 // newID 生成带类型前缀的短 id（mcp.md：所有 ID 带类型前缀）。
