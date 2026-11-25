@@ -32,6 +32,20 @@ export interface WhoamiView {
   via: string
 }
 
+/** MCP 接入：API Key（PAT）视图（不含 hash 与明文）。 */
+export interface PATView {
+  id: string
+  name: string
+  expiresAt: string // ISO 8601 UTC
+  revoked: boolean
+  createdAt: string // ISO 8601 UTC
+}
+
+/** 签发产物：明文 Key 只此一次返回，之后不可再查。 */
+export interface PATCreated extends PATView {
+  token: string // chkpat_…
+}
+
 /** 管理台：建成员入参（admin）。 */
 export interface CreateUserInput {
   username: string
