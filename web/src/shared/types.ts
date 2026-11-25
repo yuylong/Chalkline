@@ -323,6 +323,35 @@ export interface ProviderConfigUpdate {
   baseUrl?: string
 }
 
+// ---- 邮箱配置（admin；密码加密落库，永不回显）----
+
+export interface SMTPConfigView {
+  enabled: boolean
+  host: string
+  port: number
+  username: string
+  from: string
+  /** 库内密文或环境变量任一已配置（视图永不携带密码明文/密文）。 */
+  passwordConfigured: boolean
+  envHost: string
+  envPort: number
+  envFrom: string
+  /** 收件人只经 CHALKLINE_NOTIFY_EMAILS 配置（只读提示）。 */
+  envRecipients: string[]
+  updatedBy?: string
+  updatedAt?: string
+}
+
+export interface SMTPConfigUpdate {
+  enabled?: boolean
+  host?: string
+  port?: number
+  username?: string
+  from?: string
+  /** 留空 = 不修改；提交空串 = 清除已存密码（回退环境变量）。 */
+  password?: string
+}
+
 // ---- M3：SSE 事件流 ----
 
 /** /api/v1/events 推送的事件（outbox 投影 + 产品归属）。 */

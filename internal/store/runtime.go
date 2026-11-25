@@ -148,6 +148,12 @@ func InstanceByWorkItem(ctx context.Context, q Querier, wtype workitem.Scope, wo
 	return r, err
 }
 
+// DeleteInstance 删实例行（node_states / gate_approvals / artifacts 随外键级联清理）。
+func DeleteInstance(ctx context.Context, q Querier, instanceID string) error {
+	_, err := q.Exec(ctx, `DELETE FROM workflow_instances WHERE id = $1`, instanceID)
+	return err
+}
+
 // ListNodeStates 取全部节点状态。
 func ListNodeStates(ctx context.Context, q Querier, instanceID string) ([]workflow.NodeState, error) {
 	return scanAll(ctx, q,

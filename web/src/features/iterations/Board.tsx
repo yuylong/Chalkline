@@ -3,7 +3,7 @@
 // 节点序最后），cancelled 单独成列。并行分支节点天然并列展示。
 import { Card, Empty, Skeleton, Space, Tag, Typography } from 'antd'
 import { useNavigate } from 'react-router'
-import { ACTIONABLE_STATUSES, priorityMeta, taskKindMeta } from '../../shared/status'
+import { ACTIONABLE_STATUSES, memberNameOf, priorityMeta, taskKindMeta } from '../../shared/status'
 import type { InstanceView, TaskView } from '../../shared/types'
 
 const CANCELLED_LANE = '已取消'
@@ -101,7 +101,7 @@ export default function TaskBoard({ tasks, workflows, memberNames, loading }: Bo
                     </Space>
                     <div style={{ fontSize: 13 }}>{t.title}</div>
                     <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                      {t.assigneeId ? (memberNames[t.assigneeId] ?? t.assigneeId) : '未指派'}
+                      {t.assigneeId ? memberNameOf(memberNames, t.assigneeId) : '未指派'}
                     </Typography.Text>
                   </Card>
                 ))}

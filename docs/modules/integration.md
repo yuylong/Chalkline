@@ -43,13 +43,14 @@ type Provider interface {
 - `outbox_events`（M0 `0001_platform_baseline.sql` 已建，M2 `0007_integration.sql` 增加 `next_attempt_at`）：`id` / `event_type` / `payload`（id、标题、链接、操作者，不携带正文）/ `status`（pending/sent/failed）/ `attempts` / `last_error` / `next_attempt_at` / 时间戳。
 - `external_links`（`0007_integration.sql` 已建）：`subject_type` / `subject_id` / `provider` / `external_id` / `url`，唯一键 `(subject_type, subject_id, provider, external_id)`，用于 Redmine issue 回写、Outline 文档归属等稳定关联（见 model.md「ExternalLink」）；store 提供 `UpsertExternalLink` / `ListExternalLinks`。
 - `integration_provider_configs`（`0009_provider_config.sql`）：`provider` / `enabled` / `base_url` / `updated_by` / `updated_at`。只存启停与地址覆盖，**不存凭据**；无行 = 使用环境变量默认值。
-- 各 provider 的 `base_url` 与凭据：环境变量/密钥文件，**不入库**（base_url 可由管理台覆盖并持久化，凭据永不入库）。
+- `smtp_configs`（`0011_add_smtp_config.sql`，单行 `config_key='default'`）：`enabled` / `host` / `port` / `username` / `password_enc`（AES-GCM 密文）/ `from_addr` / `updated_by` / `updated_at`。**唯一落库凭据**：SMTP 发件密码，加密存储（`platform.Seal`，密钥 `CHALKLINE_SECRET_KEY`，回退 `CHALKLINE_JWT_SECRET`），API 永不回显。
+- 各 provider 的 `base_url` 与凭据：环境变量/密钥文件，**不入库**（base_url 可由管理台覆盖并持久化，凭据永不入库——SMTP 发件密码是唯一例外，见上）。
 
 ## 不变量（本模块保证）
 
 - 集成投递失败不改变门禁判定与工作项状态（不变量 15）。
 - 材料 `provider` 与 `kind` 必须匹配（不变量 14）——矩阵在 `internal/domain/workitem`，适配器只做可达性校验。
-- 外部凭据不落库、不进日志（tech.md 约束 10）。
+- 外部凭据不落库、不进日志（tech.md 约束 10）。唯一例外：SMTP 发件密码经管理台保存时 AES-GCM 加密落库，API 永不回显、日志禁止出现。
 - Redmine 不反向回写状态（integrations.md 明确），状态唯一事实来源是 Chalkline。
 - 出站请求防 SSRF（域名白名单 + 不跟任意重定向）。
 
@@ -59,7 +60,7 @@ type Provider interface {
 - [x] 通知投递器：事件入 outbox → 异步发送 → 成功标 sent；失败重试 5 次后 failed（单测覆盖 30s/60s/120s/240s 退避）。
 - [x] 测试覆盖：适配器用 httptest 桩、SMTP 用内存桩、投递失败重试与降级场景。
 - [ ] 投递失败时工作流状态不受影响（集成测试：断网后流程仍推进）——需真实 PG，沙箱未执行。
-- [x] 凭据不出现在日志与数据库（审计验证：配置只经环境变量，未落库、未打印）。
+- [x] 凭据不出现在日志与数据库（审计验证：配置只经环境变量，未落库、未打印）。唯一例外 SMTP 发件密码为 AES-GCM 密文，明文与密钥均不落库、不进日志。
 - [x] Webhook 签名头可被接收方校验；出站域名白名单生效。
 - [x] `go test ./internal/integration/...` 全绿。
 
@@ -97,3 +98,14 @@ type Provider interface {
 - **REST（admin）**：`GET /api/v1/integration/providers`、`PATCH /api/v1/integration/providers/{kind}`；仅 `enabled` 与 `baseUrl` 可改，`baseUrl` 必须为 http(s) 且不得内嵌凭据。
 - **运行时生效**：`integration.Registry.WithConfig` 注入解析器（server 组装层读 store）；停用 → 跳过外部快照（本地格式与私网/回环校验仍执行）；`baseURL` 非空 → 以不可变副本覆盖环境变量值。未写入行 = 使用环境变量默认值。
 - **控制台**：`/integrations`（admin）展示 label、生效 baseURL、环境变量默认值、凭据是否已配置（布尔）、启停开关与最近更新人/时间。
+
+## M4 增量：邮箱配置（已交付）
+
+> SMTP 发件服务器管理台。策略详见 [integrations.md](../domain/integrations.md)「邮箱配置」。
+
+- **表**：`smtp_configs`（迁移 `0011_add_smtp_config.sql`，单行 `config_key='default'`）：`enabled` / `host` / `port` / `username` / `password_enc`（AES-GCM 密文）/ `from_addr` / `updated_by` / `updated_at`。**唯一落库凭据**：SMTP 发件密码，加密存储（`internal/platform/secret.go`，密钥 `CHALKLINE_SECRET_KEY`，未设置回退 `CHALKLINE_JWT_SECRET`），API 永不回显。
+- **REST（admin）**：`GET /api/v1/integration/smtp`、`PATCH /api/v1/integration/smtp`；字段留空 = 沿用环境变量默认值（`CHALKLINE_SMTP_*`），`password` 空串 = 清除库内密码；写事务 + 审计（`integration.smtp.update`，只记是否设置密码）。
+- **运行时生效**：`notify.SMTP.Resolve`（server 组装层注入 `app.Service.EffectiveSMTP`）每轮投递前解析合并配置，保存即生效、无需重启；解密失败按「密码未配置」降级并告警。收件人仍来自 `CHALKLINE_NOTIFY_EMAILS`（页面只读展示）。
+- **控制台**：`/smtp`「邮箱配置」（admin，位于 Webhook 订阅之前）。
+- 代码：`internal/store/smtp_config.go`、`internal/app/smtpconfig.go`、`internal/api/handlers_integration.go`、`internal/platform/secret.go`。
+- 测试：`platform/secret_test.go`（加解密往返、密钥不符）、`app/smtpconfig_test.go`（视图合并、入参校验）、`notify/smtp_resolve_test.go`（Resolve 生效/未启用跳过）。

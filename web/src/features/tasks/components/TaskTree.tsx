@@ -6,7 +6,7 @@ import { useState } from 'react'
 import type { Key } from 'react'
 import { useNavigate } from 'react-router'
 import { apiGet } from '../../../shared/api'
-import { priorityMeta, taskKindMeta, taskStatusMeta } from '../../../shared/status'
+import { memberNameOf, priorityMeta, taskKindMeta, taskStatusMeta } from '../../../shared/status'
 import type { TaskDetail, TaskView } from '../../../shared/types'
 
 interface TaskTreeProps {
@@ -37,7 +37,7 @@ export default function TaskTree({ roots, memberNames }: TaskTreeProps) {
         {priorityMeta[t.priority]?.label ?? t.priority}
       </Tag>
       <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-        {t.assigneeId ? (memberNames[t.assigneeId] ?? t.assigneeId) : '未指派'}
+        {t.assigneeId ? memberNameOf(memberNames, t.assigneeId) : '未指派'}
       </Typography.Text>
     </span>
   )

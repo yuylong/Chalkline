@@ -12,6 +12,27 @@ if ! mkdir -p "$CERT_DIR/acme/.well-known/acme-challenge" 2>/dev/null; then
     echo "警告：无法创建 ACME webroot 目录（$CERT_DIR/acme），HTTP-01 校验将不可用。" >&2
 fi
 
+# 生成 80 端口 server 块：ACME HTTP-01 校验路径 + HTTP→HTTPS 跳转。
+# 跳转携带宿主机对外 HTTPS 端口（NGINX_HTTPS_PORT），非 443 部署时才不会落到默认 443。
+HTTPS_PORT="${NGINX_HTTPS_PORT:-443}"
+cat > /etc/nginx/conf.d/00-redirect.conf <<EOF
+server {
+    listen 80;
+    server_name _;
+
+    # Let's Encrypt HTTP-01 校验路径（webroot 模式）：把 token 放到
+    # deploy/certs/acme/.well-known/acme-challenge/ 即可通过校验。
+    location ^~ /.well-known/acme-challenge/ {
+        root /etc/nginx/certs/acme;
+        default_type text/plain;
+    }
+
+    location / {
+        return 301 https://\$host:${HTTPS_PORT}\$request_uri;
+    }
+}
+EOF
+
 if [ ! -f "$CERT_DIR/chalkline.crt" ] || [ ! -f "$CERT_DIR/chalkline.key" ]; then
     echo "未发现 TLS 证书，生成自签名证书 (CN=$CN) ..."
     mkdir -p "$CERT_DIR"

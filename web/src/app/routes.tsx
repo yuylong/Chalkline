@@ -11,10 +11,12 @@ import Login from '../features/auth/Login'
 import McpKeys from '../features/mcp/Keys'
 import ProviderConfigs from '../features/integrations/Providers'
 import CurrentIterationPage from '../features/iterations/Current'
+import IterationCurrentNode from '../features/iterations/CurrentNode'
 import IterationDetail from '../features/iterations/Detail'
 import ProductDetail from '../features/products/Detail'
 import ProductList from '../features/products/List'
 import ReviewQueue from '../features/reviews/Queue'
+import SmtpConfig from '../features/smtp/Config'
 import TaskDetail from '../features/tasks/Detail'
 import UserList from '../features/users/List'
 import WebhookList from '../features/webhooks/List'
@@ -41,10 +43,12 @@ export default function AppRoutes() {
           <Route path="/products" element={<ProductList />} />
           <Route path="/products/:id" element={<ProductDetail />} />
           <Route path="/iterations/:id" element={<IterationDetail />} />
+          <Route path="/iterations/:id/node/:nodeId" element={<IterationCurrentNode />} />
           <Route path="/tasks/:id" element={<TaskDetail />} />
           <Route path="/reviews" element={<ReviewQueue />} />
           <Route path="/mcp" element={<McpKeys />} />
           <Route path="/audit" element={<AuditList />} />
+          <Route path="/smtp" element={<SmtpConfig />} />
           <Route path="/webhooks" element={<WebhookList />} />
           <Route path="/users" element={<UserList />} />
           <Route path="/workflows" element={<WorkflowList />} />

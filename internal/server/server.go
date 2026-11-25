@@ -111,6 +111,12 @@ func Run(ctx context.Context) error {
 								{Kind: "outline", Label: "Outline", BaseURL: cfg.OutlineBaseURL, TokenRequired: true, TokenConfigured: cfg.OutlineToken != ""},
 								{Kind: "redmine", Label: "Redmine", BaseURL: cfg.RedmineBaseURL, TokenRequired: true, TokenConfigured: cfg.RedmineToken != ""},
 							},
+							// M4 邮箱配置：环境变量默认值 + 密码加密密钥（管理台保存的配置覆盖前者）。
+							SMTPDefaults: app.SMTPEnvDefaults{
+								Host: cfg.SMTPHost, Port: cfg.SMTPPort, Username: cfg.SMTPUsername,
+								Password: cfg.SMTPPassword, From: cfg.SMTPFrom, Recipients: cfg.NotifyEmails,
+							},
+							SecretKey: cfg.SecretKey,
 						})
 						created, berr := s.BootstrapAdmin(ctx, cfg.AdminUsername, cfg.AdminPassword)
 						if berr != nil {
@@ -132,7 +138,7 @@ func Run(ctx context.Context) error {
 			}
 			if derr == nil {
 				logger.Info("数据库就绪：迁移、种子与引导完成")
-				startDispatcher(ctx, db, cfg, logger)
+				startDispatcher(ctx, db, cfg, logger, resolveSMTP(getSvc))
 				// M3：评审 SLA 监控器（超期提醒与升级链，只写水位与事件，不改状态）。
 				if impl, ok := svc.(*app.Service); ok {
 					go impl.RunReviewSLA(ctx, cfg.ReviewScanInterval, logger)
@@ -249,20 +255,39 @@ func closeDB(state *dbState) {
 	}
 }
 
-// startDispatcher 启动 outbox 通知投递器（M2 集成 + M3 订阅路由）。无论是否配置通道都启动：
-// 无通道且无订阅时事件直接标记完成，避免 outbox 无限滞留 pending（不变量 15）。
-func startDispatcher(ctx context.Context, db *store.DB, cfg platform.Config, logger *slog.Logger) {
+// resolveSMTP 构造投递器的运行时配置解析器（M4 邮箱配置）：每轮投递前经
+// app 层合并环境变量默认值与管理台保存的覆盖，保存即生效、无需重启。
+func resolveSMTP(getSvc func() app.API) func(context.Context) (notify.SMTPRuntime, bool) {
+	return func(ctx context.Context) (notify.SMTPRuntime, bool) {
+		s, ok := getSvc().(*app.Service)
+		if !ok {
+			return notify.SMTPRuntime{}, false
+		}
+		rt, err := s.EffectiveSMTP(ctx)
+		if err != nil {
+			return notify.SMTPRuntime{}, false // 数据库异常：按未启用跳过，不阻断事件
+		}
+		return notify.SMTPRuntime{
+			Enabled: rt.Enabled, Host: rt.Host, Port: rt.Port,
+			Username: rt.Username, Password: rt.Password, From: rt.From,
+		}, true
+	}
+}
+
+// startDispatcher 启动 outbox 通知投递器（M2 集成 + M3 订阅路由 + M4 邮箱配置）。
+// 无论是否配置通道都启动：无通道且无订阅时事件直接标记完成，避免 outbox
+// 无限滞留 pending（不变量 15）。
+func startDispatcher(ctx context.Context, db *store.DB, cfg platform.Config, logger *slog.Logger,
+	resolveSMTP func(context.Context) (notify.SMTPRuntime, bool)) {
 	senders := []notify.Sender{}
 	if cfg.WebhookURL != "" {
 		senders = append(senders, &notify.Webhook{URL: cfg.WebhookURL, Secret: cfg.WebhookSecret})
 		logger.Info("webhook 通知已启用")
 	}
-	if cfg.SMTPHost != "" && cfg.SMTPFrom != "" && len(cfg.NotifyEmails) > 0 {
-		senders = append(senders, &notify.SMTP{
-			Host: cfg.SMTPHost, Port: cfg.SMTPPort,
-			Username: cfg.SMTPUsername, Password: cfg.SMTPPassword,
-			From: cfg.SMTPFrom, To: cfg.NotifyEmails,
-		})
+	// SMTP 通道恒挂载：生效配置每轮经 resolveSMTP 解析（管理台保存立即生效；
+	// 未启用或未配置完整时 Send 静默跳过）。收件人仍来自 CHALKLINE_NOTIFY_EMAILS。
+	senders = append(senders, &notify.SMTP{To: cfg.NotifyEmails, Resolve: resolveSMTP})
+	if envSMTPReady(cfg) {
 		logger.Info("SMTP 邮件通知已启用", "host", cfg.SMTPHost, "recipients", len(cfg.NotifyEmails))
 	}
 	go (&notify.Dispatcher{
@@ -272,6 +297,11 @@ func startDispatcher(ctx context.Context, db *store.DB, cfg platform.Config, log
 		Subs:          db,
 		WebhookSecret: cfg.WebhookSecret,
 	}).Run(ctx)
+}
+
+// envSMTPReady 报告环境变量静态配置是否齐全（仅用于启动日志提示）。
+func envSMTPReady(cfg platform.Config) bool {
+	return cfg.SMTPHost != "" && cfg.SMTPFrom != "" && len(cfg.NotifyEmails) > 0
 }
 
 // tailOutbox 尾随 outbox 新事件并发布到 SSE 总线（M3 实时推送）。

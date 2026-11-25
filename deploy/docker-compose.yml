@@ -35,6 +35,7 @@ services:
       CHALKLINE_DATABASE_URL: postgres://${POSTGRES_USER:-chalk}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-chalkline}?sslmode=disable
       CHALKLINE_LOG_LEVEL: ${CHALKLINE_LOG_LEVEL:-info}
       CHALKLINE_JWT_SECRET: ${CHALKLINE_JWT_SECRET:-}
+      CHALKLINE_SECRET_KEY: ${CHALKLINE_SECRET_KEY:-}
       CHALKLINE_ADMIN_USERNAME: ${CHALKLINE_ADMIN_USERNAME:-}
       CHALKLINE_ADMIN_PASSWORD: ${CHALKLINE_ADMIN_PASSWORD:-}
       # ---- 集成（integration 模块，M2）：全部可选 ----
@@ -82,6 +83,7 @@ services:
       - ./certs:/etc/nginx/certs
     environment:
       CERT_CN: ${CERT_CN:-localhost}
+      NGINX_HTTPS_PORT: ${NGINX_HTTPS_PORT:-443}
     entrypoint: ["/bin/sh", "/etc/nginx/entrypoint.sh"]
     command: ["nginx", "-g", "daemon off;"]
     ports:

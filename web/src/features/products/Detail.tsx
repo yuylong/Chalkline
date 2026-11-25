@@ -1,4 +1,4 @@
-// 产品详情：基本信息、模块树（只读 + 新建）、成员表、迭代列表（跳看板）。
+// 产品详情：基本信息、迭代列表（跳看板）、成员表、模块树（只读 + 新建）。
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   App,
@@ -22,7 +22,7 @@ import dayjs from 'dayjs'
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { apiDelete, apiGet, apiPatch, apiPost, apiPut } from '../../shared/api'
-import { fmtDate, fmtTime, iterationStatusMeta, memberRoleMeta, MEMBER_ROLES } from '../../shared/status'
+import { fmtDate, fmtTime, iterationStatusMeta, memberRoleMeta, memberNameMap, memberNameOf, MEMBER_ROLES, userLabel } from '../../shared/status'
 import { ApiErrorBanner, DetailError, PageLoading } from '../../shared/ui'
 import type {
   CurrentIterationView,
@@ -181,12 +181,13 @@ export default function ProductDetail() {
   })
   const candidateOptions = (candidates.data?.items ?? []).map((u) => ({
     value: u.id,
-    label: u.displayName ? `${u.displayName}（${u.username}）` : u.username,
+    label: userLabel(u),
   }))
 
   if (detail.isError) return <DetailError error={detail.error} />
   if (detail.isPending) return <PageLoading />
   const p = detail.data
+  const memberNames = memberNameMap(p.members)
   const myRole = p.members.find((m) => m.userId === whoami?.user.id)?.role
   const isAdmin = whoami?.user.roles.includes('admin') === true
   const canManageMembers = isAdmin || myRole === 'owner'
@@ -222,87 +223,7 @@ export default function ProductDetail() {
             { key: 'itwf', label: '默认迭代工作流', children: wfName(p.defaultIterationWorkflowId) },
             { key: 'tswf', label: '默认任务工作流', children: wfName(p.defaultTaskWorkflowId) },
             { key: 'created', label: '创建时间', children: fmtTime(p.createdAt) },
-            { key: 'createdBy', label: '创建人', children: p.createdBy },
-          ]}
-        />
-      </Card>
-
-      <Card
-        title="模块树"
-        extra={<Button size="small" onClick={() => setModuleOpen(true)}>新建模块</Button>}
-      >
-        {p.modules.length ? (
-          <Tree treeData={toTreeNodes(p.modules)} defaultExpandAll blockNode />
-        ) : (
-          <Typography.Text type="secondary">暂无模块</Typography.Text>
-        )}
-      </Card>
-
-      <Card
-        title={`成员（${p.members.length}）`}
-        extra={
-          <Button
-            size="small"
-            onClick={() => setMemberOpen(true)}
-            disabled={!canManageMembers}
-            title={canManageMembers ? undefined : '仅产品负责人或管理员可添加成员'}
-          >
-            添加成员
-          </Button>
-        }
-      >
-        <Table<MemberView>
-          rowKey="userId"
-          size="small"
-          pagination={false}
-          dataSource={p.members}
-          columns={[
-            { title: '用户', dataIndex: 'username', width: 140 },
-            { title: '显示名', dataIndex: 'displayName' },
-            {
-              title: '产品角色',
-              dataIndex: 'role',
-              width: 150,
-              render: (v: string, record) => {
-                // 有管理权时可直接改角色（复用 upsert 接口）；否则只读展示。
-                if (!canManageMembers) {
-                  const m = memberRoleMeta[v]
-                  return m ? <Tag color={m.color}>{m.label}</Tag> : v
-                }
-                return (
-                  <Select
-                    size="small"
-                    value={v}
-                    style={{ width: 120 }}
-                    loading={upsertMemberMut.isPending}
-                    onChange={(role) =>
-                      upsertMemberMut.mutate({ userId: record.userId, role })
-                    }
-                    options={MEMBER_ROLES.map((r) => ({
-                      value: r,
-                      label: memberRoleMeta[r]?.label ?? r,
-                    }))}
-                  />
-                )
-              },
-            },
-            { title: '加入时间', dataIndex: 'createdAt', width: 160, render: (v: string) => fmtTime(v) },
-            {
-              title: '操作',
-              key: 'op',
-              width: 90,
-              render: (_, record) => (
-                <Popconfirm
-                  title="确认移除该成员？"
-                  description="其未终结任务需先转派，移除失败会提示原因"
-                  onConfirm={() => removeMemberMut.mutate(record.userId)}
-                >
-                  <Button size="small" danger>
-                    移除
-                  </Button>
-                </Popconfirm>
-              ),
-            },
+            { key: 'createdBy', label: '创建人', children: memberNameOf(memberNames, p.createdBy) },
           ]}
         />
       </Card>
@@ -365,6 +286,89 @@ export default function ProductDetail() {
               },
             ]}
           />
+        )}
+      </Card>
+
+      <Card
+        title={`成员（${p.members.length}）`}
+        extra={
+          <Button
+            size="small"
+            onClick={() => setMemberOpen(true)}
+            disabled={!canManageMembers}
+            title={canManageMembers ? undefined : '仅产品负责人或管理员可添加成员'}
+          >
+            添加成员
+          </Button>
+        }
+      >
+        <Table<MemberView>
+          rowKey="userId"
+          size="small"
+          pagination={false}
+          dataSource={p.members}
+          columns={[
+            {
+              title: '成员',
+              key: 'user',
+              render: (_, r) => userLabel(r),
+            },
+            {
+              title: '产品角色',
+              dataIndex: 'role',
+              width: 150,
+              render: (v: string, record) => {
+                // 有管理权时可直接改角色（复用 upsert 接口）；否则只读展示。
+                if (!canManageMembers) {
+                  const m = memberRoleMeta[v]
+                  return m ? <Tag color={m.color}>{m.label}</Tag> : v
+                }
+                return (
+                  <Select
+                    size="small"
+                    value={v}
+                    style={{ width: 120 }}
+                    loading={upsertMemberMut.isPending}
+                    onChange={(role) =>
+                      upsertMemberMut.mutate({ userId: record.userId, role })
+                    }
+                    options={MEMBER_ROLES.map((r) => ({
+                      value: r,
+                      label: memberRoleMeta[r]?.label ?? r,
+                    }))}
+                  />
+                )
+              },
+            },
+            { title: '加入时间', dataIndex: 'createdAt', width: 160, render: (v: string) => fmtTime(v) },
+            {
+              title: '操作',
+              key: 'op',
+              width: 90,
+              render: (_, record) => (
+                <Popconfirm
+                  title="确认移除该成员？"
+                  description="其未终结任务需先转派，移除失败会提示原因"
+                  onConfirm={() => removeMemberMut.mutate(record.userId)}
+                >
+                  <Button size="small" danger>
+                    移除
+                  </Button>
+                </Popconfirm>
+              ),
+            },
+          ]}
+        />
+      </Card>
+
+      <Card
+        title="模块树"
+        extra={<Button size="small" onClick={() => setModuleOpen(true)}>新建模块</Button>}
+      >
+        {p.modules.length ? (
+          <Tree treeData={toTreeNodes(p.modules)} defaultExpandAll blockNode />
+        ) : (
+          <Typography.Text type="secondary">暂无模块</Typography.Text>
         )}
       </Card>
 

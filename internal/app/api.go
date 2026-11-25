@@ -59,6 +59,7 @@ type API interface {
 	GetTask(ctx context.Context, actor Actor, id string) (TaskDetail, error)
 	ListTasks(ctx context.Context, actor Actor, f TaskFilter) ([]TaskView, error)
 	UpdateTask(ctx context.Context, actor Actor, id string, in TaskUpdateInput) (TaskView, error)
+	DeleteTask(ctx context.Context, actor Actor, id string) error
 	LinkModule(ctx context.Context, actor Actor, taskID, moduleID string, add bool) error
 
 	// workflow
@@ -89,6 +90,10 @@ type API interface {
 	// integration（M3 provider 配置，admin；凭据仍只读环境变量）
 	ListProviderConfigs(ctx context.Context, actor Actor) ([]ProviderConfigView, error)
 	UpdateProviderConfig(ctx context.Context, actor Actor, kind string, in ProviderConfigInput) (ProviderConfigView, error)
+
+	// 邮箱配置（M4 SMTP 发件配置，admin；密码加密落库，永不回显）
+	GetSMTPConfig(ctx context.Context, actor Actor) (SMTPConfigView, error)
+	UpdateSMTPConfig(ctx context.Context, actor Actor, in SMTPConfigInput) (SMTPConfigView, error)
 }
 
 // 编译期保证 *Service 实现 API。

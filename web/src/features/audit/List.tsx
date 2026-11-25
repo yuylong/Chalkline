@@ -109,7 +109,7 @@ export default function AuditList() {
           }}
           columns={[
             { title: '时间', dataIndex: 'createdAt', width: 170, render: (v: string) => fmtTime(v) },
-            { title: '操作者', dataIndex: 'actorName', width: 140 },
+            { title: '操作者', dataIndex: 'actorName', width: 180 },
             { title: '动作', dataIndex: 'action', width: 180, render: (v: string) => <Tag>{v}</Tag> },
             {
               title: '主体',
