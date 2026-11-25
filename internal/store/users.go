@@ -86,10 +86,11 @@ func ListActiveUsersNotInProduct(ctx context.Context, q Querier, productID strin
 		}, string(identity.UserActive), productID)
 }
 
-// UpdateUser 更新角色与状态（重置角色须至少保留一个合法角色，由 app 校验）。
-func UpdateUser(ctx context.Context, q Querier, id string, roles identity.Roles, status identity.UserStatus) error {
-	tag, err := q.Exec(ctx, `UPDATE users SET roles = $2, status = $3, updated_at = now() WHERE id = $1`,
-		id, FromRoles(roles), string(status))
+// UpdateUser 更新显示名、邮箱、角色与状态（不变量由 app 校验）。
+func UpdateUser(ctx context.Context, q Querier, id, displayName, email string, roles identity.Roles, status identity.UserStatus) error {
+	tag, err := q.Exec(ctx,
+		`UPDATE users SET display_name = $2, email = $3, roles = $4, status = $5, updated_at = now() WHERE id = $1`,
+		id, displayName, email, FromRoles(roles), string(status))
 	if err != nil {
 		return err
 	}

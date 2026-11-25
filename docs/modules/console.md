@@ -28,7 +28,7 @@
 | `tasks` | 任务树（多级拆解）、任务详情（节点状态、材料、审批） | planning + workflow |
 | `gates` | 门禁材料查看与提交、审批操作、成果物按步骤浏览（任务/迭代详情卡片 + 审批队列弹窗） | workflow |
 | `reviews` | 审批队列、审批历史 | workflow + identity |
-| `users` | 用户管理（admin）：成员列表、新建、改角色/启禁用、重置密码 | identity |
+| `users` | 用户管理（admin）：成员列表、新建、改显示名/邮箱/角色/启禁用、重置密码 | identity |
 | `mcp` | MCP 接入（全员）：API Key（PAT）生成/吊销 + 只读连接信息 | identity |
 | `workflows` | 工作流模板：列表、YAML 编辑（新建/更新）、导入/导出、归档 | workflow |
 | `integrations` | Provider 配置（admin）：启停与 baseURL 可视化维护 | integration |
@@ -115,5 +115,5 @@
 ### 管理能力（M3 补全）
 
 - **产品成员**（产品详情页）：添加成员用下拉选择（候选来自 `GET /products/{id}/member-candidates`，仅列出启用且尚未加入的成员），不再要求手填 `usr_` id；角色可在成员表中直接改（复用 upsert 接口）。非产品 `owner` / `admin` 时入口禁用，避免无效请求。
-- **用户管理**（admin，`/users`）：成员列表、新建（用户名不可改）、改全局角色/启禁用、重置密码；权限判定在后端（非 admin 403）。- **工作流模板**（`/workflows`）：列表（按 scope 过滤）、YAML 新建/更新（服务端 DAG 与门禁校验，更新自动升版本）、导入（冲突换 id/升版本）、导出下载、归档。
+- **用户管理**（admin，`/users`）：成员列表、新建（用户名不可改）、改显示名/邮箱/全局角色/启禁用、重置密码；权限判定在后端（非 admin 403）。- **工作流模板**（`/workflows`）：列表（按 scope 过滤）、YAML 新建/更新（服务端 DAG 与门禁校验，更新自动升版本）、导入（冲突换 id/升版本）、导出下载、归档。
 - **Provider 配置**（admin，`/integrations`）：`enabled` 与 `baseURL` 可视化维护并持久化（`integration_provider_configs`），保存后 `integration.Registry` 运行时生效；**凭据仍只读环境变量**，页面仅展示「是否已配置」，不显示/编辑 token。

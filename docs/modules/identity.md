@@ -29,7 +29,7 @@ REST（M1）：
 | `POST /api/v1/auth/pat` | 签发 PAT（MCP 接入用） | 登录用户 |
 | `GET /api/v1/users` / `GET /api/v1/users/{id}` | 成员列表/详情 | `admin` |
 | `POST /api/v1/users` | 建成员 | `admin` |
-| `PATCH /api/v1/users/{id}` | 改角色 / 启禁用 | `admin` |
+| `PATCH /api/v1/users/{id}` | 改显示名 / 邮箱 / 角色 / 启禁用 | `admin` |
 | `POST /api/v1/users/{id}/password` | 重置密码 | `admin` 或本人 |
 
 MCP：不直接暴露身份管理工具；`chalkline_whoami` 由本模块支撑（返回当前身份、角色、可见产品——可见产品列表来自 catalog）。

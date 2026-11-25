@@ -55,8 +55,10 @@ export interface CreateUserInput {
   roles: string[]
 }
 
-/** 管理台：改角色 / 启禁用（admin）。 */
+/** 管理台：改显示名 / 邮箱 / 角色 / 启禁用（admin）。 */
 export interface UpdateUserInput {
+  displayName: string
+  email: string
   roles: string[]
   status: string // active | disabled
 }

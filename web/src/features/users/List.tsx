@@ -1,4 +1,4 @@
-// 用户管理（admin）：成员列表、创建、改角色/启禁用、重置密码。
+// 用户管理（admin）：成员列表、创建、改显示名/邮箱/角色/启禁用、重置密码。
 // 权限判定在后端（admin 之外的请求返回 403），前端只做展示与请求发起。
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { App, Button, Card, Form, Input, Modal, Select, Space, Table, Tag, Typography } from 'antd'
@@ -23,11 +23,6 @@ const ROLE_COLORS: Record<string, string> = {
   qa: 'orange',
 }
 
-interface EditForm {
-  roles: string[]
-  status: string
-}
-
 export default function UserList() {
   const queryClient = useQueryClient()
   const { message } = App.useApp()
@@ -35,7 +30,7 @@ export default function UserList() {
   const [editing, setEditing] = useState<UserView | null>(null)
   const [resetTarget, setResetTarget] = useState<UserView | null>(null)
   const [createForm] = Form.useForm<CreateUserInput>()
-  const [editForm] = Form.useForm<EditForm>()
+  const [editForm] = Form.useForm<UpdateUserInput>()
   const [resetForm] = Form.useForm<{ password: string }>()
 
   const { data, isPending, isError, error } = useQuery({
@@ -80,7 +75,12 @@ export default function UserList() {
 
   const openEdit = (u: UserView) => {
     setEditing(u)
-    editForm.setFieldsValue({ roles: u.roles, status: u.status })
+    editForm.setFieldsValue({
+      displayName: u.displayName,
+      email: u.email,
+      roles: u.roles,
+      status: u.status,
+    })
   }
 
   return (
@@ -213,14 +213,25 @@ export default function UserList() {
         onOk={() => editForm.submit()}
         destroyOnHidden
       >
-        <Form<EditForm>
+        <Form<UpdateUserInput>
           form={editForm}
           layout="vertical"
-          onFinish={(v) =>
-            editing && updateMut.mutate({ id: editing.id, body: { roles: v.roles, status: v.status } })
-          }
+          onFinish={(v) => editing && updateMut.mutate({ id: editing.id, body: v })}
           style={{ marginTop: 16 }}
         >
+          <Form.Item name="displayName" label="姓名" rules={[{ required: true, message: '请输入姓名' }]}>
+            <Input placeholder="如 张三" />
+          </Form.Item>
+          <Form.Item
+            name="email"
+            label="邮箱"
+            rules={[
+              { required: true, message: '请输入邮箱' },
+              { type: 'email', message: '需为合法邮箱' },
+            ]}
+          >
+            <Input placeholder="name@example.com" />
+          </Form.Item>
           <Form.Item name="roles" label="角色" rules={[{ required: true, message: '至少选择一个角色' }]}>
             <Select mode="multiple" options={ROLE_OPTIONS} />
           </Form.Item>

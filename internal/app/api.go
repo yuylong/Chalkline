@@ -7,7 +7,6 @@ package app
 import (
 	"context"
 
-	"github.com/yuylong/Chalkline/internal/domain/identity"
 	"github.com/yuylong/Chalkline/internal/domain/planning"
 	"github.com/yuylong/Chalkline/internal/domain/product"
 	"github.com/yuylong/Chalkline/internal/domain/workitem"
@@ -25,7 +24,7 @@ type API interface {
 	CreateUser(ctx context.Context, actor Actor, in CreateUserInput) (UserView, error)
 	ListUsers(ctx context.Context, actor Actor) ([]UserView, error)
 	GetUser(ctx context.Context, actor Actor, id string) (UserView, error)
-	UpdateUser(ctx context.Context, actor Actor, id string, roles identity.Roles, status identity.UserStatus) (UserView, error)
+	UpdateUser(ctx context.Context, actor Actor, id string, in UpdateUserInput) (UserView, error)
 	SetPassword(ctx context.Context, actor Actor, id, newPassword string) error
 
 	// catalog

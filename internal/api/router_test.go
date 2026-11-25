@@ -21,11 +21,12 @@ import (
 
 type fakeAPI struct {
 	app.API
-	loginFn   func(ctx context.Context, username, password string) (app.LoginResult, error)
-	currentFn func(ctx context.Context, actor app.Actor) (app.CurrentIterationView, error)
-	setCurFn  func(ctx context.Context, actor app.Actor, iterationID string) (app.IterationDetail, error)
-	clearFn   func(ctx context.Context, actor app.Actor) error
-	delTaskFn  func(ctx context.Context, actor app.Actor, id string) error
+	loginFn      func(ctx context.Context, username, password string) (app.LoginResult, error)
+	currentFn    func(ctx context.Context, actor app.Actor) (app.CurrentIterationView, error)
+	setCurFn     func(ctx context.Context, actor app.Actor, iterationID string) (app.IterationDetail, error)
+	clearFn      func(ctx context.Context, actor app.Actor) error
+	delTaskFn    func(ctx context.Context, actor app.Actor, id string) error
+	updateUserFn func(ctx context.Context, actor app.Actor, id string, in app.UpdateUserInput) (app.UserView, error)
 }
 
 func (f fakeAPI) Login(ctx context.Context, username, password string) (app.LoginResult, error) {
@@ -46,6 +47,10 @@ func (f fakeAPI) ClearCurrentIteration(ctx context.Context, actor app.Actor) err
 
 func (f fakeAPI) DeleteTask(ctx context.Context, actor app.Actor, id string) error {
 	return f.delTaskFn(ctx, actor, id)
+}
+
+func (f fakeAPI) UpdateUser(ctx context.Context, actor app.Actor, id string, in app.UpdateUserInput) (app.UserView, error) {
+	return f.updateUserFn(ctx, actor, id, in)
 }
 
 func testDeps(loginFn func(context.Context, string, string) (app.LoginResult, error)) Deps {
@@ -167,6 +172,45 @@ func TestLoginSuccessAndFailure(t *testing.T) {
 	rec = post(`{bad-json`)
 	if rec.Code != http.StatusUnprocessableEntity || !strings.Contains(rec.Body.String(), `"INVALID_PARAMETER"`) {
 		t.Fatalf("非法请求体应 422，实际 %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+// TestUpdateUserProfile 验证 PATCH /users/{id} 透传显示名与邮箱，非法状态在协议层拦截。
+func TestUpdateUserProfile(t *testing.T) {
+	var got app.UpdateUserInput
+	var gotID string
+	d := testDeps(nil)
+	d.Svc = func() app.API {
+		return fakeAPI{updateUserFn: func(_ context.Context, _ app.Actor, id string, in app.UpdateUserInput) (app.UserView, error) {
+			gotID, got = id, in
+			return app.UserView{ID: id, Username: "alice", DisplayName: in.DisplayName, Email: in.Email}, nil
+		}}
+	}
+	r := NewRouter(d)
+
+	patch := func(body string) *httptest.ResponseRecorder {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPatch, "/api/v1/users/usr_1", bytes.NewBufferString(body))
+		req.Header.Set("Content-Type", "application/json")
+		r.ServeHTTP(rec, req)
+		return rec
+	}
+
+	rec := patch(`{"displayName":"张三","email":"zhang@example.com","roles":["dev"],"status":"active"}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("更新成员应 200，实际 %d %s", rec.Code, rec.Body.String())
+	}
+	if gotID != "usr_1" || got.DisplayName != "张三" || got.Email != "zhang@example.com" ||
+		len(got.Roles) != 1 || got.Roles[0] != identity.RoleDev || got.Status != identity.UserActive {
+		t.Fatalf("显示名/邮箱未正确透传，实际 id=%s in=%+v", gotID, got)
+	}
+	if !strings.Contains(rec.Body.String(), `"displayName":"张三"`) {
+		t.Fatalf("响应应含更新后的显示名，实际 %s", rec.Body.String())
+	}
+
+	rec = patch(`{"displayName":"张三","email":"zhang@example.com","roles":["dev"],"status":"bogus"}`)
+	if rec.Code != http.StatusUnprocessableEntity || !strings.Contains(rec.Body.String(), `"INVALID_PARAMETER"`) {
+		t.Fatalf("非法状态应 422，实际 %d %s", rec.Code, rec.Body.String())
 	}
 }
 

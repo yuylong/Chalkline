@@ -157,8 +157,10 @@ func (h *handlers) getUser(w http.ResponseWriter, r *http.Request) {
 }
 
 type updateUserReq struct {
-	Roles  []string `json:"roles"`
-	Status string   `json:"status"`
+	DisplayName string   `json:"displayName"`
+	Email       string   `json:"email"`
+	Roles       []string `json:"roles"`
+	Status      string   `json:"status"`
 }
 
 func (h *handlers) updateUser(w http.ResponseWriter, r *http.Request) {
@@ -182,7 +184,9 @@ func (h *handlers) updateUser(w http.ResponseWriter, r *http.Request) {
 		writeAppError(w, app.Invalid("状态 %q 非法", req.Status))
 		return
 	}
-	view, err := h.svc().UpdateUser(r.Context(), actor, pathParam(r, "id"), roles, status)
+	view, err := h.svc().UpdateUser(r.Context(), actor, pathParam(r, "id"), app.UpdateUserInput{
+		DisplayName: req.DisplayName, Email: req.Email, Roles: roles, Status: status,
+	})
 	if err != nil {
 		writeAppError(w, err)
 		return

@@ -5,6 +5,8 @@ package app
 
 import (
 	"context"
+	"net/mail"
+	"strings"
 	"time"
 
 	"github.com/yuylong/Chalkline/internal/auth"
@@ -191,28 +193,47 @@ func (s *Service) GetUser(ctx context.Context, _ Actor, id string) (UserView, er
 	return viewUser(u), nil
 }
 
-// UpdateUser 改角色/启禁用（admin）。角色变更同时影响 JWT/PAT 生效判定（校验时查库）。
-func (s *Service) UpdateUser(ctx context.Context, actor Actor, id string, roles identity.Roles, status identity.UserStatus) (UserView, error) {
-	if len(roles) == 0 {
+// UpdateUserInput 是改成员入参：显示名/邮箱/角色/状态。
+type UpdateUserInput struct {
+	DisplayName string
+	Email       string
+	Roles       identity.Roles
+	Status      identity.UserStatus
+}
+
+// UpdateUser 改显示名/邮箱/角色/启禁用（admin）。角色变更同时影响 JWT/PAT 生效判定（校验时查库）。
+func (s *Service) UpdateUser(ctx context.Context, actor Actor, id string, in UpdateUserInput) (UserView, error) {
+	in.DisplayName = strings.TrimSpace(in.DisplayName)
+	if in.DisplayName == "" {
+		return UserView{}, Invalid("显示名不能为空")
+	}
+	if _, err := mail.ParseAddress(in.Email); err != nil {
+		return UserView{}, Invalid("邮箱 %q 非法", in.Email)
+	}
+	if len(in.Roles) == 0 {
 		return UserView{}, Invalid("至少需要一个角色")
 	}
-	for _, r := range roles {
+	for _, r := range in.Roles {
 		if !r.Valid() {
 			return UserView{}, Invalid("未知角色 %q", r)
 		}
 	}
-	if !status.Valid() {
+	if !in.Status.Valid() {
 		return UserView{}, Invalid("状态非法")
 	}
 	err := s.DB.WithTx(ctx, func(q store.Querier) error {
 		if _, err := store.UserByID(ctx, q, id); err != nil {
 			return wrapNotFound(err, "成员不存在")
 		}
-		if err := store.UpdateUser(ctx, q, id, roles, status); err != nil {
+		if err := store.UpdateUser(ctx, q, id, in.DisplayName, in.Email, in.Roles, in.Status); err != nil {
+			if store.IsDuplicate(err) {
+				return Invalid("邮箱已存在")
+			}
 			return err
 		}
 		return audit(ctx, q, actor, "user.update", "user", id,
-			map[string]any{"roles": store.FromRoles(roles), "status": string(status)})
+			map[string]any{"displayName": in.DisplayName, "email": in.Email,
+				"roles": store.FromRoles(in.Roles), "status": string(in.Status)})
 	})
 	if err != nil {
 		return UserView{}, err
