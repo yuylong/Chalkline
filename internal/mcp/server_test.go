@@ -97,12 +97,13 @@ func TestToolsListContract(t *testing.T) {
 		"chalkline_get_next_action": false, "chalkline_get_workflow": false,
 		"chalkline_list_workflows": false, "chalkline_get_pending_reviews": false,
 		"chalkline_list_product_members": false, "chalkline_get_iteration_providers": false,
-		// 写（12）
+		// 写（13）
 		"chalkline_create_iteration": false, "chalkline_create_task": false,
 		"chalkline_decompose_task": false, "chalkline_assign_task": false,
 		"chalkline_link_module": false, "chalkline_start_step": false,
 		"chalkline_submit_step": false, "chalkline_attach_artifact": false,
 		"chalkline_review_step": false, "chalkline_set_iteration_providers": false,
+		"chalkline_set_iteration_provider_credential": false,
 		"chalkline_upsert_product_member": false,
 		"chalkline_remove_product_member": false,
 	}

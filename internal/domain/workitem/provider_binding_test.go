@@ -98,6 +98,40 @@ func TestCheckArtifactProvider(t *testing.T) {
 	}
 }
 
+func TestProviderAuthValidation(t *testing.T) {
+	cases := []struct {
+		name       string
+		auth       ProviderAuth
+		wantErr    bool
+		rotWantErr bool
+	}{
+		{name: "未配置", auth: ProviderAuth{}},
+		{name: "token 有 Key", auth: ProviderAuth{Type: AuthToken, Secret: "k"}},
+		{name: "token 无 Key", auth: ProviderAuth{Type: AuthToken}, wantErr: true},
+		{name: "basic 完整", auth: ProviderAuth{Type: AuthBasic, Username: "u", Secret: "p"}},
+		{name: "basic 无用户名", auth: ProviderAuth{Type: AuthBasic, Secret: "p"}, wantErr: true, rotWantErr: true},
+		{name: "basic 无密码", auth: ProviderAuth{Type: AuthBasic, Username: "u"}, wantErr: true},
+		{name: "未知方式", auth: ProviderAuth{Type: "oauth"}, wantErr: true, rotWantErr: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := tc.auth.Validate(); tc.wantErr != (err != nil) {
+				t.Fatalf("Validate wantErr=%v，实际 %v", tc.wantErr, err)
+			}
+			if err := tc.auth.ValidateForRotation(); tc.rotWantErr != (err != nil) {
+				t.Fatalf("ValidateForRotation wantErr=%v，实际 %v", tc.rotWantErr, err)
+			}
+		})
+	}
+}
+
+func TestInlineBindingRejectsAuth(t *testing.T) {
+	b := ProviderBinding{Category: CategoryArtifact, Provider: ProviderInline,
+		Auth: ProviderAuth{Type: AuthToken, Secret: "k"}}
+	if err := b.Validate(); err == nil {
+		t.Fatal("inline provider 不应允许认证信息")
+	}
+}
 func TestProviderBindingLinkURLAndDirPath(t *testing.T) {
 	outline := ProviderBinding{Provider: ProviderOutline, BaseURL: "https://outline.example.com/", Target: "col-1"}
 	if got, want := outline.LinkURL(), "https://outline.example.com/collection/col-1"; got != want {

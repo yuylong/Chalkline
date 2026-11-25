@@ -1,6 +1,7 @@
 package integration
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -206,5 +207,84 @@ func TestPushArtifactBlockedByAllowlist(t *testing.T) {
 		workitem.ArtifactRef{Kind: workitem.KindSpec, Content: "x"}, workitem.ArtifactMeta{}, "")
 	if err == nil {
 		t.Fatal("白名单为空时应拒绝出站")
+	}
+}
+
+func TestPushArtifactUsesBindingToken(t *testing.T) {
+	var gotAuth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		_, _ = io.WriteString(w, `{"data":{"id":"d1","url":"/doc/d1"}}`)
+	}))
+	defer srv.Close()
+
+	// 环境变量未配置凭据：只用迭代级 Key 也必须能推送。
+	d := newTestDispatcher(DispatchCredentials{})
+	b := workitem.ProviderBinding{
+		Category: workitem.CategoryArtifact, Provider: workitem.ProviderOutline,
+		BaseURL: srv.URL, Target: "col",
+		Auth: workitem.ProviderAuth{Type: workitem.AuthToken, Secret: "iter-token"},
+	}
+	if _, err := d.PushArtifact(t.Context(), b,
+		workitem.ArtifactRef{Kind: workitem.KindSpec, Content: "# 正文"}, workitem.ArtifactMeta{}, "dir"); err != nil {
+		t.Fatalf("推送失败：%v", err)
+	}
+	if gotAuth != "Bearer iter-token" {
+		t.Fatalf("Authorization = %q", gotAuth)
+	}
+}
+
+func TestPushArtifactUsesBasicAuth(t *testing.T) {
+	var gotAuth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		w.WriteHeader(http.StatusCreated)
+	}))
+	defer srv.Close()
+
+	d := newTestDispatcher(DispatchCredentials{})
+	b := workitem.ProviderBinding{
+		Provider: workitem.ProviderSVN, BaseURL: srv.URL, Target: "repo",
+		Auth: workitem.ProviderAuth{Type: workitem.AuthBasic, Username: "alice", Secret: "s3cret"},
+	}
+	if _, err := d.PushArtifact(t.Context(), b,
+		workitem.ArtifactRef{Kind: workitem.KindTestCases, Content: "x"}, workitem.ArtifactMeta{}, "dir"); err != nil {
+		t.Fatalf("推送失败：%v", err)
+	}
+	want := "Basic " + base64.StdEncoding.EncodeToString([]byte("alice:s3cret"))
+	if gotAuth != want {
+		t.Fatalf("Authorization = %q，期望 %q", gotAuth, want)
+	}
+}
+
+func TestProcessTicketUsesBindingToken(t *testing.T) {
+	var gotKey string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotKey = r.Header.Get("X-Redmine-API-Key")
+		w.WriteHeader(http.StatusCreated)
+		_, _ = io.WriteString(w, `{"issue":{"id":7}}`)
+	}))
+	defer srv.Close()
+
+	d := newTestDispatcher(DispatchCredentials{})
+	b := workitem.ProviderBinding{Provider: workitem.ProviderRedmine, BaseURL: srv.URL, Target: "chalk",
+		Auth: workitem.ProviderAuth{Type: workitem.AuthToken, Secret: "redmine-key"}}
+	if _, err := d.EnsureTicket(t.Context(), b, workitem.ProcessSubject{Type: "task", ID: "tsk_1", Title: "T"}); err != nil {
+		t.Fatalf("建票失败：%v", err)
+	}
+	if gotKey != "redmine-key" {
+		t.Fatalf("X-Redmine-API-Key = %q", gotKey)
+	}
+}
+
+func TestAuthHeadersRequiresConfiguredSecret(t *testing.T) {
+	d := newTestDispatcher(DispatchCredentials{})
+	if _, err := d.authHeaders(workitem.ProviderBinding{Provider: workitem.ProviderOutline,
+		Auth: workitem.ProviderAuth{Type: workitem.AuthToken}}); err == nil {
+		t.Fatal("token 认证缺少 Secret 时应报错")
+	}
+	if _, err := d.authHeaders(workitem.ProviderBinding{Provider: workitem.ProviderGit,
+		Auth: workitem.ProviderAuth{Type: workitem.AuthBasic, Username: "u"}}); err == nil {
+		t.Fatal("basic 认证缺少密码时应报错")
 	}
 }

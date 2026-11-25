@@ -91,6 +91,7 @@ func NewRouter(d Deps) http.Handler {
 			g.Get("/iterations/{id}", h.getIteration)
 			g.Get("/iterations/{id}/providers", h.getIterationProviders)
 			g.Put("/iterations/{id}/providers", h.setIterationProviders)
+			g.Put("/iterations/{id}/providers/{providerId}/credential", h.setIterationProviderCredential)
 			g.Post("/iterations/{id}/tasks", h.createTask)
 			// 个人「当前迭代」：首页直接展示该迭代看板（每人一条，覆盖即替换）。
 			g.Get("/current-iteration", h.getCurrentIteration)

@@ -78,6 +78,67 @@ type ProviderBinding struct {
 	Target      string           `json:"target"`      // outline collection / redmine project / 代码库路径
 	DirTemplate string           `json:"dirTemplate"` // 成果物目录结构约定（artifact / code）
 	Branch      string           `json:"branch"`      // 代码库分支（git 用，空即默认分支）
+	Auth        ProviderAuth     `json:"auth"`        // 写权限凭据（空 = 沿用服务端环境变量）
+}
+
+// ProviderAuthType 是外部系统的认证方式。
+type ProviderAuthType string
+
+const (
+	AuthNone  ProviderAuthType = ""      // 未配置：沿用服务端环境变量
+	AuthToken ProviderAuthType = "token" // API Key / Bearer
+	AuthBasic ProviderAuthType = "basic" // 用户名 + 密码
+)
+
+// Valid 报告认证方式是否已定义。
+func (t ProviderAuthType) Valid() bool {
+	switch t {
+	case AuthNone, AuthToken, AuthBasic:
+		return true
+	}
+	return false
+}
+
+// ProviderAuth 是迭代绑定上的写权限凭据。
+// Secret 只以明文存在于内存（落库前由 app 层用 platform.Seal 加密，API 永不回显）。
+type ProviderAuth struct {
+	Type     ProviderAuthType
+	Username string // basic 认证的用户名（非机密）
+	Secret   string // token / 密码
+}
+
+// Configured 报告是否在迭代级配置了凭据。
+func (a ProviderAuth) Configured() bool { return a.Type != AuthNone }
+
+// Validate 校验完整凭据（新增 / 结构保存时使用）。
+func (a ProviderAuth) Validate() error { return a.validate(false) }
+
+// ValidateForRotation 校验凭据轮换：允许不填 Secret（表示沿用库内已有密文）。
+func (a ProviderAuth) ValidateForRotation() error { return a.validate(true) }
+
+func (a ProviderAuth) validate(allowEmptySecret bool) error {
+	if !a.Type.Valid() {
+		return fmt.Errorf("未知认证方式 %q", a.Type)
+	}
+	switch a.Type {
+	case AuthNone:
+		if strings.TrimSpace(a.Secret) != "" {
+			return fmt.Errorf("未选择认证方式时不应填写 Key")
+		}
+		return nil
+	case AuthToken:
+		if strings.TrimSpace(a.Secret) == "" && !allowEmptySecret {
+			return fmt.Errorf("token 认证需要填写 Key")
+		}
+	case AuthBasic:
+		if strings.TrimSpace(a.Username) == "" {
+			return fmt.Errorf("用户名密码认证需要填写用户名")
+		}
+		if strings.TrimSpace(a.Secret) == "" && !allowEmptySecret {
+			return fmt.Errorf("用户名密码认证需要填写密码")
+		}
+	}
+	return nil
 }
 
 // IsExternal 报告是否指向平台外部系统（inline 为平台内置存储）。
@@ -98,6 +159,9 @@ func (b ProviderBinding) Validate() error {
 		if strings.TrimSpace(b.BaseURL) != "" || strings.TrimSpace(b.Target) != "" {
 			return fmt.Errorf("inline 成果物 provider 不应配置 baseURL / 目标")
 		}
+		if b.Auth.Configured() {
+			return fmt.Errorf("inline 成果物 provider 不需要认证信息")
+		}
 		return nil
 	}
 	if err := validateBindingBaseURL(b.BaseURL); err != nil {
@@ -105,6 +169,10 @@ func (b ProviderBinding) Validate() error {
 	}
 	if strings.TrimSpace(b.Target) == "" {
 		return fmt.Errorf("%s provider %q 需要目标（项目 / 集合 / 仓库路径）", b.Category.Label(), b.Provider)
+	}
+	// 结构保存允许不填 Secret（表示沿用已保存的密文）；「首次必须填」由 app 层结合存量校验。
+	if err := b.Auth.ValidateForRotation(); err != nil {
+		return err
 	}
 	return nil
 }

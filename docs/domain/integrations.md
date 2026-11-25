@@ -26,7 +26,22 @@
 
 提交约定：内容类成果物以 `provider=inline` 交给 Chalkline，由绑定决定落到 `outline` / `git` / `svn`；已带外部 URL 的引用（含 `pr`）只做关联，不重复外推。
 
-全局的 `integration_provider_configs`（`baseUrl` / 启停 / 凭据是否存在）只回答「这套部署能连哪些外部系统」，管理台保留它是为了创建迭代时预填连接地址，不承载业务语义。成员可经 `GET /api/v1/integration/provider-options` 读取这些默认地址（只含地址，不含凭据）。
+### 写权限凭据
+
+外部 provider 需要写权限，因此迭代绑定可携带凭据：
+
+| 字段 | 说明 |
+| --- | --- |
+| `authType` | `token`（API Key / Bearer）或 `basic`（用户名 + 密码） |
+| `authUsername` | basic 的用户名（非机密） |
+| `authSecret` | Key / 密码：**AES-GCM 加密落库**，API 永不回显，只报「已配置 / 未配置」 |
+
+- 未配置时沿用服务端环境变量（`CHALKLINE_OUTLINE_TOKEN` / `CHALKLINE_REDMINE_TOKEN` / `CHALKLINE_GIT_TOKEN` / `CHALKLINE_SVN_TOKEN`）。
+- **凭据更新不受冻结限制**：结构配置（provider / 地址 / 目标）在首次提交成果物后冻结，但 Key 与用户名密码可随时轮换（`PUT /api/v1/iterations/{id}/providers/{providerId}/credential`）。
+- 加密密钥 `CHALKLINE_SECRET_KEY`（未设置回退 `CHALKLINE_JWT_SECRET`）；密钥变更导致解密失败时按「未配置」降级并告警，不阻断流程。
+- 轮换时可只提交新 Key（用户名保持不变）；留空 Secret 表示保持库内已有密文。
+
+全局的 `integration_provider_configs`（`baseUrl` / 启停 / 凭据是否存在）只回答「这套部署能连哪些外部系统」，管理台保留它是为了创建迭代时预填连接地址，不承载业务语义。成员可经 `GET /api/v1/integration/provider-options` 读取这些默认地址（只含地址，不含凭据），迭代配置弹窗以下拉建议的形式提供快速填写。
 
 ### 数据流
 
@@ -167,8 +182,9 @@ admin 在控制台「邮箱配置」页（位于 Webhook 订阅之前）或 REST
 
 ## 安全
 
-- 全局连接配置与迭代绑定里的 `baseUrl` 只存地址，**凭据（token / API key）只从环境变量读取**（`CHALKLINE_OUTLINE_TOKEN` / `CHALKLINE_REDMINE_TOKEN` / `CHALKLINE_GIT_TOKEN` / `CHALKLINE_SVN_TOKEN`），不落库、不进日志。唯一例外：SMTP 发件密码可经管理台保存，以 AES-GCM 加密落库（密钥 `CHALKLINE_SECRET_KEY`，未设置回退 `CHALKLINE_JWT_SECRET`），API 永不回显、不进日志。
-- 迭代绑定的 `baseUrl` 不得内嵌凭据（保存时校验并拒绝）。
+- 全局连接配置与迭代绑定里的 `baseUrl` 只存地址，**不得内嵌凭据**（保存时校验并拒绝）。
+- 凭据来源：迭代级 `authType/authSecret`（AES-GCM 加密落库）优先，未配置时回退服务端环境变量（`CHALKLINE_OUTLINE_TOKEN` / `CHALKLINE_REDMINE_TOKEN` / `CHALKLINE_GIT_TOKEN` / `CHALKLINE_SVN_TOKEN`）。环境变量与加密密钥都不进日志；API 永不回显凭据，只报是否已配置。
+- 加密密钥 `CHALKLINE_SECRET_KEY`（未设置回退 `CHALKLINE_JWT_SECRET`）。这是「凭据不落库」的两处例外之一（另一处是 SMTP 发件密码），两者共用同一实现（`platform.Seal`）。
 - 出站请求做域名白名单校验（`CHALKLINE_OUTBOUND_ALLOWLIST`），禁止跟随任意重定向（防 SSRF）；白名单为空时拒绝一切出站，分发失败只记回执。
 - Webhook 载荷带签名头，接收方可校验。
 - 邮件只发内网 SMTP，默认关闭对外直发。

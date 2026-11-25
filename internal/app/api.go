@@ -52,6 +52,8 @@ type API interface {
 	// 迭代级 provider 绑定（docs/domain/integrations.md「迭代 Provider」）。
 	GetIterationProviders(ctx context.Context, actor Actor, iterationID string) (IterationProvidersView, error)
 	SetIterationProviders(ctx context.Context, actor Actor, iterationID string, inputs []IterationProviderInput) (IterationProvidersView, error)
+	// SetIterationProviderCredential 轮换写权限凭据（不受绑定冻结限制）。
+	SetIterationProviderCredential(ctx context.Context, actor Actor, iterationID, providerID string, in ProviderCredentialInput) (IterationProvidersView, error)
 	// 个人「当前迭代」偏好：首页直接展示该迭代看板。
 	GetCurrentIteration(ctx context.Context, actor Actor) (CurrentIterationView, error)
 	SetCurrentIteration(ctx context.Context, actor Actor, iterationID string) (IterationDetail, error)

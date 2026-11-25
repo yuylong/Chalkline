@@ -120,20 +120,22 @@ type Provider interface {
   - `ProviderCategory`：`artifact`（成果物，必选且唯一）/ `process`（流程记录，至多一个）/ `code`（代码库，可多个）。
   - `ProviderBinding{Category, Provider, BaseURL, Target, DirTemplate, Branch}`：连接信息随迭代固化；`ValidateBindings` 校验整套绑定；`CheckArtifactProvider` 校验材料来源（不变量 22）。
   - `LinkURL()` 生成控制台可点击地址；`DirPath()` 展开目录模板（默认 `chalkline/{iteration}/{node}`，文件名 `<kind>.md`）。
-- **表**（迁移 `0013_iteration_providers.sql`）
-  - `iteration_providers`：`iteration_id` / `category` / `provider` / `base_url` / `target` / `dir_template` / `branch`；唯一键 `(iteration_id, category, provider, target)`。
+- **表**（迁移 `0013_iteration_providers.sql` + `0014_iteration_provider_auth.sql`）
+  - `iteration_providers`：`iteration_id` / `category` / `provider` / `base_url` / `target` / `dir_template` / `branch` / `auth_type`（'' / token / basic）/ `auth_username` / `auth_secret_enc`；唯一键 `(iteration_id, category, provider, target)`。
+  - `auth_secret_enc` 是 AES-GCM 密文（`platform.Seal`，密钥 `CHALKLINE_SECRET_KEY` 回退 `CHALKLINE_JWT_SECRET`），API 永不回显；未配置时回退服务端环境变量。
   - `integration_syncs`：分发回执（`category` / `provider` / `subject_type` / `subject_id` / `action` / `status` / `external_id` / `url` / `summary` / `error` / `attempts`）；唯一键 `(iteration_id, category, provider, subject_type, subject_id, action)` 提供幂等：已成功的不重复推送。
 - **REST**
   - `POST /api/v1/products/{pid}/iterations` 新增 `providers`（成果物必选）。
-  - `GET /api/v1/iterations/{id}/providers`（成员）/ `PUT /api/v1/iterations/{id}/providers`（产品成员持 pm、owner、admin）：返回 `items` + `locked` / `editable` / `lockedReason`；已冻结返回 `409 PROVIDERS_LOCKED`。
+  - `GET /api/v1/iterations/{id}/providers`（成员）/ `PUT /api/v1/iterations/{id}/providers`（产品成员持 pm、owner、admin）：返回 `items` + `locked` / `editable` / `lockedReason`；结构修改在冻结后返回 `409 PROVIDERS_LOCKED`。
+  - `PUT /api/v1/iterations/{id}/providers/{providerId}/credential`（产品成员持 pm、owner、admin）：**只更新认证方式与凭据，不受冻结限制**；`authSecret` 留空表示保持库内已有密文；审计 `iteration.providers.credential` 只记录方式与「是否更换」，绝不写密钥。
   - `GET /api/v1/iterations/{id}` 的 `providers` 字段随详情返回，节点详情页据此展示连接。
   - `GET /api/v1/integration/provider-options`（任意登录成员）：全局连接默认值（`kind` / `label` / `baseUrl` / `enabled`），供迭代创建与配置弹窗预填地址；**不含任何凭据信息**（admin 专用的 `/integration/providers` 仍保留）。
-- **MCP**：`chalkline_create_iteration` 接收 `providers`；新增 `chalkline_get_iteration_providers` / `chalkline_set_iteration_providers`。材料提交时来源必须与绑定一致，否则 `422 INVALID_ARTIFACT_REF`。
+- **MCP**：`chalkline_create_iteration` 接收 `providers`；新增 `chalkline_get_iteration_providers` / `chalkline_set_iteration_providers` / `chalkline_set_iteration_provider_credential`（轮换 Key，不受冻结限制）。材料提交时来源必须与绑定一致，否则 `422 INVALID_ARTIFACT_REF`。
 - **分发**（`internal/integration/dispatch.go`，app 经 `ArtifactDistributor` / `ProcessRecorder` 依赖倒置调用）
   - 成果物：`outline` 建文档（集合 + 标题）；`git` 走 GitLab 兼容 `repository/commits`（文件已存在自动改用 `update`）；`svn` 走 WebDAV（`MKCOL` 建目录 + `PUT` 写文件）。
   - 流程：`redmine` 为阶段/任务建票（`POST /projects/{id}/issues.json`），节点动作追加回复（`PUT /issues/{id}.json`）；票 ID 存 `external_links`，回复幂等键为 `comment:<节点>:<状态版本>`。
   - 事务提交后执行（server 注入 `Async: go fn()`），失败只写 `integration_syncs.error`，不改变节点状态（不变量 15）。
   - 外部 provider 的成果物只落摘要：inline 正文经分发写入外部后即从平台清除，并回填 `url` / `external_id`；已带外部 URL 的引用不再外推。
-- **凭据**：`CHALKLINE_GIT_TOKEN` / `CHALKLINE_SVN_TOKEN` 新增；与既有 `CHALKLINE_OUTLINE_TOKEN` / `CHALKLINE_REDMINE_TOKEN` 一样只经环境变量，出站仍过 `CHALKLINE_OUTBOUND_ALLOWLIST`。
-- **控制台**：迭代详情「迭代 Provider」卡片（初始化阶段可配置，冻结后只读展示）；任务/迭代创建弹窗内嵌同一套绑定表单；节点详情页「阶段连接」展示三类绑定并可点击跳转；材料提交表单提示本迭代绑定。
+- **凭据**：迭代级 `authType`（token / basic）+ `authSecret`（AES-GCM 密文）优先；未配置时回退 `CHALKLINE_OUTLINE_TOKEN` / `CHALKLINE_REDMINE_TOKEN` / `CHALKLINE_GIT_TOKEN` / `CHALKLINE_SVN_TOKEN`。出站仍过 `CHALKLINE_OUTBOUND_ALLOWLIST`。
+- **控制台**：Provider 卡片位于迭代详情页**最下方**（初始化配置，不需要日常关注）；结构配置在冻结后只读，但「更新凭据」按钮任何时候可用；节点详情页「阶段连接」展示三类绑定并可点击跳转；材料提交表单提示本迭代绑定。
 - **测试**：`domain/workitem/provider_binding_test.go`（整套绑定校验、材料来源判定、链接与目录模板）、`integration/dispatch_test.go`（Outline 建文档、Git 已存在转 update、SVN MKCOL+PUT、Redmine 建票与回复、白名单拒绝出站）。

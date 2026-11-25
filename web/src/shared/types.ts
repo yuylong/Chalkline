@@ -153,6 +153,7 @@ export interface NodeStateView {
 
 /** 迭代级 provider 绑定（成果物 / 流程记录 / 代码库）。 */
 export interface IterationProviderView {
+  id: string
   category: string // artifact | process | code
   categoryLabel: string
   provider: string // inline | outline | git | svn | redmine
@@ -162,6 +163,13 @@ export interface IterationProviderView {
   branch?: string
   /** 可点击跳转的外部地址；inline 为空。 */
   linkUrl?: string
+  /** 认证方式：''（未配置）/ token / basic。 */
+  authType?: string
+  authUsername?: string
+  /** 迭代级已保存凭据（密文，永不回显）。 */
+  secretConfigured: boolean
+  /** 服务端环境变量已配置凭据。 */
+  envSecretConfigured: boolean
 }
 
 export interface IterationProviderInput {
@@ -171,6 +179,18 @@ export interface IterationProviderInput {
   target?: string
   dirTemplate?: string
   branch?: string
+  authType?: string
+  authUsername?: string
+  /** 只写不读：留空 = 保持库内已有凭据。 */
+  authSecret?: string
+}
+
+/** 凭据轮换入参（只写不读）。 */
+export interface ProviderCredentialUpdate {
+  authType: string
+  authUsername?: string
+  /** 留空 = 保持库内已有凭据。 */
+  authSecret?: string
 }
 
 export interface IterationProvidersView {
