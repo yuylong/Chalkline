@@ -20,12 +20,16 @@ type createIterationReq struct {
 
 // providerBindingInput 是迭代级 provider 绑定入参（连接信息随迭代固化）。
 type providerBindingInput struct {
-	Category    string `json:"category"`
-	Provider    string `json:"provider"`
-	BaseURL     string `json:"baseUrl"`
-	Target      string `json:"target"`
-	DirTemplate string `json:"dirTemplate"`
-	Branch      string `json:"branch"`
+	Category     string `json:"category"`
+	Provider     string `json:"provider"`
+	BaseURL      string `json:"baseUrl"`
+	Target       string `json:"target"`
+	DirTemplate  string `json:"dirTemplate"`
+	Branch       string `json:"branch"`
+	AuthType     string `json:"authType"`
+	AuthUsername string `json:"authUsername"`
+	// AuthSecret 只写不读：留空 = 保持库内已有凭据。
+	AuthSecret string `json:"authSecret"`
 }
 
 func toProviderInputs(in []providerBindingInput) []app.IterationProviderInput {
@@ -34,6 +38,7 @@ func toProviderInputs(in []providerBindingInput) []app.IterationProviderInput {
 		out = append(out, app.IterationProviderInput{
 			Category: p.Category, Provider: p.Provider, BaseURL: p.BaseURL,
 			Target: p.Target, DirTemplate: p.DirTemplate, Branch: p.Branch,
+			AuthType: p.AuthType, AuthUsername: p.AuthUsername, AuthSecret: p.AuthSecret,
 		})
 	}
 	return out
@@ -195,6 +200,37 @@ func (h *handlers) setIterationProviders(w http.ResponseWriter, r *http.Request)
 	}
 	view, err := h.svc().SetIterationProviders(r.Context(), actor, pathParam(r, "id"),
 		toProviderInputs(req.Items))
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, view)
+}
+
+type providerCredentialReq struct {
+	AuthType     string `json:"authType"`
+	AuthUsername string `json:"authUsername"`
+	// AuthSecret 只写不读：留空 = 保持库内已有凭据。
+	AuthSecret string `json:"authSecret"`
+}
+
+// setIterationProviderCredential 轮换写权限凭据：不受绑定冻结限制（定期更换 Key）。
+func (h *handlers) setIterationProviderCredential(w http.ResponseWriter, r *http.Request) {
+	actor, err := h.actor(r)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	var req providerCredentialReq
+	if err := decode(r, &req); err != nil {
+		writeAppError(w, err)
+		return
+	}
+	view, err := h.svc().SetIterationProviderCredential(r.Context(), actor,
+		pathParam(r, "id"), pathParam(r, "providerId"),
+		app.ProviderCredentialInput{
+			AuthType: req.AuthType, AuthUsername: req.AuthUsername, AuthSecret: req.AuthSecret,
+		})
 	if err != nil {
 		writeAppError(w, err)
 		return

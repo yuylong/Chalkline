@@ -34,21 +34,36 @@ export const CATEGORY_PROVIDER_OPTIONS: Record<string, { value: string; label: s
   ],
 }
 
+/** 认证方式（与后端 workitem.ProviderAuthType 对齐）。 */
+export const AUTH_TYPE_OPTIONS: { value: string; label: string }[] = [
+  { value: 'token', label: 'API Key / Token' },
+  { value: 'basic', label: '用户名 + 密码' },
+]
+
 /** 表单值形状（迭代创建与迭代详情配置页共用）。 */
 export interface ProviderFormValues {
   artifactProvider?: string
   artifactBaseUrl?: string
   artifactTarget?: string
   artifactDirTemplate?: string
+  artifactAuthType?: string
+  artifactAuthUsername?: string
+  artifactAuthSecret?: string
   processProvider?: string
   processBaseUrl?: string
   processTarget?: string
+  processAuthType?: string
+  processAuthUsername?: string
+  processAuthSecret?: string
   codeProviders?: {
     provider?: string
     baseUrl?: string
     target?: string
     dirTemplate?: string
     branch?: string
+    authType?: string
+    authUsername?: string
+    authSecret?: string
   }[]
 }
 
@@ -62,7 +77,7 @@ const httpUrlRule = {
         return Promise.reject(new Error('必须是 http/https 地址'))
       }
       if (u.username || u.password) {
-        return Promise.reject(new Error('不得内嵌凭据（凭据只经环境变量配置）'))
+        return Promise.reject(new Error('不得内嵌凭据（请在「认证方式」中单独配置）'))
       }
       return Promise.resolve()
     } catch {
@@ -81,29 +96,40 @@ export function providersToForm(items?: IterationProviderView[]): ProviderFormVa
     artifactBaseUrl: artifact?.baseUrl,
     artifactTarget: artifact?.target,
     artifactDirTemplate: artifact?.dirTemplate,
+    artifactAuthType: artifact?.authType || undefined,
+    artifactAuthUsername: artifact?.authUsername,
     processProvider: processBinding?.provider,
     processBaseUrl: processBinding?.baseUrl,
     processTarget: processBinding?.target,
+    processAuthType: processBinding?.authType || undefined,
+    processAuthUsername: processBinding?.authUsername,
     codeProviders: code.map((c) => ({
       provider: c.provider,
       baseUrl: c.baseUrl,
       target: c.target,
       dirTemplate: c.dirTemplate,
       branch: c.branch,
+      authType: c.authType || undefined,
+      authUsername: c.authUsername,
     })),
   }
 }
 
-/** 表单值 → 绑定入参（成果物必选，流程/代码按填写情况生成）。 */
+/** 表单值 → 绑定入参（成果物必选，流程/代码按填写情况生成）。
+ *  凭据字段只在选择认证方式后提交；secret 留空表示保持库内已有凭据。 */
 export function formToProviders(v: ProviderFormValues): IterationProviderInput[] {
   const out: IterationProviderInput[] = []
   const artifactProvider = v.artifactProvider ?? 'inline'
+  const artifactExternal = artifactProvider !== 'inline'
   out.push({
     category: 'artifact',
     provider: artifactProvider,
-    baseUrl: artifactProvider === 'inline' ? '' : (v.artifactBaseUrl ?? '').trim(),
-    target: artifactProvider === 'inline' ? '' : (v.artifactTarget ?? '').trim(),
-    dirTemplate: artifactProvider === 'inline' ? '' : (v.artifactDirTemplate ?? '').trim(),
+    baseUrl: artifactExternal ? (v.artifactBaseUrl ?? '').trim() : '',
+    target: artifactExternal ? (v.artifactTarget ?? '').trim() : '',
+    dirTemplate: artifactExternal ? (v.artifactDirTemplate ?? '').trim() : '',
+    authType: artifactExternal ? (v.artifactAuthType ?? '') : '',
+    authUsername: artifactExternal && v.artifactAuthType === 'basic' ? (v.artifactAuthUsername ?? '').trim() : '',
+    authSecret: artifactExternal ? (v.artifactAuthSecret ?? '').trim() : '',
   })
   if (v.processProvider) {
     out.push({
@@ -111,6 +137,9 @@ export function formToProviders(v: ProviderFormValues): IterationProviderInput[]
       provider: v.processProvider,
       baseUrl: (v.processBaseUrl ?? '').trim(),
       target: (v.processTarget ?? '').trim(),
+      authType: v.processAuthType ?? '',
+      authUsername: v.processAuthType === 'basic' ? (v.processAuthUsername ?? '').trim() : '',
+      authSecret: (v.processAuthSecret ?? '').trim(),
     })
   }
   for (const c of v.codeProviders ?? []) {
@@ -122,9 +151,65 @@ export function formToProviders(v: ProviderFormValues): IterationProviderInput[]
       target: (c.target ?? '').trim(),
       dirTemplate: (c.dirTemplate ?? '').trim(),
       branch: (c.branch ?? '').trim(),
+      authType: c.authType ?? '',
+      authUsername: c.authType === 'basic' ? (c.authUsername ?? '').trim() : '',
+      authSecret: (c.authSecret ?? '').trim(),
     })
   }
   return out
+}
+
+/** 下拉提示箭头（不引入额外图标依赖）。 */
+const caretIcon = <span style={{ opacity: 0.45 }}>▾</span>
+
+/** 认证字段：三种 provider 共用（留空即沿用服务端环境变量）。 */
+function AuthFields({
+  typeField,
+  usernameField,
+  secretField,
+}: {
+  typeField: string | (string | number)[]
+  usernameField: string | (string | number)[]
+  secretField: string | (string | number)[]
+}) {
+  return (
+    <>
+      <Form.Item
+        name={typeField}
+        label="认证方式"
+        extra="留空 = 沿用服务端环境变量（CHALKLINE_*_TOKEN）；填写后用于写权限"
+      >
+        <Select allowClear placeholder="沿用环境变量" options={AUTH_TYPE_OPTIONS} />
+      </Form.Item>
+      <Form.Item noStyle shouldUpdate>
+        {({ getFieldValue }) => {
+          const t: string | undefined = getFieldValue(typeField)
+          if (!t) return null
+          return (
+            <>
+              {t === 'basic' ? (
+                <Form.Item
+                  name={usernameField}
+                  label="用户名"
+                  rules={[{ required: true, message: '请填写用户名' }]}
+                >
+                  <Input autoComplete="off" />
+                </Form.Item>
+              ) : null}
+              <Form.Item
+                name={secretField}
+                label={t === 'basic' ? '密码' : 'API Key / Token'}
+                rules={[{ required: t === 'basic', message: '请填写密码' }]}
+                extra="加密保存、永不回显；留空表示保持已保存的凭据"
+              >
+                <Input.Password placeholder="••••••" autoComplete="new-password" />
+              </Form.Item>
+            </>
+          )
+        }}
+      </Form.Item>
+    </>
+  )
 }
 
 /** 配置表单字段：迭代创建弹窗与迭代详情配置弹窗共用。 */
@@ -176,10 +261,15 @@ export function ProviderBindingFields() {
                 extra={
                   defaultBaseURL(p)
                     ? `全局默认：${defaultBaseURL(p)}（可直接选用，也可覆盖）`
-                    : '凭据只经环境变量配置，不在此填写'
+                    : '可手动填写；认证信息在下方单独配置'
                 }
               >
-                <AutoComplete options={suggestions(p)} placeholder={defaultBaseURL(p) || 'https://…'} />
+                <AutoComplete options={suggestions(p)}>
+                  <Input
+                    suffix={caretIcon}
+                    placeholder={defaultBaseURL(p) || 'https://…'}
+                  />
+                </AutoComplete>
               </Form.Item>
               <Form.Item
                 name="artifactTarget"
@@ -198,6 +288,11 @@ export function ProviderBindingFields() {
                   <Input placeholder="chalkline/{iteration}/{node}" />
                 </Form.Item>
               ) : null}
+              <AuthFields
+                typeField="artifactAuthType"
+                usernameField="artifactAuthUsername"
+                secretField="artifactAuthSecret"
+              />
             </>
           )
         }}
@@ -224,10 +319,12 @@ export function ProviderBindingFields() {
                   defaultBaseURL('redmine') ? `全局默认：${defaultBaseURL('redmine')}` : undefined
                 }
               >
-                <AutoComplete
-                  options={suggestions('redmine')}
-                  placeholder={defaultBaseURL('redmine') || 'https://redmine.example.com'}
-                />
+                <AutoComplete options={suggestions('redmine')}>
+                  <Input
+                    suffix={caretIcon}
+                    placeholder={defaultBaseURL('redmine') || 'https://redmine.example.com'}
+                  />
+                </AutoComplete>
               </Form.Item>
               <Form.Item
                 name="processTarget"
@@ -236,6 +333,11 @@ export function ProviderBindingFields() {
               >
                 <Input placeholder="如 chalkline" />
               </Form.Item>
+              <AuthFields
+                typeField="processAuthType"
+                usernameField="processAuthUsername"
+                secretField="processAuthSecret"
+              />
             </>
           ) : null
         }
@@ -282,10 +384,12 @@ export function ProviderBindingFields() {
                       : undefined
                   }
                 >
-                  <AutoComplete
-                    options={suggestions('git', 'svn')}
-                    placeholder={defaultBaseURL('git') || 'https://git.example.com'}
-                  />
+                  <AutoComplete options={suggestions('git', 'svn')}>
+                    <Input
+                      suffix={caretIcon}
+                      placeholder={defaultBaseURL('git') || 'https://git.example.com'}
+                    />
+                  </AutoComplete>
                 </Form.Item>
                 <Form.Item
                   name={[field.name, 'target']}
@@ -297,6 +401,11 @@ export function ProviderBindingFields() {
                 <Form.Item name={[field.name, 'branch']} label="分支（git）">
                   <Input placeholder="main" />
                 </Form.Item>
+                <AuthFields
+                  typeField={[field.name, 'authType']}
+                  usernameField={[field.name, 'authUsername']}
+                  secretField={[field.name, 'authSecret']}
+                />
               </Card>
             ))}
             <Button type="dashed" block onClick={() => add({ provider: 'git' })}>
@@ -309,15 +418,26 @@ export function ProviderBindingFields() {
   )
 }
 
-/** 单条绑定展示（provider + 连接地址 + 跳转）。 */
+/** 单条绑定展示（provider + 连接地址 + 跳转 + 凭据状态）。 */
 export function ProviderBindingLine({ item }: { item: IterationProviderView }) {
   const meta = PROVIDER_CATEGORY_META[item.category]
   const label = item.provider === 'inline' ? '平台内置（inline）' : `${item.baseUrl ?? ''}${item.target ? ` / ${item.target}` : ''}`
+  const auth = (() => {
+    if (item.provider === 'inline') return null
+    if (item.secretConfigured) {
+      return <Tag color="green">Key 已配置（本迭代）</Tag>
+    }
+    if (item.envSecretConfigured) {
+      return <Tag>沿用环境变量</Tag>
+    }
+    return <Tag color="orange">未配置 Key</Tag>
+  })()
   return (
     <Space wrap size={[8, 4]}>
       <Tag color={meta?.color ?? 'default'}>{item.provider}</Tag>
       <Typography.Text code>{label}</Typography.Text>
       {item.branch ? <Typography.Text type="secondary">分支 {item.branch}</Typography.Text> : null}
+      {auth}
       {item.linkUrl ? (
         <a href={item.linkUrl} target="_blank" rel="noreferrer">
           打开
@@ -368,6 +488,52 @@ export function IterationProvidersCard({
   const [open, setOpen] = useState(false)
   const [form] = Form.useForm<ProviderFormValues>()
 
+  // 凭据轮换：独立入口，绑定冻结后仍可用（公司会定期更换 Key）。
+  const [credOpen, setCredOpen] = useState(false)
+  const [credID, setCredID] = useState('')
+  const [credForm] = Form.useForm<{ authType?: string; authUsername?: string; authSecret?: string }>()
+  const externalItems = providers.items.filter((i) => i.provider !== 'inline')
+
+  const credMut = useMutation({
+    mutationFn: (v: { authType?: string; authUsername?: string; authSecret?: string }) =>
+      apiPut<IterationProvidersView>(
+        `/iterations/${providers.iterationId}/providers/${credID}/credential`,
+        {
+          authType: v.authType ?? '',
+          authUsername: v.authType === 'basic' ? (v.authUsername ?? '') : '',
+          authSecret: (v.authSecret ?? '').trim(),
+        },
+      ),
+    onSuccess: () => {
+      message.success('凭据已更新')
+      setCredOpen(false)
+      onChanged?.()
+    },
+    onError: (err: Error) => message.error(err.message),
+  })
+
+  const openCredential = () => {
+    const first = externalItems[0]
+    if (!first) return
+    setCredID(first.id)
+    credForm.setFieldsValue({
+      authType: first.authType || undefined,
+      authUsername: first.authUsername,
+      authSecret: '',
+    })
+    setCredOpen(true)
+  }
+
+  const pickCredentialTarget = (id: string) => {
+    setCredID(id)
+    const item = externalItems.find((i) => i.id === id)
+    credForm.setFieldsValue({
+      authType: item?.authType || undefined,
+      authUsername: item?.authUsername,
+      authSecret: '',
+    })
+  }
+
   const saveMut = useMutation({
     mutationFn: (v: ProviderFormValues) =>
       apiPut<IterationProvidersView>(`/iterations/${providers.iterationId}/providers`, {
@@ -390,13 +556,20 @@ export function IterationProvidersCard({
     <Card
       title="迭代 Provider（成果物 / 流程记录 / 代码库）"
       extra={
-        providers.editable ? (
-          <Button size="small" type="primary" onClick={openEdit}>
-            配置
-          </Button>
-        ) : (
-          <Tag>{providers.lockedReason ?? '已冻结'}</Tag>
-        )
+        <Space>
+          {externalItems.length > 0 ? (
+            <Button size="small" onClick={openCredential}>
+              更新凭据
+            </Button>
+          ) : null}
+          {providers.editable ? (
+            <Button size="small" type="primary" onClick={openEdit}>
+              配置
+            </Button>
+          ) : (
+            <Tag>{providers.lockedReason ?? '已冻结'}</Tag>
+          )}
+        </Space>
       }
     >
       <ProviderBindingSummary providers={providers} />
@@ -414,6 +587,58 @@ export function IterationProvidersCard({
         </Typography.Paragraph>
         <Form<ProviderFormValues> form={form} layout="vertical" onFinish={(v) => saveMut.mutate(v)}>
           <ProviderBindingFields />
+        </Form>
+      </Modal>
+
+      <Modal
+        title="更新 Provider 凭据"
+        open={credOpen}
+        onCancel={() => setCredOpen(false)}
+        confirmLoading={credMut.isPending}
+        onOk={() => credForm.submit()}
+        destroyOnHidden
+      >
+        <Typography.Paragraph type="secondary" style={{ marginTop: 8 }}>
+          凭据加密保存、永不回显；绑定冻结后仍可更换（公司定期轮换 Key 时使用）。密码留空表示保持原值。
+        </Typography.Paragraph>
+        <Form
+          form={credForm}
+          layout="vertical"
+          onFinish={(v) => credMut.mutate(v)}
+        >
+          <Form.Item label="目标 provider">
+            <Select
+              value={credID}
+              onChange={pickCredentialTarget}
+              options={externalItems.map((i) => ({
+                value: i.id,
+                label: `${i.categoryLabel} · ${i.provider}（${i.baseUrl ?? ''}${i.target ? ` / ${i.target}` : ''}）`,
+              }))}
+            />
+          </Form.Item>
+          <Form.Item
+            name="authType"
+            label="认证方式"
+            rules={[{ required: true, message: '请选择认证方式' }]}
+          >
+            <Select options={AUTH_TYPE_OPTIONS} />
+          </Form.Item>
+          <Form.Item noStyle shouldUpdate>
+            {({ getFieldValue }) =>
+              getFieldValue('authType') === 'basic' ? (
+                <Form.Item
+                  name="authUsername"
+                  label="用户名"
+                  rules={[{ required: true, message: '请填写用户名' }]}
+                >
+                  <Input autoComplete="off" />
+                </Form.Item>
+              ) : null
+            }
+          </Form.Item>
+          <Form.Item name="authSecret" label="Key / 密码" extra="留空表示保持已保存的凭据">
+            <Input.Password placeholder="••••••" autoComplete="new-password" />
+          </Form.Item>
         </Form>
       </Modal>
     </Card>

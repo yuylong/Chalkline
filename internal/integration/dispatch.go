@@ -10,6 +10,7 @@ package integration
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -60,8 +61,9 @@ func (d *Dispatcher) PushArtifact(ctx context.Context, b workitem.ProviderBindin
 // （Outline 没有目录概念，集合 + 标题约定即其组织方式）。
 func (d *Dispatcher) pushOutline(ctx context.Context, b workitem.ProviderBinding,
 	art workitem.ArtifactRef, meta workitem.ArtifactMeta) (workitem.PushedArtifact, error) {
-	if d.cred.OutlineToken == "" {
-		return workitem.PushedArtifact{}, errRef("Outline 凭据未配置（CHALKLINE_OUTLINE_TOKEN）")
+	header, err := d.authHeaders(b)
+	if err != nil {
+		return workitem.PushedArtifact{}, err
 	}
 	title := outlineTitle(art, meta)
 	text := art.Content
@@ -74,8 +76,7 @@ func (d *Dispatcher) pushOutline(ctx context.Context, b workitem.ProviderBinding
 	body := map[string]any{
 		"title": title, "text": text, "publish": true, "collectionId": b.Target,
 	}
-	status, raw, err := d.send(ctx, http.MethodPost, joinURL(b.BaseURL, "api/documents.create"),
-		map[string]string{"Authorization": "Bearer " + d.cred.OutlineToken}, body)
+	status, raw, err := d.send(ctx, http.MethodPost, joinURL(b.BaseURL, "api/documents.create"), header, body)
 	if err != nil {
 		return workitem.PushedArtifact{}, err
 	}
@@ -115,8 +116,9 @@ func outlineTitle(art workitem.ArtifactRef, meta workitem.ArtifactMeta) string {
 // pushGit 提交单个文件到仓库约定路径（文件已存在时自动改用 update）。
 func (d *Dispatcher) pushGit(ctx context.Context, b workitem.ProviderBinding,
 	art workitem.ArtifactRef, meta workitem.ArtifactMeta, dir string) (workitem.PushedArtifact, error) {
-	if d.cred.GitToken == "" {
-		return workitem.PushedArtifact{}, errRef("Git 凭据未配置（CHALKLINE_GIT_TOKEN）")
+	header, err := d.authHeaders(b)
+	if err != nil {
+		return workitem.PushedArtifact{}, err
 	}
 	branch := strings.TrimSpace(b.Branch)
 	if branch == "" {
@@ -132,8 +134,7 @@ func (d *Dispatcher) pushGit(ctx context.Context, b workitem.ProviderBinding,
 				"action": action, "file_path": filePath, "content": pushContent(art, meta),
 			}},
 		}
-		return d.send(ctx, http.MethodPost, target,
-			map[string]string{"PRIVATE-TOKEN": d.cred.GitToken}, body)
+		return d.send(ctx, http.MethodPost, target, header, body)
 	}
 	status, raw, err := commit("create")
 	if err != nil {
@@ -164,9 +165,12 @@ func (d *Dispatcher) pushGit(ctx context.Context, b workitem.ProviderBinding,
 // pushSVN 通过 WebDAV 写入约定路径；已存在的目录返回 405 视为成功。
 func (d *Dispatcher) pushSVN(ctx context.Context, b workitem.ProviderBinding,
 	art workitem.ArtifactRef, meta workitem.ArtifactMeta, dir string) (workitem.PushedArtifact, error) {
-	headers := map[string]string{}
-	if d.cred.SVNToken != "" {
-		headers["Authorization"] = "Bearer " + d.cred.SVNToken
+	headers, err := d.authHeaders(b)
+	if err != nil {
+		return workitem.PushedArtifact{}, err
+	}
+	if headers == nil {
+		headers = map[string]string{}
 	}
 	segments := []string{}
 	if strings.TrimSpace(b.Target) != "" {
@@ -208,8 +212,9 @@ func (d *Dispatcher) pushSVN(ctx context.Context, b workitem.ProviderBinding,
 // EnsureTicket 在绑定的 Redmine project 下建票。
 func (d *Dispatcher) EnsureTicket(ctx context.Context, b workitem.ProviderBinding,
 	subject workitem.ProcessSubject) (workitem.ProcessTicket, error) {
-	if d.cred.RedmineToken == "" {
-		return workitem.ProcessTicket{}, errRef("Redmine 凭据未配置（CHALKLINE_REDMINE_TOKEN）")
+	header, err := d.authHeaders(b)
+	if err != nil {
+		return workitem.ProcessTicket{}, err
 	}
 	body := map[string]any{"issue": map[string]any{
 		"project_id":  b.Target,
@@ -217,8 +222,7 @@ func (d *Dispatcher) EnsureTicket(ctx context.Context, b workitem.ProviderBindin
 		"description": subject.Description,
 	}}
 	status, raw, err := d.send(ctx, http.MethodPost,
-		joinURL(b.BaseURL, "projects/"+url.PathEscape(b.Target)+"/issues.json"),
-		map[string]string{"X-Redmine-API-Key": d.cred.RedmineToken}, body)
+		joinURL(b.BaseURL, "projects/"+url.PathEscape(b.Target)+"/issues.json"), header, body)
 	if err != nil {
 		return workitem.ProcessTicket{}, err
 	}
@@ -240,13 +244,13 @@ func (d *Dispatcher) EnsureTicket(ctx context.Context, b workitem.ProviderBindin
 // CommentTicket 向票追加一条回复（节点动作留痕）。
 func (d *Dispatcher) CommentTicket(ctx context.Context, b workitem.ProviderBinding,
 	ticket workitem.ProcessTicket, note workitem.ProcessNote) error {
-	if d.cred.RedmineToken == "" {
-		return errRef("Redmine 凭据未配置（CHALKLINE_REDMINE_TOKEN）")
+	header, err := d.authHeaders(b)
+	if err != nil {
+		return err
 	}
 	body := map[string]any{"issue": map[string]any{"notes": note.Body}}
 	status, raw, err := d.send(ctx, http.MethodPut,
-		joinURL(b.BaseURL, "issues/"+url.PathEscape(ticket.ExternalID)+".json"),
-		map[string]string{"X-Redmine-API-Key": d.cred.RedmineToken}, body)
+		joinURL(b.BaseURL, "issues/"+url.PathEscape(ticket.ExternalID)+".json"), header, body)
 	if err != nil {
 		return err
 	}
@@ -257,6 +261,59 @@ func (d *Dispatcher) CommentTicket(ctx context.Context, b workitem.ProviderBindi
 }
 
 // ---- 公共 ----
+
+// authHeaders 解析本次出站的认证头：迭代级凭据优先，未配置时回退服务端环境变量。
+// 迭代级凭据由 app 层解密后放入 binding.Auth，本包只做协议映射。
+func (d *Dispatcher) authHeaders(b workitem.ProviderBinding) (map[string]string, error) {
+	switch b.Auth.Type {
+	case workitem.AuthBasic:
+		if b.Auth.Username == "" || b.Auth.Secret == "" {
+			return nil, errRef("provider %q 的用户名密码未配置", b.Provider)
+		}
+		cred := base64.StdEncoding.EncodeToString([]byte(b.Auth.Username + ":" + b.Auth.Secret))
+		return map[string]string{"Authorization": "Basic " + cred}, nil
+	case workitem.AuthToken:
+		if b.Auth.Secret == "" {
+			return nil, errRef("provider %q 的 Key 未配置", b.Provider)
+		}
+		return tokenHeader(b.Provider, b.Auth.Secret), nil
+	}
+	switch b.Provider {
+	case workitem.ProviderOutline:
+		if d.cred.OutlineToken == "" {
+			return nil, errRef("Outline 凭据未配置（CHALKLINE_OUTLINE_TOKEN）")
+		}
+		return map[string]string{"Authorization": "Bearer " + d.cred.OutlineToken}, nil
+	case workitem.ProviderRedmine:
+		if d.cred.RedmineToken == "" {
+			return nil, errRef("Redmine 凭据未配置（CHALKLINE_REDMINE_TOKEN）")
+		}
+		return map[string]string{"X-Redmine-API-Key": d.cred.RedmineToken}, nil
+	case workitem.ProviderGit:
+		if d.cred.GitToken == "" {
+			return nil, errRef("Git 凭据未配置（CHALKLINE_GIT_TOKEN）")
+		}
+		return map[string]string{"PRIVATE-TOKEN": d.cred.GitToken}, nil
+	case workitem.ProviderSVN:
+		if d.cred.SVNToken == "" {
+			return nil, nil // 匿名 SVN 允许
+		}
+		return map[string]string{"Authorization": "Bearer " + d.cred.SVNToken}, nil
+	}
+	return nil, nil
+}
+
+// tokenHeader 按平台惯例放置 API Key：Redmine 走 X-Redmine-API-Key，Git 走 PRIVATE-TOKEN，
+// 其余（Outline / SVN）走 Bearer。
+func tokenHeader(p workitem.ArtifactProvider, secret string) map[string]string {
+	switch p {
+	case workitem.ProviderRedmine:
+		return map[string]string{"X-Redmine-API-Key": secret}
+	case workitem.ProviderGit:
+		return map[string]string{"PRIVATE-TOKEN": secret}
+	}
+	return map[string]string{"Authorization": "Bearer " + secret}
+}
 
 // send 序列化 JSON（body 为 []byte 时原样发送）并返回状态与响应体。
 func (d *Dispatcher) send(ctx context.Context, method, target string, header map[string]string,

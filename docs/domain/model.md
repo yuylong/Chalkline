@@ -277,7 +277,7 @@ AuditLog（全量留痕）
 19. `pre_review` 材料是 AI 自查报告而非审批：不计入门禁 `approvals`，不改变节点状态；驳回只来自评审人的 `review_step` 决策。
 20. 产品归档前其下不得存在 `planned` / `active` 迭代（归档守卫）；归档后只读保留历史。
 21. 评审超期提醒与升级链只写提醒水位与 outbox 事件，**不得修改任何节点状态**；同一 `(instance, node, level)` 只提醒一次。
-22. 每个迭代必须绑定**且仅绑定一个成果物 provider**（`inline` / `outline` / `git` / `svn`），流程记录 provider 至多一个（`redmine`），代码库 provider 可多个（`git` / `svn`）；绑定只在迭代初始化阶段可改，**任一成果物提交后（或迭代进入终态）冻结**，外部 provider 的成果物只存摘要与链接。
+22. 每个迭代必须绑定**且仅绑定一个成果物 provider**（`inline` / `outline` / `git` / `svn`），流程记录 provider 至多一个（`redmine`），代码库 provider 可多个（`git` / `svn`）；**结构配置**只在迭代初始化阶段可改，任一成果物提交后（或迭代进入终态）冻结；但**写权限凭据（Key / 用户名密码）不受冻结限制**，可随公司轮换策略随时更新。外部 provider 的成果物只存摘要与链接。
 
 ## 状态投影
 

@@ -236,11 +236,6 @@ export function IterationPane({ iterationId }: { iterationId: string }) {
         </Space>
       </Card>
 
-      <IterationProvidersCard
-        providers={it.providers}
-        onChanged={() => queryClient.invalidateQueries({ queryKey: ['iteration', id] })}
-      />
-
       <Card title="阶段泳道（生命周期节点 · 并行阶段并列展示）">        {stages.length === 0 ? (
           <Typography.Text type="secondary">未加载到生命周期实例。</Typography.Text>
         ) : (
@@ -333,6 +328,12 @@ export function IterationPane({ iterationId }: { iterationId: string }) {
           endsOn={it.endsOn}
         />
       </Card>
+
+      {/* Provider 配置放在页面最下方：属于初始化配置，不需要日常关注。 */}
+      <IterationProvidersCard
+        providers={it.providers}
+        onChanged={() => queryClient.invalidateQueries({ queryKey: ['iteration', id] })}
+      />
 
       <Modal
         title="新建任务"

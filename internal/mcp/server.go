@@ -98,12 +98,16 @@ func (a artifactArg) toInput() app.ArtifactInput {
 
 // providerBindingArg 是迭代级 provider 绑定入参（成果物 / 流程记录 / 代码库）。
 type providerBindingArg struct {
-	Category    string `json:"category"` // artifact | process | code
-	Provider    string `json:"provider"` // inline | outline | git | svn | redmine
-	BaseURL     string `json:"baseUrl,omitempty"`
-	Target      string `json:"target,omitempty"`
-	DirTemplate string `json:"dirTemplate,omitempty"`
-	Branch      string `json:"branch,omitempty"`
+	Category     string `json:"category"` // artifact | process | code
+	Provider     string `json:"provider"` // inline | outline | git | svn | redmine
+	BaseURL      string `json:"baseUrl,omitempty"`
+	Target       string `json:"target,omitempty"`
+	DirTemplate  string `json:"dirTemplate,omitempty"`
+	Branch       string `json:"branch,omitempty"`
+	AuthType     string `json:"authType,omitempty"`     // '' | token | basic
+	AuthUsername string `json:"authUsername,omitempty"` // basic 认证用户名
+	// AuthSecret 只写不读：留空 = 保持库内已有凭据。
+	AuthSecret string `json:"authSecret,omitempty"`
 }
 
 func toProviderBindingInputs(in []providerBindingArg) []app.IterationProviderInput {
@@ -112,6 +116,7 @@ func toProviderBindingInputs(in []providerBindingArg) []app.IterationProviderInp
 		out = append(out, app.IterationProviderInput{
 			Category: p.Category, Provider: p.Provider, BaseURL: p.BaseURL,
 			Target: p.Target, DirTemplate: p.DirTemplate, Branch: p.Branch,
+			AuthType: p.AuthType, AuthUsername: p.AuthUsername, AuthSecret: p.AuthSecret,
 		})
 	}
 	return out
@@ -432,7 +437,7 @@ func (d Deps) registerWriteTools(s *mcp.Server) {
 		Providers   []providerBindingArg `json:"providers"`
 	}, any](s, &mcp.Tool{
 		Name:        "chalkline_set_iteration_providers",
-		Description: "整组替换迭代 provider 绑定：仅在迭代初始化阶段（未提交成果物、未终结）可调用，已冻结返回 409 PROVIDERS_LOCKED。",
+		Description: "整组替换迭代 provider 绑定：仅在迭代初始化阶段（未提交成果物、未终结）可调用，已冻结返回 409 PROVIDERS_LOCKED。凭据字段 authSecret 只写不读，留空表示保持已有凭据。",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in struct {
 		IterationID string               `json:"iterationId"`
 		Providers   []providerBindingArg `json:"providers"`
@@ -443,6 +448,37 @@ func (d Deps) registerWriteTools(s *mcp.Server) {
 		}
 		out, err := svc.SetIterationProviders(ctx, actor, in.IterationID,
 			toProviderBindingInputs(in.Providers))
+		if err != nil {
+			return fail(err)
+		}
+		return nil, out, nil
+	})
+
+	mcp.AddTool[struct {
+		IterationID  string `json:"iterationId"`
+		ProviderID   string `json:"providerId"`
+		AuthType     string `json:"authType"`               // token | basic | 空串清除
+		AuthUsername string `json:"authUsername,omitempty"` // basic 认证用户名
+		AuthSecret   string `json:"authSecret,omitempty"`   // 留空 = 保持库内已有凭据
+	}, any](s, &mcp.Tool{
+		Name: "chalkline_set_iteration_provider_credential",
+		Description: "轮换迭代 provider 的写权限凭据（token 或用户名密码）。不受绑定冻结限制，" +
+			"公司定期更换 Key 时使用；凭据加密落库、永不回显，authSecret 留空表示保持原值。",
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in struct {
+		IterationID  string `json:"iterationId"`
+		ProviderID   string `json:"providerId"`
+		AuthType     string `json:"authType"`
+		AuthUsername string `json:"authUsername,omitempty"`
+		AuthSecret   string `json:"authSecret,omitempty"`
+	}) (*mcp.CallToolResult, any, error) {
+		svc, actor, err := d.svc(ctx)
+		if err != nil {
+			return fail(err)
+		}
+		out, err := svc.SetIterationProviderCredential(ctx, actor, in.IterationID, in.ProviderID,
+			app.ProviderCredentialInput{
+				AuthType: in.AuthType, AuthUsername: in.AuthUsername, AuthSecret: in.AuthSecret,
+			})
 		if err != nil {
 			return fail(err)
 		}

@@ -23,7 +23,8 @@ REST（M1）：
 | `POST /api/v1/products/{pid}/iterations` | 建迭代（实例化工作流 + 写入 provider 绑定） | `pm` / `admin` |
 | `GET /api/v1/iterations/{id}` | 迭代详情 + 当前阶段进度 + provider 绑定 | 该产品成员 |
 | `GET /api/v1/iterations/{id}/providers` | 迭代 provider 绑定与冻结状态 | 该产品成员 |
-| `PUT /api/v1/iterations/{id}/providers` | 整组替换绑定（已提交成果物后 `409 PROVIDERS_LOCKED`） | 产品成员持 `pm` / owner / `admin` |
+| `PUT /api/v1/iterations/{id}/providers` | 整组替换绑定（结构配置；已提交成果物后 `409 PROVIDERS_LOCKED`） | 产品成员持 `pm` / owner / `admin` |
+| `PUT /api/v1/iterations/{id}/providers/{providerId}/credential` | 轮换写权限凭据（加密落库、永不回显；不受冻结限制） | 产品成员持 `pm` / owner / `admin` |
 | `GET /api/v1/current-iteration` | 我的当前迭代（未设置返回 `null`） | 登录用户 |
 | `PUT /api/v1/current-iteration` | 设为当前迭代（须对该产品可见、非终态） | 该产品成员 |
 | `DELETE /api/v1/current-iteration` | 取消当前迭代（幂等） | 登录用户 |
