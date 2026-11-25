@@ -89,6 +89,8 @@ func NewRouter(d Deps) http.Handler {
 			g.Get("/products/{pid}/iterations", h.listIterations)
 			g.Post("/products/{pid}/iterations", h.createIteration)
 			g.Get("/iterations/{id}", h.getIteration)
+			g.Get("/iterations/{id}/providers", h.getIterationProviders)
+			g.Put("/iterations/{id}/providers", h.setIterationProviders)
 			g.Post("/iterations/{id}/tasks", h.createTask)
 			// 个人「当前迭代」：首页直接展示该迭代看板（每人一条，覆盖即替换）。
 			g.Get("/current-iteration", h.getCurrentIteration)
@@ -112,6 +114,9 @@ func NewRouter(d Deps) http.Handler {
 			g.Get("/tasks/{id}/workflow", h.taskWorkflow)
 			g.Get("/iterations/{id}/workflow", h.iterationWorkflow)
 			g.Get("/reviews/pending", h.pendingReviews)
+
+			// 集成连接默认值：成员可读，供迭代 provider 绑定预填地址（凭据仍只读环境变量）。
+			g.Get("/integration/provider-options", h.listProviderOptions)
 
 			// workflow：节点操作（与 MCP 工具同一套用例与错误码）
 			g.Post("/tasks/{id}/steps/start", h.taskStartStep)
@@ -143,7 +148,6 @@ func NewRouter(d Deps) http.Handler {
 				// M3：集成 provider 配置（admin；凭据仍只读环境变量）
 				admin.Get("/integration/providers", h.listProviderConfigs)
 				admin.Patch("/integration/providers/{kind}", h.updateProviderConfig)
-
 				// M4：邮箱配置（admin；密码 AES-GCM 加密落库，永不回显）
 				admin.Get("/integration/smtp", h.getSMTPConfig)
 				admin.Patch("/integration/smtp", h.updateSMTPConfig)

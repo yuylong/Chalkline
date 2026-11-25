@@ -96,6 +96,27 @@ func (a artifactArg) toInput() app.ArtifactInput {
 		ExternalID: a.ExternalID, Title: a.Title, Content: a.Content}
 }
 
+// providerBindingArg 是迭代级 provider 绑定入参（成果物 / 流程记录 / 代码库）。
+type providerBindingArg struct {
+	Category    string `json:"category"` // artifact | process | code
+	Provider    string `json:"provider"` // inline | outline | git | svn | redmine
+	BaseURL     string `json:"baseUrl,omitempty"`
+	Target      string `json:"target,omitempty"`
+	DirTemplate string `json:"dirTemplate,omitempty"`
+	Branch      string `json:"branch,omitempty"`
+}
+
+func toProviderBindingInputs(in []providerBindingArg) []app.IterationProviderInput {
+	out := make([]app.IterationProviderInput, 0, len(in))
+	for _, p := range in {
+		out = append(out, app.IterationProviderInput{
+			Category: p.Category, Provider: p.Provider, BaseURL: p.BaseURL,
+			Target: p.Target, DirTemplate: p.DirTemplate, Branch: p.Branch,
+		})
+	}
+	return out
+}
+
 // ---- 读工具 ----
 
 func registerTools(s *mcp.Server, d Deps) {
@@ -345,22 +366,25 @@ func (d Deps) registerReadTools(s *mcp.Server) {
 
 func (d Deps) registerWriteTools(s *mcp.Server) {
 	mcp.AddTool[struct {
-		ProductID  string `json:"productId"`
-		Name       string `json:"name"`
-		Goal       string `json:"goal,omitempty"`
-		StartsOn   string `json:"startsOn"`
-		EndsOn     string `json:"endsOn"`
-		WorkflowID string `json:"workflowId,omitempty"`
+		ProductID  string               `json:"productId"`
+		Name       string               `json:"name"`
+		Goal       string               `json:"goal,omitempty"`
+		StartsOn   string               `json:"startsOn"`
+		EndsOn     string               `json:"endsOn"`
+		WorkflowID string               `json:"workflowId,omitempty"`
+		Providers  []providerBindingArg `json:"providers"`
 	}, any](s, &mcp.Tool{
-		Name:        "chalkline_create_iteration",
-		Description: "建迭代（一条新生命周期），返回服务端分配的 <key>-IT<n> 编号并实例化生命周期工作流。",
+		Name: "chalkline_create_iteration",
+		Description: "建迭代（一条新生命周期），返回服务端分配的 <key>-IT<n> 编号并实例化生命周期工作流。" +
+			"必须携带 providers：成果物 provider 必选且唯一（inline/outline/git/svn），流程记录（redmine）可选，代码库（git/svn）可选可多个。",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in struct {
-		ProductID  string `json:"productId"`
-		Name       string `json:"name"`
-		Goal       string `json:"goal,omitempty"`
-		StartsOn   string `json:"startsOn"`
-		EndsOn     string `json:"endsOn"`
-		WorkflowID string `json:"workflowId,omitempty"`
+		ProductID  string               `json:"productId"`
+		Name       string               `json:"name"`
+		Goal       string               `json:"goal,omitempty"`
+		StartsOn   string               `json:"startsOn"`
+		EndsOn     string               `json:"endsOn"`
+		WorkflowID string               `json:"workflowId,omitempty"`
+		Providers  []providerBindingArg `json:"providers"`
 	}) (*mcp.CallToolResult, any, error) {
 		svc, actor, err := d.svc(ctx)
 		if err != nil {
@@ -376,7 +400,49 @@ func (d Deps) registerWriteTools(s *mcp.Server) {
 		}
 		out, err := svc.CreateIteration(ctx, actor, in.ProductID, app.CreateIterationInput{
 			Name: in.Name, Goal: in.Goal, StartsOn: starts, EndsOn: ends, WorkflowID: in.WorkflowID,
+			Providers: toProviderBindingInputs(in.Providers),
 		})
+		if err != nil {
+			return fail(err)
+		}
+		return nil, out, nil
+	})
+
+	mcp.AddTool[struct {
+		IterationID string `json:"iterationId"`
+	}, any](s, &mcp.Tool{
+		Name:        "chalkline_get_iteration_providers",
+		Description: "读取迭代的 provider 绑定（成果物 / 流程记录 / 代码库）与冻结状态；locked=true 表示已提交成果物，不可再改。",
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in struct {
+		IterationID string `json:"iterationId"`
+	}) (*mcp.CallToolResult, any, error) {
+		svc, actor, err := d.svc(ctx)
+		if err != nil {
+			return fail(err)
+		}
+		out, err := svc.GetIterationProviders(ctx, actor, in.IterationID)
+		if err != nil {
+			return fail(err)
+		}
+		return nil, out, nil
+	})
+
+	mcp.AddTool[struct {
+		IterationID string               `json:"iterationId"`
+		Providers   []providerBindingArg `json:"providers"`
+	}, any](s, &mcp.Tool{
+		Name:        "chalkline_set_iteration_providers",
+		Description: "整组替换迭代 provider 绑定：仅在迭代初始化阶段（未提交成果物、未终结）可调用，已冻结返回 409 PROVIDERS_LOCKED。",
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in struct {
+		IterationID string               `json:"iterationId"`
+		Providers   []providerBindingArg `json:"providers"`
+	}) (*mcp.CallToolResult, any, error) {
+		svc, actor, err := d.svc(ctx)
+		if err != nil {
+			return fail(err)
+		}
+		out, err := svc.SetIterationProviders(ctx, actor, in.IterationID,
+			toProviderBindingInputs(in.Providers))
 		if err != nil {
 			return fail(err)
 		}

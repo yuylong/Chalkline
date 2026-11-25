@@ -50,6 +50,7 @@ import type {
 import { CurrentNodeSummary } from '../gates/CurrentNodePanel'
 import TaskBoard from './Board'
 import IterationCharts from './Charts'
+import { IterationProvidersCard } from './Providers'
 
 // TreeSelect treeData 形状（模块树多选，建任务时关联模块用）。
 function moduleTreeData(mods: ModuleView[]): { title: string; value: string; children?: ReturnType<typeof moduleTreeData> }[] {
@@ -235,8 +236,12 @@ export function IterationPane({ iterationId }: { iterationId: string }) {
         </Space>
       </Card>
 
-      <Card title="阶段泳道（生命周期节点 · 并行阶段并列展示）">
-        {stages.length === 0 ? (
+      <IterationProvidersCard
+        providers={it.providers}
+        onChanged={() => queryClient.invalidateQueries({ queryKey: ['iteration', id] })}
+      />
+
+      <Card title="阶段泳道（生命周期节点 · 并行阶段并列展示）">        {stages.length === 0 ? (
           <Typography.Text type="secondary">未加载到生命周期实例。</Typography.Text>
         ) : (
           <div style={{ display: 'flex', gap: 8, overflowX: 'auto' }}>

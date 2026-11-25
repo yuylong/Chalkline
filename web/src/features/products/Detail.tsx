@@ -24,6 +24,7 @@ import { useNavigate, useParams } from 'react-router'
 import { apiDelete, apiGet, apiPatch, apiPost, apiPut } from '../../shared/api'
 import { fmtDate, fmtTime, iterationStatusMeta, memberRoleMeta, memberNameMap, memberNameOf, MEMBER_ROLES, userLabel } from '../../shared/status'
 import { ApiErrorBanner, DetailError, PageLoading } from '../../shared/ui'
+import { formToProviders, ProviderBindingFields, type ProviderFormValues } from '../iterations/Providers'
 import type {
   CurrentIterationView,
   IterationView,
@@ -60,12 +61,14 @@ export default function ProductDetail() {
   const [iterationOpen, setIterationOpen] = useState(false)
   const [moduleForm] = Form.useForm<{ parentId?: string; name: string; sortOrder?: number }>()
   const [memberForm] = Form.useForm<{ userId: string; role: string }>()
-  const [iterationForm] = Form.useForm<{
-    name: string
-    goal?: string
-    range: [dayjs.Dayjs, dayjs.Dayjs]
-    workflowId?: string
-  }>()
+  const [iterationForm] = Form.useForm<
+    {
+      name: string
+      goal?: string
+      range: [dayjs.Dayjs, dayjs.Dayjs]
+      workflowId?: string
+    } & ProviderFormValues
+  >()
 
   const detail = useQuery({
     queryKey: ['product', id],
@@ -125,13 +128,17 @@ export default function ProductDetail() {
   })
 
   const createIterationMut = useMutation({
-    mutationFn: (v: { name: string; goal?: string; range: [dayjs.Dayjs, dayjs.Dayjs]; workflowId?: string }) =>
+    mutationFn: (
+      v: { name: string; goal?: string; range: [dayjs.Dayjs, dayjs.Dayjs]; workflowId?: string } & ProviderFormValues,
+    ) =>
       apiPost<IterationView>(`/products/${id}/iterations`, {
         name: v.name,
         goal: v.goal ?? '',
         startsOn: v.range[0].format('YYYY-MM-DD'),
         endsOn: v.range[1].format('YYYY-MM-DD'),
         workflowId: v.workflowId ?? '',
+        // 迭代级 provider 绑定：成果物必选（inline 亦需显式选择），随迭代固化。
+        providers: formToProviders(v),
       }),
     onSuccess: () => {
       message.success('迭代已创建')
@@ -464,6 +471,7 @@ export default function ProductDetail() {
                 .map((w) => ({ value: w.id, label: `${w.name}（v${w.version}）` }))}
             />
           </Form.Item>
+          <ProviderBindingFields />
         </Form>
       </Modal>
     </div>

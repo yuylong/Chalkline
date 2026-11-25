@@ -44,6 +44,8 @@ type CreateIterationInput struct {
 	StartsOn   time.Time
 	EndsOn     time.Time
 	WorkflowID string // 可选，缺省取产品默认生命周期模板
+	// Providers 是迭代级 provider 绑定：成果物必选且唯一，流程记录至多一个，代码库可多个。
+	Providers []IterationProviderInput
 }
 
 // CreateIteration 建迭代：产品成员持 pm 或 admin；分配 CHK-IT<n>；
@@ -124,8 +126,13 @@ func (s *Service) CreateIteration(ctx context.Context, actor Actor, productID st
 			return err
 		}
 
+		// 迭代级 provider 绑定：成果物必选（inline 亦需显式选择），随迭代固化连接信息。
+		if err := s.insertIterationBindings(ctx, q, actor, dom.ID, in.Providers); err != nil {
+			return err
+		}
+
 		if err := audit(ctx, q, actor, "iteration.create", "iteration", dom.ID,
-			map[string]any{"number": number, "workflowId": wfID}); err != nil {
+			map[string]any{"number": number, "workflowId": wfID, "providers": len(in.Providers)}); err != nil {
 			return err
 		}
 		out = viewIteration(row)
@@ -151,13 +158,14 @@ func (s *Service) ListIterations(ctx context.Context, actor Actor, productID str
 	return out, nil
 }
 
-// IterationDetail 是迭代详情：当前阶段 + 进度。
+// IterationDetail 是迭代详情：当前阶段 + 进度 + provider 绑定。
 type IterationDetail struct {
 	IterationView
-	CurrentNodes []NodeStateView `json:"currentNodes"`
-	ProgressPct  int             `json:"progressPct"` // passed / 可达节点
-	OpenTasks    int64           `json:"openTasks"`
-	WorkflowName string          `json:"workflowName"`
+	CurrentNodes []NodeStateView        `json:"currentNodes"`
+	ProgressPct  int                    `json:"progressPct"` // passed / 可达节点
+	OpenTasks    int64                  `json:"openTasks"`
+	WorkflowName string                 `json:"workflowName"`
+	Providers    IterationProvidersView `json:"providers"`
 }
 
 // NodeStateView 是节点状态视图（含乐观锁版本）。
@@ -181,6 +189,11 @@ func (s *Service) GetIteration(ctx context.Context, actor Actor, id string) (Ite
 		return IterationDetail{}, err
 	}
 	detail := IterationDetail{IterationView: viewIteration(it)}
+	providers, err := s.iterationProvidersView(ctx, q, it)
+	if err != nil {
+		return detail, err
+	}
+	detail.Providers = providers
 	open, err := store.CountUnfinishedTasksInIteration(ctx, q, id)
 	if err != nil {
 		return detail, err
@@ -304,6 +317,10 @@ func (s *Service) CreateTask(ctx context.Context, actor Actor, in CreateTaskInpu
 		out = v
 		return nil
 	})
+	if err == nil {
+		// 流程记录：每个任务在绑定的 project 建票（首次动作时惰性建票）。
+		s.recordProcess(taskCreateProcessAction(actor, out.ID, out.Number, out.Title))
+	}
 	return out, err
 }
 

@@ -6,6 +6,44 @@
 
 这样做的目的不是省事，而是避免平台变成「又一个代码托管 + 又一个文档库 + 又一个红点中心」，同时让团队继续用已经沉淀好的工具。
 
+## 迭代 Provider（核心模型）
+
+**Provider 不是全局配置，而是每个迭代一套。** 迭代创建时选定，连接信息随迭代固化；首次提交成果物后冻结（不变量 22）。
+
+| 分类 | 必选 | 可选 provider | 作用 |
+| --- | --- | --- | --- |
+| **成果物** `artifact` | ✅ 必选且唯一 | `inline` / `outline` / `git` / `svn` | 成果物记录位置。`inline` = 直接存平台内；外部 provider 只回填摘要与链接 |
+| **流程记录** `process` | 可选，至多一个 | `redmine` | 每个阶段与任务在指定 project 建票，节点动作作为回复追加到票上 |
+| **代码库** `code` | 可选，可多个 | `git` / `svn` | 供 `pr` 材料关联代码引用，也可作为成果物的目录化目标 |
+
+五条规则：
+
+1. **连接信息随迭代固化**：`baseUrl` 与目标（collection / project / 仓库路径）存在迭代绑定上；迭代中途修改全局配置不影响历史成果物的归属。
+2. **成果物必选**：没有成果物 provider 的迭代不允许创建（选 `inline` 也要显式提交）。
+3. **冻结时机**：迭代（含其下任务）一旦提交过成果物，或迭代进入终态，绑定不可再修改（`409 PROVIDERS_LOCKED`）。
+4. **单向分发**：MCP / REST 提交的成果物先落 Chalkline，再由分发器按绑定写外部系统；外部失败只记回执，不阻断门禁（不变量 15）。
+5. **摘要而非内容**：外部 provider 的成果物在平台内只保留标题 / 链接 / 外部 ID / 提交时点快照，正文写入外部后即从平台清除（`inline` 绑定除外）。
+
+提交约定：内容类成果物以 `provider=inline` 交给 Chalkline，由绑定决定落到 `outline` / `git` / `svn`；已带外部 URL 的引用（含 `pr`）只做关联，不重复外推。
+
+全局的 `integration_provider_configs`（`baseUrl` / 启停 / 凭据是否存在）只回答「这套部署能连哪些外部系统」，管理台保留它是为了创建迭代时预填连接地址，不承载业务语义。成员可经 `GET /api/v1/integration/provider-options` 读取这些默认地址（只含地址，不含凭据）。
+
+### 数据流
+
+```
+Agent ──MCP──> Chalkline（成果物 + 节点/任务事件）
+                   │  按该迭代绑定分发（尽力而为，不阻断流程）
+                   ├─ 成果物：inline 存平台内 / outline 建文档 / git 提交文件 / svn WebDAV 写入
+                   ├─ 流程记录：建票 + 追加回复（只出站，不回写状态）
+                   └─ 代码库：pr 材料关联代码引用
+```
+
+### 目录结构约定
+
+`git` / `svn` 的成果物按 `dirTemplate` 落到仓库，默认 `chalkline/{iteration}/{node}`，文件名 `<kind>.md`，支持 `{iteration}` / `{node}` / `{kind}` 占位符。`outline` 没有目录概念，以「集合 + 标题约定」组织。
+
+Node 详情页按迭代绑定展示三类连接，可直接点击跳转（`linkUrl`）。
+
 ## 边界
 
 | 能力 | 由谁承担 | Chalkline 保存 |
@@ -31,24 +69,38 @@ externalId: "!42"             # 外部系统的稳定标识
 title: "feat(workflow): 支持多级门禁"   # 快照，便于展示与审计
 ```
 
-- `provider` 决定校验方式与展示形式。
+- `provider` 决定校验方式与展示形式；具体由迭代绑定的 provider 决定是否分发、分发到哪里。
 - `externalId` 用于去重与回查，不要求所有 provider 都支持。
 - `title` / `version` 等字段是**快照**：外部内容变化不回写，避免双向同步。
 - `inline` 仅在团队没有对应工具时使用，存平台内 Markdown，明确标注为轻量说明，不承载长文档。
+- 外部 provider 的材料只落摘要：正文不复制进 Chalkline，分发回执写 `integration_syncs`（含外部链接与摘要）。
 
 ## 适配器接口
 
 ```go
+// 引用校验与快照（门禁挂接时）
 type Provider interface {
-    Kind() string
-    Validate(ctx context.Context, ref Ref) error   // 校验可达与格式
-    Snapshot(ctx context.Context, ref Ref) (Meta, error) // 取标题/版本/状态快照
+    Kind() workitem.ArtifactProvider
+    Validate(ctx context.Context, ref workitem.ArtifactRef) error
+    Snapshot(ctx context.Context, ref workitem.ArtifactRef) (workitem.ArtifactMeta, error)
+}
+
+// 成果物分发（app 层通过依赖倒置调用，integration.Dispatcher 实现）
+type ArtifactDistributor interface {
+    PushArtifact(ctx context.Context, b workitem.ProviderBinding, ref workitem.ArtifactRef,
+        meta workitem.ArtifactMeta, dir string) (workitem.PushedArtifact, error)
+}
+
+// 流程记录（Redmine 建票 + 追加回复）
+type ProcessRecorder interface {
+    EnsureTicket(ctx context.Context, b workitem.ProviderBinding, subject workitem.ProcessSubject) (workitem.ProcessTicket, error)
+    CommentTicket(ctx context.Context, b workitem.ProviderBinding, ticket workitem.ProcessTicket, note workitem.ProcessNote) error
 }
 ```
 
-已规划实现：`git`、`svn`、`outline`、`redmine`、`smtp`、`webhook`、`file`。
+已实现：`git`、`svn`、`outline`、`redmine`、`smtp`、`webhook`、`file`。
 
-适配器只做协议转换与校验，**不得写入领域状态**。
+适配器只做协议转换与校验，**不得写入领域状态**；分发回执由 app 写入 `integration_syncs`。
 
 ## 同步方向
 
@@ -56,9 +108,9 @@ type Provider interface {
 
 | 集成 | 方向 | 说明 |
 | --- | --- | --- |
-| Outline | 出站链接 | 门禁材料指向 Outline 文档；不拉取正文 |
-| Redmine | 出站导出 | 迭代/任务状态导出为 issue 或更新状态；只回写 `issueId` 与链接 |
-| Git / SVN | 出站引用 | 只存链接，不克隆仓库 |
+| Outline | 出站写入 + 出站链接 | 绑定时把成果物建成文档（集合 + 标题约定），门禁材料指向该文档；不拉取正文 |
+| Redmine | 出站写入 | 阶段/任务建票并追加动作回复；只回写 `issueId` 与链接，**不反向回写状态** |
+| Git / SVN | 出站引用 + 出站写入 | `pr` 只存链接不克隆仓库；成果物按目录模板提交文件（Git 走 commits API，SVN 走 WebDAV） |
 | 邮件 | 出站通知 | 门禁待办、驳回、超期提醒、节点/迭代进展 |
 | Webhook | 出站事件 | 通用订阅，供外围系统消费 |
 
@@ -115,8 +167,9 @@ admin 在控制台「邮箱配置」页（位于 Webhook 订阅之前）或 REST
 
 ## 安全
 
-- 各 provider 的 `baseUrl` 与凭据存环境变量或密钥文件，**不落库存明文**。唯一例外：SMTP 发件密码可经管理台保存，以 AES-GCM 加密落库（密钥 `CHALKLINE_SECRET_KEY`，未设置回退 `CHALKLINE_JWT_SECRET`），API 永不回显、不进日志。
-- 出站请求做域名白名单校验，禁止跟随任意重定向（防 SSRF）。
+- 全局连接配置与迭代绑定里的 `baseUrl` 只存地址，**凭据（token / API key）只从环境变量读取**（`CHALKLINE_OUTLINE_TOKEN` / `CHALKLINE_REDMINE_TOKEN` / `CHALKLINE_GIT_TOKEN` / `CHALKLINE_SVN_TOKEN`），不落库、不进日志。唯一例外：SMTP 发件密码可经管理台保存，以 AES-GCM 加密落库（密钥 `CHALKLINE_SECRET_KEY`，未设置回退 `CHALKLINE_JWT_SECRET`），API 永不回显、不进日志。
+- 迭代绑定的 `baseUrl` 不得内嵌凭据（保存时校验并拒绝）。
+- 出站请求做域名白名单校验（`CHALKLINE_OUTBOUND_ALLOWLIST`），禁止跟随任意重定向（防 SSRF）；白名单为空时拒绝一切出站，分发失败只记回执。
 - Webhook 载荷带签名头，接收方可校验。
 - 邮件只发内网 SMTP，默认关闭对外直发。
 
