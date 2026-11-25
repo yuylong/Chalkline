@@ -2,6 +2,7 @@ package notify
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -25,6 +26,11 @@ type SMTP struct {
 	To       []string
 	Timeout  time.Duration // 默认 10s
 
+	// TLSMode：none（明文，默认）| starttls（连接后 EHLO 升级）| tls（隐式 TLS，465 常用）。
+	TLSMode string // CHALKLINE_SMTP_TLS
+	// TLSSkipVerify 跳过证书校验（CHALKLINE_SMTP_TLS_SKIP_VERIFY，内网自签场景）。
+	TLSSkipVerify bool
+
 	// Resolve 运行时解析生效配置（server 组装层注入 app 层合并结果）。
 	// 收件人（To）仍来自构造时的环境变量配置，不经 Resolve。
 	Resolve func(ctx context.Context) (SMTPRuntime, bool)
@@ -32,12 +38,14 @@ type SMTP struct {
 
 // SMTPRuntime 是运行时解析出的生效发件配置。
 type SMTPRuntime struct {
-	Enabled  bool
-	Host     string
-	Port     int
-	Username string
-	Password string
-	From     string
+	Enabled       bool
+	Host          string
+	Port          int
+	Username      string
+	Password      string
+	From          string
+	TLSMode       string // none / starttls / tls
+	TLSSkipVerify bool
 }
 
 // notifyEvents 是发送邮件的事件集合；其余事件只走 webhook。
@@ -66,18 +74,32 @@ func (m *SMTP) timeout() time.Duration {
 	return 10 * time.Second
 }
 
+// tlsMode 归一化 TLS 模式；空或未知值按 none（明文，保持既有行为）。
+func (m *SMTP) tlsMode() string {
+	switch strings.ToLower(strings.TrimSpace(m.TLSMode)) {
+	case "starttls":
+		return "starttls"
+	case "tls":
+		return "tls"
+	default:
+		return "none"
+	}
+}
+
 func (m *SMTP) Send(ctx context.Context, ev store.OutboxRow) error {
 	label, ok := notifyEvents[ev.EventType]
 	if !ok {
 		return nil // 非邮件事件：视为成功，交给其他通道
 	}
 	host, port, username, password, from := m.Host, m.port(), m.Username, m.Password, m.From
+	tlsMode, skipVerify := m.tlsMode(), m.TLSSkipVerify
 	if m.Resolve != nil {
 		cfg, ok := m.Resolve(ctx)
 		if !ok || !cfg.Enabled {
 			return nil // 未启用：静默跳过，不阻断其他通道
 		}
 		host, port, username, password, from = cfg.Host, cfg.Port, cfg.Username, cfg.Password, cfg.From
+		tlsMode, skipVerify = cfg.TLSMode, cfg.TLSSkipVerify
 		if port == 0 {
 			port = 25
 		}
@@ -91,7 +113,7 @@ func (m *SMTP) Send(ctx context.Context, ev store.OutboxRow) error {
 		return err
 	}
 	addr := net.JoinHostPort(host, fmt.Sprintf("%d", port))
-	return m.sendMail(ctx, addr, host, username, password, from, msg)
+	return m.sendMail(ctx, addr, host, username, password, from, tlsMode, skipVerify, msg)
 }
 
 // buildMessage 构造纯文本邮件（正文为事件元数据 JSON，不携带业务正文）。
@@ -118,9 +140,20 @@ func (m *SMTP) buildMessage(from string, ev store.OutboxRow, label string) ([]by
 }
 
 // sendMail 带 deadline 的 SMTP 投递（net/smtp.SendMail 无超时控制，自行实现拨号）。
-func (m *SMTP) sendMail(ctx context.Context, addr, host, username, password, from string, msg []byte) error {
-	d := net.Dialer{Timeout: m.timeout()}
-	conn, err := d.DialContext(ctx, "tcp", addr)
+// tlsMode：none = 明文；starttls = EHLO 后协商升级；tls = 隐式 TLS（连接即 TLS）。
+// skipVerify 仅建议内网自签证书场景使用，公网必须校验。
+func (m *SMTP) sendMail(ctx context.Context, addr, host, username, password, from,
+	tlsMode string, skipVerify bool, msg []byte) error {
+	tlsCfg := &tls.Config{ServerName: host, InsecureSkipVerify: skipVerify} //nolint:gosec // 内网自签场景由管理台显式开启
+	var conn net.Conn
+	var err error
+	if tlsMode == "tls" {
+		d := &tls.Dialer{NetDialer: &net.Dialer{Timeout: m.timeout()}, Config: tlsCfg}
+		conn, err = d.DialContext(ctx, "tcp", addr)
+	} else {
+		d := net.Dialer{Timeout: m.timeout()}
+		conn, err = d.DialContext(ctx, "tcp", addr)
+	}
 	if err != nil {
 		return fmt.Errorf("smtp 拨号失败: %w", err)
 	}
@@ -133,6 +166,14 @@ func (m *SMTP) sendMail(ctx context.Context, addr, host, username, password, fro
 	}
 	defer func() { _ = c.Quit() }()
 
+	if tlsMode == "starttls" {
+		if ok, _ := c.Extension("STARTTLS"); !ok {
+			return fmt.Errorf("smtp 服务器不支持 STARTTLS")
+		}
+		if err := c.StartTLS(tlsCfg); err != nil {
+			return fmt.Errorf("smtp STARTTLS 升级失败: %w", err)
+		}
+	}
 	if username != "" {
 		auth := smtp.PlainAuth("", username, password, host)
 		if err := c.Auth(auth); err != nil {

@@ -71,6 +71,10 @@ type updateSMTPConfigReq struct {
 	From     *string `json:"from"`
 	// Password 只写不读：留空 = 不修改，空串 = 清除库内密码（回退环境变量）。
 	Password *string `json:"password"`
+	// TLSMode：none / starttls / tls；空串 = 清除库内设置（回退环境变量）。
+	TLSMode *string `json:"tlsMode"`
+	// TLSSkipVerify：跳过证书校验（内网自签场景）。
+	TLSSkipVerify *bool `json:"tlsSkipVerify"`
 }
 
 func (h *handlers) updateSMTPConfig(w http.ResponseWriter, r *http.Request) {
@@ -87,6 +91,7 @@ func (h *handlers) updateSMTPConfig(w http.ResponseWriter, r *http.Request) {
 	view, err := h.svc().UpdateSMTPConfig(r.Context(), actor, app.SMTPConfigInput{
 		Enabled: req.Enabled, Host: req.Host, Port: req.Port,
 		Username: req.Username, From: req.From, Password: req.Password,
+		TLSMode: req.TLSMode, TLSSkipVerify: req.TLSSkipVerify,
 	})
 	if err != nil {
 		writeAppError(w, err)

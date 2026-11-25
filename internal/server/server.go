@@ -115,6 +115,7 @@ func Run(ctx context.Context) error {
 							SMTPDefaults: app.SMTPEnvDefaults{
 								Host: cfg.SMTPHost, Port: cfg.SMTPPort, Username: cfg.SMTPUsername,
 								Password: cfg.SMTPPassword, From: cfg.SMTPFrom, Recipients: cfg.NotifyEmails,
+								TLSMode: cfg.SMTPTLSMode, TLSSkipVerify: cfg.SMTPTLSSkipVerify,
 							},
 							SecretKey: cfg.SecretKey,
 						})
@@ -270,6 +271,7 @@ func resolveSMTP(getSvc func() app.API) func(context.Context) (notify.SMTPRuntim
 		return notify.SMTPRuntime{
 			Enabled: rt.Enabled, Host: rt.Host, Port: rt.Port,
 			Username: rt.Username, Password: rt.Password, From: rt.From,
+			TLSMode: rt.TLSMode, TLSSkipVerify: rt.TLSSkipVerify,
 		}, true
 	}
 }
