@@ -146,6 +146,14 @@ func CountUnfinishedTasksInIteration(ctx context.Context, q Querier, iterationID
 	return n, err
 }
 
+// ListIterationAssigneeIDs 列迭代内任务的负责人 id（迭代收尾通知的受众）。
+func ListIterationAssigneeIDs(ctx context.Context, q Querier, iterationID string) ([]string, error) {
+	return scanAll(ctx, q,
+		`SELECT DISTINCT assignee_id FROM tasks
+		 WHERE iteration_id = $1 AND assignee_id <> ''`,
+		scanString, iterationID)
+}
+
 // TaskRow 是任务存储形态。
 type TaskRow struct {
 	ID                 string

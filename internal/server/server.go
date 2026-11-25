@@ -96,7 +96,12 @@ func Run(ctx context.Context) error {
 	eventHub := events.NewHub()
 
 	// M4 邮箱配置：SMTP 通道单实例——投递器与「发送测试邮件」共用同一拨号/TLS 路径。
-	smtpSender := &notify.SMTP{To: cfg.NotifyEmails, Resolve: resolveSMTP(getSvc)}
+	// 收件人按事件解析为相关成员邮箱（app.NotifyRecipients）；To 仅作解析不出时的兜底。
+	smtpSender := &notify.SMTP{
+		To:         cfg.NotifyEmails,
+		Resolve:    resolveSMTP(getSvc),
+		Recipients: resolveNotifyRecipients(getSvc),
+	}
 
 	// 数据库初始化：连接 → 迁移 → 种子 → admin 引导 → 组装 Service。
 	go func() {
@@ -287,6 +292,18 @@ func resolveSMTP(getSvc func() app.API) func(context.Context) (notify.SMTPRuntim
 	}
 }
 
+// resolveNotifyRecipients 构造邮件收件人解析器：按事件解析相关成员（任务负责人、
+// 节点合格评审人、产品 owner、升级兜底 admin），收件地址取自成员设置（users.email）。
+func resolveNotifyRecipients(getSvc func() app.API) func(context.Context, store.OutboxRow) ([]string, error) {
+	return func(ctx context.Context, ev store.OutboxRow) ([]string, error) {
+		s, ok := getSvc().(*app.Service)
+		if !ok {
+			return nil, errors.New("服务未就绪")
+		}
+		return s.NotifyRecipients(ctx, ev)
+	}
+}
+
 // startDispatcher 启动 outbox 通知投递器（M2 集成 + M3 订阅路由 + M4 邮箱配置）。
 // 无论是否配置通道都启动：无通道且无订阅时事件直接标记完成，避免 outbox
 // 无限滞留 pending（不变量 15）。
@@ -299,10 +316,11 @@ func startDispatcher(ctx context.Context, db *store.DB, cfg platform.Config, log
 	}
 	// SMTP 通道恒挂载（与「发送测试邮件」共用同一实例）：生效配置每轮经 Resolve
 	// 解析（管理台保存立即生效；未启用或未配置完整时 Send 静默跳过）。
-	// 收件人仍来自 CHALKLINE_NOTIFY_EMAILS。
+	// 收件人按事件解析为相关成员邮箱，CHALKLINE_NOTIFY_EMAILS 仅作兜底。
 	senders = append(senders, smtpSender)
 	if envSMTPReady(cfg) {
-		logger.Info("SMTP 邮件通知已启用", "host", cfg.SMTPHost, "recipients", len(cfg.NotifyEmails))
+		logger.Info("SMTP 邮件通知已启用", "host", cfg.SMTPHost,
+			"fallback_recipients", len(cfg.NotifyEmails))
 	}
 	go (&notify.Dispatcher{
 		Queue: db, Senders: senders, Log: logger, Interval: cfg.OutboxInterval,
@@ -315,7 +333,7 @@ func startDispatcher(ctx context.Context, db *store.DB, cfg platform.Config, log
 
 // envSMTPReady 报告环境变量静态配置是否齐全（仅用于启动日志提示）。
 func envSMTPReady(cfg platform.Config) bool {
-	return cfg.SMTPHost != "" && cfg.SMTPFrom != "" && len(cfg.NotifyEmails) > 0
+	return cfg.SMTPHost != "" && cfg.SMTPFrom != ""
 }
 
 // tailOutbox 尾随 outbox 新事件并发布到 SSE 总线（M3 实时推送）。

@@ -59,7 +59,7 @@ type Provider interface {
 | Outline | 出站链接 | 门禁材料指向 Outline 文档；不拉取正文 |
 | Redmine | 出站导出 | 迭代/任务状态导出为 issue 或更新状态；只回写 `issueId` 与链接 |
 | Git / SVN | 出站引用 | 只存链接，不克隆仓库 |
-| 邮件 | 出站通知 | 门禁待办、驳回、超期提醒 |
+| 邮件 | 出站通知 | 门禁待办、驳回、超期提醒、节点/迭代进展 |
 | Webhook | 出站事件 | 通用订阅，供外围系统消费 |
 
 Redmine 明确**不反向回写状态**：流程状态的唯一事实来源是 Chalkline，否则两边冲突无法裁决。若团队以 Redmine 为准，则不应把该能力接入。
@@ -81,6 +81,7 @@ Redmine 明确**不反向回写状态**：流程状态的唯一事实来源是 C
 
 投递规则：
 
+- **邮件收件人按事件解析**：投递器注入 `notify.SMTP.Recipients`（server 组装层调 `app.Service.NotifyRecipients`），按事件语义取相关成员邮箱：节点进展 → 工作项责任人；`gate.pending` / `gate.overdue` → 责任人 + 当前节点合格评审人（按实例模板 `gate.roles`）；`node.passed` / `node.rejected` → 另加产品 owner；`gate.escalated` → 另加 admin；`task.assigned` → 被指派人；`iteration.closed` → 创建人 + 产品 owner + 迭代内任务负责人。解析不出时回退 `CHALKLINE_NOTIFY_EMAILS`（兜底收件人，可留空）。
 - 静态通道（环境变量 `CHALKLINE_WEBHOOK_URL` / SMTP）：指数退避重试，最多 5 次，超过标记 `failed` 并在控制台告警。SMTP 发件服务器与账号可经管理台「邮箱配置」维护（见下节），环境变量仍是默认值与回退来源。
 - **Webhook 订阅（M3）**：投递器每轮读取 `webhook_subscriptions` 中 `active` 的订阅，按 `event_types` 过滤后 POST 到各自 URL，带 `X-Chalkline-Subscription-Id` 与 `X-Chalkline-Signature` 头；**尽力而为**——单个订阅失败只记在该订阅行（`last_error`），不阻断事件流转，也不触发事件重试。
 - **投递失败不阻断流程**：门禁判定不依赖通知是否送达。
@@ -108,8 +109,8 @@ admin 在控制台「邮箱配置」页（位于 Webhook 订阅之前）或 REST
 - **密码存储**：AES-GCM 加密落库（`smtp_configs.password_enc`），密钥来自 `CHALKLINE_SECRET_KEY`（未设置回退 `CHALKLINE_JWT_SECRET`）；API 永不回显，只报「已配置 / 未配置」。这是「凭据不落库」的唯一例外（AGENT 红线 8 / tech.md 约束 10）。
 - **TLS/STARTTLS**：`tlsMode` ∈ `none`（明文，默认）/ `starttls`（连接后 EHLO 协商升级，587 常用）/ `tls`（隐式 TLS，465 常用）；`tlsSkipVerify` 跳过证书校验，**仅限内网自签证书场景**，公网 SMTP 必须关闭。
 - **合并语义**：未保存过或字段留空 = 沿用环境变量默认值（`CHALKLINE_SMTP_*`，TLS 默认值来自 `CHALKLINE_SMTP_TLS` / `CHALKLINE_SMTP_TLS_SKIP_VERIFY`）；`enabled=false` 即整体停发；密码提交空串 = 清除库内密码（回退环境变量）；`tlsMode` 提交空串 = 清除库内设置（回退环境变量）。
-- **收件人**：仍经 `CHALKLINE_NOTIFY_EMAILS` 配置（页面只读展示），不进库。
-- **测试邮件**：`POST /api/v1/integration/smtp/test`（admin，控制台「发送测试邮件」按钮）用当前生效配置向收件人发送一封测试邮件，即时验证连通性；失败返回可展示的错误（拨号/握手/认证/TLS 各阶段），并写审计 `integration.smtp.test`。
+- **收件人**：不再群发固定列表，按事件语义解析为**相关成员**，地址取自成员设置里的邮箱（`users.email`）——节点进展通知工作项责任人（任务负责人 / 迭代创建人），`gate.pending` / `gate.overdue` 通知当前节点的合格评审人，`node.passed` / `node.rejected` / `iteration.closed` 另通知产品 owner，`gate.escalated` 升级给产品 owner 与 admin。`CHALKLINE_NOTIFY_EMAILS` 保留为**兜底收件人**（只在解析不出任何相关成员时使用），页面只读展示。
+- **测试邮件**：`POST /api/v1/integration/smtp/test`（admin，控制台「发送测试邮件」按钮）用当前生效配置向**当前登录账号的邮箱**发送一封测试邮件，即时验证连通性；失败返回可展示的错误（拨号/握手/认证/TLS 各阶段），并写审计 `integration.smtp.test`。
 - **生效时机**：投递器每轮投递前重新解析生效配置，保存后无需重启；密钥变更导致解密失败时按「密码未配置」降级并告警，不阻断投递。
 
 ## 安全

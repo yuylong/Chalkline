@@ -345,6 +345,19 @@ func ProductIDsOfMember(ctx context.Context, q Querier, userID string) ([]string
 		}, userID)
 }
 
+// ListProductMemberUserIDs 列产品内持指定成员角色的启用成员 id。
+// 邮件通知按「产品 owner」等受众解析时用（guest 由 roles 过滤天然排除）。
+func ListProductMemberUserIDs(ctx context.Context, q Querier, productID string, roles []string) ([]string, error) {
+	if len(roles) == 0 {
+		return nil, nil
+	}
+	return scanAll(ctx, q,
+		`SELECT pm.user_id FROM product_members pm JOIN users u ON u.id = pm.user_id
+		 WHERE pm.product_id = $1 AND pm.member_role = ANY($2) AND u.status = 'active'
+		 ORDER BY pm.user_id`,
+		scanString, productID, roles)
+}
+
 // ReviewerCandidate 是合格评审人候选（产品成员且持所需全局角色）。
 type ReviewerCandidate struct {
 	UserID      string

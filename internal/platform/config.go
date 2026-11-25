@@ -46,7 +46,7 @@ type Config struct {
 	// Webhook 订阅：URL 与 HMAC-SHA256 签名密钥。
 	WebhookURL    string
 	WebhookSecret string
-	// SMTP 邮件通知：只发内网 SMTP；NotifyEmails 是收件人列表。
+	// SMTP 邮件通知：只发内网 SMTP；NotifyEmails 是兜底收件人列表（通知默认按事件发给相关成员邮箱）。
 	SMTPHost     string
 	SMTPPort     int
 	SMTPUsername string

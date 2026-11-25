@@ -44,7 +44,7 @@ type SMTPConfigView struct {
 	EnvFrom            string   `json:"envFrom"`
 	EnvTLSMode         string   `json:"envTlsMode"`
 	EnvTLSSkipVerify   bool     `json:"envTlsSkipVerify"`
-	EnvRecipients      []string `json:"envRecipients"` // 收件人只经 CHALKLINE_NOTIFY_EMAILS（只读提示）
+	EnvRecipients      []string `json:"envRecipients"` // 兜底收件人（CHALKLINE_NOTIFY_EMAILS，只读提示）
 	UpdatedBy          string   `json:"updatedBy,omitempty"`
 	UpdatedAt          string   `json:"updatedAt,omitempty"`
 }
@@ -274,9 +274,10 @@ func (s *Service) smtpConfigView(row store.SMTPConfigRow, stored bool) SMTPConfi
 	return v
 }
 
-// envConfigured 环境变量三要素齐全（host/from/收件人）即视为默认启用。
+// envConfigured 环境变量发件要素齐全（host/from）即视为默认启用。
+// 收件人已按事件解析为相关成员，CHALKLINE_NOTIFY_EMAILS 只作兜底，不参与启用判定。
 func envConfigured(env SMTPEnvDefaults) bool {
-	return env.Host != "" && env.From != "" && len(env.Recipients) > 0
+	return env.Host != "" && env.From != ""
 }
 
 // smtpTLSMode 归一化 TLS 模式；空或未知值按 none（明文）处理。
@@ -328,8 +329,8 @@ func validateSMTPInput(in SMTPConfigInput) error {
 	return nil
 }
 
-// TestSMTPConfig 用当前生效配置发送一封测试邮件到 CHALKLINE_NOTIFY_EMAILS
-// 收件人（admin；写审计）。发送失败返回 SMTP_SEND_FAILED（502），错误信息可直接
+// TestSMTPConfig 用当前生效配置向「当前登录账号」的邮箱发送一封测试邮件
+//（admin；写审计）。发送失败返回 SMTP_SEND_FAILED（502），错误信息可直接
 // 展示给管理台（拨号/握手/认证/TLS 各阶段均有中文提示）。
 func (s *Service) TestSMTPConfig(ctx context.Context, actor Actor) error {
 	if !actor.IsAdmin {
@@ -339,7 +340,14 @@ func (s *Service) TestSMTPConfig(ctx context.Context, actor Actor) error {
 	if err != nil {
 		return err
 	}
-	recipients := s.SMTPDefaults.Recipients
+	u, err := store.UserByID(ctx, s.DB.Q(), actor.UserID)
+	if err != nil {
+		return wrapNotFound(err, "当前登录成员不存在")
+	}
+	recipients := []string{}
+	if strings.TrimSpace(u.Email) != "" {
+		recipients = append(recipients, strings.TrimSpace(u.Email))
+	}
 	if err := validateSMTPTest(rt, recipients); err != nil {
 		return err
 	}
@@ -355,7 +363,7 @@ func (s *Service) TestSMTPConfig(ctx context.Context, actor Actor) error {
 	})
 }
 
-// validateSMTPTest 校验测试发送前置条件（生效配置完整且已启用）。
+// validateSMTPTest 校验测试发送前置条件（生效配置完整且已启用、有收件人）。
 func validateSMTPTest(rt SMTPRuntime, recipients []string) error {
 	if !rt.Enabled {
 		return Invalid("邮件通知未启用，请先在上方打开启用开关并保存")
@@ -364,7 +372,7 @@ func validateSMTPTest(rt SMTPRuntime, recipients []string) error {
 		return Invalid("发件服务器或发件人未配置，请补全并保存后重试")
 	}
 	if len(recipients) == 0 {
-		return Invalid("未配置收件人（CHALKLINE_NOTIFY_EMAILS），测试邮件无处可发")
+		return Invalid("当前登录账号未配置邮箱，无法接收测试邮件（请在成员管理中补全邮箱）")
 	}
 	return nil
 }

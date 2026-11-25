@@ -37,7 +37,8 @@ func newInmemorySMTP(mail *safeBuffer) (net.Listener, error) {
 }
 
 // serveSMTP 处理一个连接的最小 SMTP 会话。错误静默（测试桩）。
-func serveSMTP(l net.Listener, mail *safeBuffer) {
+// rcpts 非空时记录 RCPT TO 命令行，供收件人断言。
+func serveSMTP(l net.Listener, mail *safeBuffer, rcpts ...*safeBuffer) {
 	conn, err := l.Accept()
 	if err != nil {
 		return
@@ -74,6 +75,9 @@ func serveSMTP(l net.Listener, mail *safeBuffer) {
 		case starts(line, "MAIL FROM"):
 			write("250 OK")
 		case starts(line, "RCPT TO"):
+			for _, b := range rcpts {
+				_, _ = b.Write([]byte(line))
+			}
 			write("250 OK")
 		case starts(line, "DATA"):
 			inData = true

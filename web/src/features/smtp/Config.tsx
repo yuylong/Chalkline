@@ -1,6 +1,7 @@
 // 邮箱配置（admin）：SMTP 发件服务器可视化维护，保存后投递器下一轮即生效。
 // 密码经后端 AES-GCM 加密落库（密钥 CHALKLINE_SECRET_KEY），本页只显示
-// 「已配置 / 未配置」，永不回显明文；收件人仍经 CHALKLINE_NOTIFY_EMAILS 配置。
+// 「已配置 / 未配置」，永不回显明文；通知按事件发给相关成员（成员设置里的邮箱），
+// CHALKLINE_NOTIFY_EMAILS 仅作解析不出相关成员时的兜底收件人。
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { App, Button, Card, Form, Input, InputNumber, Popconfirm, Select, Space, Switch, Tag, Typography } from 'antd'
 import { useEffect } from 'react'
@@ -80,7 +81,7 @@ export default function SmtpConfig() {
 
   const testMut = useMutation({
     mutationFn: () => apiPost<{ sent: boolean }>('/integration/smtp/test', {}),
-    onSuccess: () => message.success('测试邮件已发送，请到收件箱查收'),
+    onSuccess: () => message.success('测试邮件已发送到当前登录账号的邮箱，请查收'),
     onError: (err: Error) => message.error(err.message),
   })
 
@@ -89,7 +90,7 @@ export default function SmtpConfig() {
       title="邮箱配置（SMTP 发件）"
       extra={
         <Typography.Text type="secondary">
-          密码加密落库（CHALKLINE_SECRET_KEY），永不回显；收件人经 CHALKLINE_NOTIFY_EMAILS 配置
+          密码加密落库（CHALKLINE_SECRET_KEY），永不回显；通知按事件发给相关成员（成员设置里的邮箱）
         </Typography.Text>
       }
     >
@@ -198,7 +199,10 @@ export default function SmtpConfig() {
             <Input placeholder="chalk@example.com" />
           </Form.Item>
 
-          <Form.Item label="通知收件人（只读，经 CHALKLINE_NOTIFY_EMAILS 配置）">
+          <Form.Item
+            label="兜底收件人（只读，经 CHALKLINE_NOTIFY_EMAILS 配置）"
+            extra="通知默认发给相关成员（任务负责人、合格评审人、产品 owner 等）的邮箱，仅在解析不出相关成员时发往此处"
+          >
             {data?.envRecipients.length ? (
               <Space size={4} wrap>
                 {data.envRecipients.map((r) => (
@@ -206,7 +210,7 @@ export default function SmtpConfig() {
                 ))}
               </Space>
             ) : (
-              <Tag color="orange">未配置收件人（邮件将不会发出）</Tag>
+              <Tag>未配置兜底收件人</Tag>
             )}
           </Form.Item>
 
@@ -217,7 +221,7 @@ export default function SmtpConfig() {
               </Button>
               <Popconfirm
                 title="发送测试邮件？"
-                description="将用当前生效配置向 CHALKLINE_NOTIFY_EMAILS 收件人发送一封测试邮件"
+                description="将用当前生效配置向当前登录账号的邮箱发送一封测试邮件"
                 onConfirm={() => testMut.mutate()}
                 disabled={!data?.enabled}
               >

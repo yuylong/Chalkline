@@ -344,7 +344,7 @@ export interface SMTPConfigView {
   envFrom: string
   envTlsMode: string
   envTlsSkipVerify: boolean
-  /** 收件人只经 CHALKLINE_NOTIFY_EMAILS 配置（只读提示）。 */
+  /** 兜底收件人（CHALKLINE_NOTIFY_EMAILS，只读提示）：仅在解析不出相关成员时使用。 */
   envRecipients: string[]
   updatedBy?: string
   updatedAt?: string

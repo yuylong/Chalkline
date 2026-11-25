@@ -48,6 +48,12 @@ func IsDuplicate(err error) bool {
 	return errors.As(err, &pgErr) && pgErr.Code == "23505"
 }
 
+// scanString 扫描单列字符串行（id / email 等投影查询用）。
+func scanString(row rowScanner) (string, error) {
+	var s string
+	return s, row.Scan(&s)
+}
+
 // scanAll 逐行扫描并组切片。
 func scanAll[T any](ctx context.Context, q Querier, sql string,
 	scan func(rowScanner) (T, error), args ...any) ([]T, error) {

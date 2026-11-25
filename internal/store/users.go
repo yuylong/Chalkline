@@ -5,6 +5,7 @@ package store
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/yuylong/Chalkline/internal/domain/identity"
@@ -84,6 +85,45 @@ func ListActiveUsersNotInProduct(ctx context.Context, q Querier, productID strin
 			u.Roles = ToRoles(roles)
 			return u, nil
 		}, string(identity.UserActive), productID)
+}
+
+// EmailsOfUsers 批量取启用成员的邮箱（跳过停用成员与空邮箱，顺序稳定）。
+// 邮件通知按「相关用户」投递时用：收件地址取自成员设置里的邮箱。
+func EmailsOfUsers(ctx context.Context, q Querier, ids []string) ([]string, error) {
+	ids = compactIDs(ids)
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	return scanAll(ctx, q,
+		`SELECT email FROM users
+		 WHERE id = ANY($1) AND status = $2 AND email <> ''
+		 ORDER BY id`,
+		scanString, ids, string(identity.UserActive))
+}
+
+// ListUserIDsWithRole 列持指定全局角色的启用成员 id（评审升级的兜底受众）。
+func ListUserIDsWithRole(ctx context.Context, q Querier, role identity.Role) ([]string, error) {
+	return scanAll(ctx, q,
+		`SELECT id FROM users WHERE status = $1 AND roles && ARRAY[$2]::text[] ORDER BY id`,
+		scanString, string(identity.UserActive), string(role))
+}
+
+// compactIDs 去空、去重并保持首次出现顺序（同一成员可能命中多个受众来源）。
+func compactIDs(ids []string) []string {
+	seen := make(map[string]struct{}, len(ids))
+	out := make([]string, 0, len(ids))
+	for _, id := range ids {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			continue
+		}
+		if _, dup := seen[id]; dup {
+			continue
+		}
+		seen[id] = struct{}{}
+		out = append(out, id)
+	}
+	return out
 }
 
 // UpdateUser 更新显示名、邮箱、角色与状态（不变量由 app 校验）。

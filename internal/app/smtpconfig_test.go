@@ -162,3 +162,13 @@ func TestValidateSMTPTest(t *testing.T) {
 		t.Fatalf("配置齐全应通过: %v", err)
 	}
 }
+
+// TestSMTPViewEnvWithoutRecipients 收件人已按事件解析：环境变量缺兜底列表仍默认启用。
+func TestSMTPViewEnvWithoutRecipients(t *testing.T) {
+	s := &Service{SMTPDefaults: SMTPEnvDefaults{
+		Host: "smtp.env.example", From: "chalk@env.example",
+	}}
+	if v := s.smtpConfigView(store.SMTPConfigRow{}, false); !v.Enabled {
+		t.Fatal("host 与发件人齐全即默认启用（兜底收件人非必需）")
+	}
+}

@@ -189,11 +189,11 @@ func TestSMTPSendAgainstStub(t *testing.T) {
 	}
 }
 
-// TestSMTPSkipsNonNotifyEvents 非邮件事件（node.passed）直接成功跳过。
-func TestSMTPSkipsNonNotifyEvents(t *testing.T) {
+// TestSMTPIgnoresUnknownEvent 无邮件语义的事件（不在 notifyEvents 内）直接成功跳过。
+func TestSMTPIgnoresUnknownEvent(t *testing.T) {
 	m := &SMTP{Host: "0.0.0.0", Port: 1, From: "x@y", To: []string{"z@w"}} // 不可达也不该拨号
 	e := ev(12, 0)
-	e.EventType = "node.passed"
+	e.EventType = "workflow.updated"
 	if err := m.Send(context.Background(), e); err != nil {
 		t.Fatalf("非邮件事件应跳过: %v", err)
 	}
