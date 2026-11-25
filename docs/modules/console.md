@@ -29,12 +29,15 @@
 | `gates` | 门禁材料查看与提交、审批操作、成果物按步骤浏览（任务/迭代详情卡片 + 审批队列弹窗） | workflow |
 | `reviews` | 审批队列、审批历史 | workflow + identity |
 | `users` | 用户管理（admin）：成员列表、新建、改角色/启禁用、重置密码 | identity |
+| `mcp` | MCP 接入（全员）：API Key（PAT）生成/吊销 + 只读连接信息 | identity |
 | `workflows` | 工作流模板：列表、YAML 编辑（新建/更新）、导入/导出、归档 | workflow |
 | `integrations` | Provider 配置（admin）：启停与 baseURL 可视化维护 | integration |
 
 ### 导航结构
 
-左侧菜单顺序固定为：**当前迭代、审批** ｜ 分割线 ｜ **产品、审计** ｜ 分割线 ｜ **用户管理、Provider 管理、工作流管理、Webhook 订阅**（后四项除工作流管理外仅 admin 可见）。
+左侧菜单顺序固定为：**当前迭代、审批** ｜ 分割线 ｜ **产品、审计、MCP 接入** ｜ 分割线 ｜ **用户管理、Provider 管理、工作流管理、Webhook 订阅**（后四项除工作流管理外仅 admin 可见；MCP 接入对全员开放）。
+
+- **MCP 接入**（`/mcp`）：只读展示 MCP 连接信息（端点 `POST /mcp`、streamable HTTP、`Authorization: Bearer <API Key>`，端点按当前 origin 拼接）；API Key（PAT）可生成多个、仅本人可见（后端按 actor 过滤），明文只在签发时展示一次，支持吊销。
 
 - **当前迭代**（`/`）是登录后默认落地页：直接渲染个人选定的当前迭代完整看板（阶段泳道、阶段操作、任务看板、进度图表），未设置时给出向导（去产品列表挑迭代 → 迭代详情右上角「设为当前迭代」）。迭代/任务详情页在菜单上仍高亮「当前迭代」。
 - 迭代详情页顶部提供「设为当前迭代 / 取消当前迭代」，仅 `planned`/`active` 迭代可设为当前迭代（后端同样拒绝终态）。

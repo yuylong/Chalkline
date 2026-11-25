@@ -8,6 +8,7 @@ import Layout from '../components/Layout'
 import { getToken } from '../shared/api'
 import AuditList from '../features/audit/List'
 import Login from '../features/auth/Login'
+import McpKeys from '../features/mcp/Keys'
 import ProviderConfigs from '../features/integrations/Providers'
 import CurrentIterationPage from '../features/iterations/Current'
 import IterationCurrentNode from '../features/iterations/CurrentNode'
@@ -45,6 +46,7 @@ export default function AppRoutes() {
           <Route path="/iterations/:id/node/:nodeId" element={<IterationCurrentNode />} />
           <Route path="/tasks/:id" element={<TaskDetail />} />
           <Route path="/reviews" element={<ReviewQueue />} />
+          <Route path="/mcp" element={<McpKeys />} />
           <Route path="/audit" element={<AuditList />} />
           <Route path="/smtp" element={<SmtpConfig />} />
           <Route path="/webhooks" element={<WebhookList />} />
