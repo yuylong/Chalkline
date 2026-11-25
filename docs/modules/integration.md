@@ -103,9 +103,10 @@ type Provider interface {
 
 > SMTP 发件服务器管理台。策略详见 [integrations.md](../domain/integrations.md)「邮箱配置」。
 
-- **表**：`smtp_configs`（迁移 `0011_add_smtp_config.sql`，单行 `config_key='default'`）：`enabled` / `host` / `port` / `username` / `password_enc`（AES-GCM 密文）/ `from_addr` / `updated_by` / `updated_at`。**唯一落库凭据**：SMTP 发件密码，加密存储（`internal/platform/secret.go`，密钥 `CHALKLINE_SECRET_KEY`，未设置回退 `CHALKLINE_JWT_SECRET`），API 永不回显。
-- **REST（admin）**：`GET /api/v1/integration/smtp`、`PATCH /api/v1/integration/smtp`；字段留空 = 沿用环境变量默认值（`CHALKLINE_SMTP_*`），`password` 空串 = 清除库内密码；写事务 + 审计（`integration.smtp.update`，只记是否设置密码）。
+- **表**：`smtp_configs`（迁移 `0011_add_smtp_config.sql`，单行 `config_key='default'`；`0012_smtp_tls.sql` 增列）：`enabled` / `host` / `port` / `username` / `password_enc`（AES-GCM 密文）/ `from_addr` / `tls_mode`（'' = 沿用环境变量；`none` / `starttls` / `tls`）/ `tls_skip_verify`（NULL = 沿用环境变量）/ `updated_by` / `updated_at`。**唯一落库凭据**：SMTP 发件密码，加密存储（`internal/platform/secret.go`，密钥 `CHALKLINE_SECRET_KEY`，未设置回退 `CHALKLINE_JWT_SECRET`），API 永不回显。
+- **TLS/STARTTLS**：`tls_mode` 三态——`none`（明文，默认）/ `starttls`（连接后 EHLO 协商升级，587 常用）/ `tls`（隐式 TLS，465 常用）；`tls_skip_verify` 跳过证书校验（仅内网自签场景，公网必须关闭）。环境变量默认值：`CHALKLINE_SMTP_TLS`（默认 `none`）与 `CHALKLINE_SMTP_TLS_SKIP_VERIFY`（默认 `false`）。
+- **REST（admin）**：`GET /api/v1/integration/smtp`、`PATCH /api/v1/integration/smtp`；字段留空 = 沿用环境变量默认值（`CHALKLINE_SMTP_*`），`password` 空串 = 清除库内密码，`tlsMode` 空串 = 清除库内设置（回退环境变量）；写事务 + 审计（`integration.smtp.update`，只记是否设置密码）。
 - **运行时生效**：`notify.SMTP.Resolve`（server 组装层注入 `app.Service.EffectiveSMTP`）每轮投递前解析合并配置，保存即生效、无需重启；解密失败按「密码未配置」降级并告警。收件人仍来自 `CHALKLINE_NOTIFY_EMAILS`（页面只读展示）。
 - **控制台**：`/smtp`「邮箱配置」（admin，位于 Webhook 订阅之前）。
 - 代码：`internal/store/smtp_config.go`、`internal/app/smtpconfig.go`、`internal/api/handlers_integration.go`、`internal/platform/secret.go`。
-- 测试：`platform/secret_test.go`（加解密往返、密钥不符）、`app/smtpconfig_test.go`（视图合并、入参校验）、`notify/smtp_resolve_test.go`（Resolve 生效/未启用跳过）。
+- 测试：`platform/secret_test.go`（加解密往返、密钥不符）、`app/smtpconfig_test.go`（视图合并、入参校验、TLS 字段）、`notify/smtp_resolve_test.go`（Resolve 生效/未启用跳过）、`notify/smtp_tls_test.go`（STARTTLS / 隐式 TLS 自签桩投递、不跳过校验时自签证书被拒）。

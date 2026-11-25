@@ -37,9 +37,11 @@ func TestSMTPViewEnvDefaults(t *testing.T) {
 
 func TestSMTPViewRowOverrides(t *testing.T) {
 	s := smtpTestService()
+	skip := true
 	row := store.SMTPConfigRow{
 		Enabled: false, Host: "smtp.console.example", Port: 465,
 		Username: "console-user", PasswordEnc: "enc:v1:xxx", FromAddr: "chalk@console.example",
+		TLSMode: "tls", TLSSkipVerify: &skip,
 		UpdatedBy: "usr_1", UpdatedAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
 	}
 	v := s.smtpConfigView(row, true)
@@ -49,6 +51,9 @@ func TestSMTPViewRowOverrides(t *testing.T) {
 	if v.Host != "smtp.console.example" || v.Port != 465 ||
 		v.Username != "console-user" || v.From != "chalk@console.example" {
 		t.Fatalf("库内非空字段应覆盖环境变量: %+v", v)
+	}
+	if v.TLSMode != "tls" || !v.TLSSkipVerify {
+		t.Fatalf("库内 TLS 设置应覆盖环境变量: %+v", v)
 	}
 	if !v.PasswordConfigured {
 		t.Fatal("库内密文存在应报已配置")
@@ -64,6 +69,9 @@ func TestSMTPViewRowEmptyFallsBackToEnv(t *testing.T) {
 	v := s.smtpConfigView(row, true)
 	if v.Host != "smtp.env.example" || v.Port != 25 || v.From != "chalk@env.example" {
 		t.Fatalf("空字段应回退环境变量: %+v", v)
+	}
+	if v.TLSMode != "none" || v.TLSSkipVerify {
+		t.Fatalf("空 TLS 字段应回退环境变量（none / false）: %+v", v)
 	}
 	if !v.PasswordConfigured {
 		t.Fatal("库内无密文但环境变量有密码应报已配置")
@@ -115,5 +123,21 @@ func TestValidateSMTPInput(t *testing.T) {
 	}
 	if err := validateSMTPInput(SMTPConfigInput{Enabled: bol(true)}); err != nil {
 		t.Fatalf("仅改开关应通过: %v", err)
+	}
+}
+
+func TestValidateSMTPInputTLS(t *testing.T) {
+	str := func(v string) *string { return &v }
+	for _, mode := range []string{"none", "starttls", "tls", ""} {
+		if err := validateSMTPInput(SMTPConfigInput{TLSMode: str(mode)}); err != nil {
+			t.Fatalf("tlsMode %q 应通过: %v", mode, err)
+		}
+	}
+	if err := validateSMTPInput(SMTPConfigInput{TLSMode: str("ssl")}); err == nil {
+		t.Fatal("非法 tlsMode 应报错")
+	}
+	skip := true
+	if err := validateSMTPInput(SMTPConfigInput{TLSSkipVerify: &skip}); err != nil {
+		t.Fatalf("仅改跳过证书校验应通过: %v", err)
 	}
 }

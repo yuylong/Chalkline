@@ -18,12 +18,14 @@ import (
 // SMTPEnvDefaults 是环境变量提供的发件默认值（server 组装层注入）。
 // Password 只进内存用于运行时回退，绝不序列化或写日志。
 type SMTPEnvDefaults struct {
-	Host       string
-	Port       int
-	Username   string
-	Password   string
-	From       string
-	Recipients []string
+	Host          string
+	Port          int
+	Username      string
+	Password      string
+	From          string
+	Recipients    []string
+	TLSMode       string // none / starttls / tls
+	TLSSkipVerify bool
 }
 
 // SMTPConfigView 是管理台看到的邮箱配置（合并环境变量默认值与库内覆盖）。
@@ -33,33 +35,42 @@ type SMTPConfigView struct {
 	Port               int      `json:"port"`
 	Username           string   `json:"username"`
 	From               string   `json:"from"`
+	TLSMode            string   `json:"tlsMode"`            // none / starttls / tls
+	TLSSkipVerify      bool     `json:"tlsSkipVerify"`      // 跳过证书校验（内网自签场景）
 	PasswordConfigured bool     `json:"passwordConfigured"` // 库内密文或环境变量任一已配置
 	EnvHost            string   `json:"envHost"`
 	EnvPort            int      `json:"envPort"`
 	EnvFrom            string   `json:"envFrom"`
+	EnvTLSMode         string   `json:"envTlsMode"`
+	EnvTLSSkipVerify   bool     `json:"envTlsSkipVerify"`
 	EnvRecipients      []string `json:"envRecipients"` // 收件人只经 CHALKLINE_NOTIFY_EMAILS（只读提示）
 	UpdatedBy          string   `json:"updatedBy,omitempty"`
 	UpdatedAt          string   `json:"updatedAt,omitempty"`
 }
 
-// SMTPConfigInput 是配置更新入参（nil 即不改；Password 空串 = 清除库内密码）。
+// SMTPConfigInput 是配置更新入参（nil 即不改；Password 空串 = 清除库内密码；
+// TLSMode 空串 = 清除库内设置回退环境变量）。
 type SMTPConfigInput struct {
-	Enabled  *bool
-	Host     *string
-	Port     *int
-	Username *string
-	From     *string
-	Password *string
+	Enabled       *bool
+	Host          *string
+	Port          *int
+	Username      *string
+	From          *string
+	Password      *string
+	TLSMode       *string
+	TLSSkipVerify *bool
 }
 
 // SMTPRuntime 是投递器运行时解析出的生效配置（server 组装层消费）。
 type SMTPRuntime struct {
-	Enabled  bool
-	Host     string
-	Port     int
-	Username string
-	Password string
-	From     string
+	Enabled       bool
+	Host          string
+	Port          int
+	Username      string
+	Password      string
+	From          string
+	TLSMode       string // none / starttls / tls
+	TLSSkipVerify bool
 }
 
 // GetSMTPConfig 读配置视图（admin）。
@@ -127,6 +138,12 @@ func (s *Service) UpdateSMTPConfig(ctx context.Context, actor Actor, in SMTPConf
 				row.PasswordEnc = passwordEnc
 			}
 		}
+		if in.TLSMode != nil {
+			row.TLSMode = strings.ToLower(strings.TrimSpace(*in.TLSMode))
+		}
+		if in.TLSSkipVerify != nil {
+			row.TLSSkipVerify = in.TLSSkipVerify
+		}
 		row.UpdatedBy = actor.UserID
 		if err := store.UpsertSMTPConfig(ctx, q, row); err != nil {
 			return err
@@ -134,6 +151,7 @@ func (s *Service) UpdateSMTPConfig(ctx context.Context, actor Actor, in SMTPConf
 		return audit(ctx, q, actor, "integration.smtp.update", "smtp", store.SMTPConfigKey, map[string]any{
 			"enabled": row.Enabled, "host": row.Host, "port": row.Port,
 			"username": row.Username, "from": row.FromAddr,
+			"tls_mode": row.TLSMode, "tls_skip_verify": smtpSkipVerify(row.TLSSkipVerify),
 			"password_set": row.PasswordEnc != "",
 		})
 	})
@@ -157,12 +175,14 @@ func (s *Service) EffectiveSMTP(ctx context.Context) (SMTPRuntime, error) {
 	}
 	env := s.SMTPDefaults
 	rt := SMTPRuntime{
-		Enabled:  envConfigured(env),
-		Host:     env.Host,
-		Port:     env.Port,
-		Username: env.Username,
-		Password: env.Password,
-		From:     env.From,
+		Enabled:       envConfigured(env),
+		Host:          env.Host,
+		Port:          env.Port,
+		Username:      env.Username,
+		Password:      env.Password,
+		From:          env.From,
+		TLSMode:       smtpTLSMode(env.TLSMode),
+		TLSSkipVerify: env.TLSSkipVerify,
 	}
 	if rt.Port == 0 {
 		rt.Port = 25
@@ -181,6 +201,12 @@ func (s *Service) EffectiveSMTP(ctx context.Context) (SMTPRuntime, error) {
 		if row.FromAddr != "" {
 			rt.From = row.FromAddr
 		}
+		if row.TLSMode != "" {
+			rt.TLSMode = smtpTLSMode(row.TLSMode)
+		}
+		if row.TLSSkipVerify != nil {
+			rt.TLSSkipVerify = *row.TLSSkipVerify
+		}
 		if row.PasswordEnc != "" {
 			pw, err := platform.Open(s.SecretKey, row.PasswordEnc)
 			if err != nil {
@@ -197,15 +223,19 @@ func (s *Service) EffectiveSMTP(ctx context.Context) (SMTPRuntime, error) {
 func (s *Service) smtpConfigView(row store.SMTPConfigRow, stored bool) SMTPConfigView {
 	env := s.SMTPDefaults
 	v := SMTPConfigView{
-		Enabled:       envConfigured(env),
-		Host:          env.Host,
-		Port:          env.Port,
-		Username:      env.Username,
-		From:          env.From,
-		EnvHost:       env.Host,
-		EnvPort:       env.Port,
-		EnvFrom:       env.From,
-		EnvRecipients: env.Recipients,
+		Enabled:          envConfigured(env),
+		Host:             env.Host,
+		Port:             env.Port,
+		Username:         env.Username,
+		From:             env.From,
+		TLSMode:          smtpTLSMode(env.TLSMode),
+		TLSSkipVerify:    env.TLSSkipVerify,
+		EnvHost:          env.Host,
+		EnvPort:          env.Port,
+		EnvFrom:          env.From,
+		EnvTLSMode:       smtpTLSMode(env.TLSMode),
+		EnvTLSSkipVerify: env.TLSSkipVerify,
+		EnvRecipients:    env.Recipients,
 	}
 	if v.Port == 0 {
 		v.Port = 25
@@ -228,6 +258,12 @@ func (s *Service) smtpConfigView(row store.SMTPConfigRow, stored bool) SMTPConfi
 		if row.FromAddr != "" {
 			v.From = row.FromAddr
 		}
+		if row.TLSMode != "" {
+			v.TLSMode = smtpTLSMode(row.TLSMode)
+		}
+		if row.TLSSkipVerify != nil {
+			v.TLSSkipVerify = *row.TLSSkipVerify
+		}
 		v.PasswordConfigured = row.PasswordEnc != "" || env.Password != ""
 		v.UpdatedBy = row.UpdatedBy
 		if !row.UpdatedAt.IsZero() {
@@ -242,10 +278,27 @@ func envConfigured(env SMTPEnvDefaults) bool {
 	return env.Host != "" && env.From != "" && len(env.Recipients) > 0
 }
 
-// validateSMTPInput 校验更新入参：host 为纯主机名、port 0–65535、from 合法邮箱。
+// smtpTLSMode 归一化 TLS 模式；空或未知值按 none（明文）处理。
+func smtpTLSMode(mode string) string {
+	switch strings.ToLower(strings.TrimSpace(mode)) {
+	case "starttls":
+		return "starttls"
+	case "tls":
+		return "tls"
+	default:
+		return "none"
+	}
+}
+
+// smtpSkipVerify 解析库内可空布尔（nil = 未设置）。
+func smtpSkipVerify(v *bool) bool { return v != nil && *v }
+
+// validateSMTPInput 校验更新入参：host 为纯主机名、port 0–65535、from 合法邮箱、
+// tlsMode ∈ {none, starttls, tls}（空串 = 清除回退环境变量）。
 func validateSMTPInput(in SMTPConfigInput) error {
 	if in.Enabled == nil && in.Host == nil && in.Port == nil &&
-		in.Username == nil && in.From == nil && in.Password == nil {
+		in.Username == nil && in.From == nil && in.Password == nil &&
+		in.TLSMode == nil && in.TLSSkipVerify == nil {
 		return Invalid("至少提供一个配置字段")
 	}
 	if in.Host != nil {
@@ -263,6 +316,12 @@ func validateSMTPInput(in SMTPConfigInput) error {
 			if _, err := mail.ParseAddress(f); err != nil {
 				return Invalid("from %q 不是合法邮箱地址", f)
 			}
+		}
+	}
+	if in.TLSMode != nil {
+		m := strings.ToLower(strings.TrimSpace(*in.TLSMode))
+		if m != "" && m != "none" && m != "starttls" && m != "tls" {
+			return Invalid("tlsMode %q 非法，应为 none / starttls / tls", m)
 		}
 	}
 	return nil

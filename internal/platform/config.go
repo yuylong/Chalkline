@@ -52,7 +52,11 @@ type Config struct {
 	SMTPUsername string
 	SMTPPassword string
 	SMTPFrom     string
-	NotifyEmails []string
+	// SMTPTLSMode：none（明文，默认）| starttls（连接后升级）| tls（隐式 TLS，465 常用）。
+	SMTPTLSMode string
+	// SMTPTLSSkipVerify：跳过 TLS 证书校验（仅内网自签证书场景，默认 false）。
+	SMTPTLSSkipVerify bool
+	NotifyEmails      []string
 	// OutboxInterval 是通知投递器的轮询间隔，默认 5s。
 	OutboxInterval time.Duration
 
@@ -78,7 +82,7 @@ func Load() (Config, error) {
 		ReadTimeout:     envDuration("CHALKLINE_READ_TIMEOUT", 30*time.Second),
 		WriteTimeout:    envDuration("CHALKLINE_WRITE_TIMEOUT", 60*time.Second),
 		JWTSecret:       os.Getenv("CHALKLINE_JWT_SECRET"),
-		SecretKey:      envString("CHALKLINE_SECRET_KEY", os.Getenv("CHALKLINE_JWT_SECRET")),
+		SecretKey:       envString("CHALKLINE_SECRET_KEY", os.Getenv("CHALKLINE_JWT_SECRET")),
 		AdminUsername:   os.Getenv("CHALKLINE_ADMIN_USERNAME"),
 		AdminPassword:   os.Getenv("CHALKLINE_ADMIN_PASSWORD"),
 
@@ -94,6 +98,8 @@ func Load() (Config, error) {
 		SMTPUsername:      os.Getenv("CHALKLINE_SMTP_USERNAME"),
 		SMTPPassword:      os.Getenv("CHALKLINE_SMTP_PASSWORD"),
 		SMTPFrom:          os.Getenv("CHALKLINE_SMTP_FROM"),
+		SMTPTLSMode:       strings.ToLower(envString("CHALKLINE_SMTP_TLS", "none")),
+		SMTPTLSSkipVerify: envBool("CHALKLINE_SMTP_TLS_SKIP_VERIFY", false),
 		NotifyEmails:      envList("CHALKLINE_NOTIFY_EMAILS"),
 		OutboxInterval:    envDuration("CHALKLINE_OUTBOX_INTERVAL", 5*time.Second),
 
@@ -109,6 +115,11 @@ func Load() (Config, error) {
 	case "debug", "info", "warn", "error":
 	default:
 		return Config{}, fmt.Errorf("CHALKLINE_LOG_LEVEL 非法: %q", cfg.LogLevel)
+	}
+	switch cfg.SMTPTLSMode {
+	case "none", "starttls", "tls":
+	default:
+		return Config{}, fmt.Errorf("CHALKLINE_SMTP_TLS 非法: %q（应为 none / starttls / tls）", cfg.SMTPTLSMode)
 	}
 	return cfg, nil
 }
@@ -142,6 +153,19 @@ func envInt(key string, def int) int {
 		return def
 	}
 	return n
+}
+
+// envBool 读布尔环境变量（1/t/T/true/TRUE 任一为真，其余为假）。
+func envBool(key string, def bool) bool {
+	v := strings.TrimSpace(os.Getenv(key))
+	if v == "" {
+		return def
+	}
+	b, err := strconv.ParseBool(v)
+	if err != nil {
+		return def
+	}
+	return b
 }
 
 // envList 读逗号分隔列表环境变量（空白项忽略）。

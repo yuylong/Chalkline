@@ -2,7 +2,7 @@
 // 密码经后端 AES-GCM 加密落库（密钥 CHALKLINE_SECRET_KEY），本页只显示
 // 「已配置 / 未配置」，永不回显明文；收件人仍经 CHALKLINE_NOTIFY_EMAILS 配置。
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { App, Button, Card, Form, Input, InputNumber, Popconfirm, Space, Switch, Tag, Typography } from 'antd'
+import { App, Button, Card, Form, Input, InputNumber, Popconfirm, Select, Space, Switch, Tag, Typography } from 'antd'
 import { useEffect } from 'react'
 import { apiGet, apiPatch } from '../../shared/api'
 import { fmtTime } from '../../shared/status'
@@ -15,6 +15,8 @@ interface SmtpForm {
   port: number
   username: string
   from: string
+  tlsMode: string
+  tlsSkipVerify: boolean
   password?: string
 }
 
@@ -36,6 +38,8 @@ export default function SmtpConfig() {
         port: data.port,
         username: data.username,
         from: data.from,
+        tlsMode: data.tlsMode,
+        tlsSkipVerify: data.tlsSkipVerify,
         password: '',
       })
     }
@@ -51,6 +55,8 @@ export default function SmtpConfig() {
         port: v.port,
         username: v.username.trim(),
         from: v.from.trim(),
+        tlsMode: v.tlsMode ?? '', // 清除选择 = 清除库内设置，回退环境变量
+        tlsSkipVerify: v.tlsSkipVerify,
       }
       if (v.password && v.password.trim() !== '') body.password = v.password
       return apiPatch<SMTPConfigView>('/integration/smtp', body)
@@ -115,6 +121,34 @@ export default function SmtpConfig() {
           </Form.Item>
           <Form.Item name="port" label="端口" extra="0 = 默认 25">
             <InputNumber min={0} max={65535} style={{ width: 160 }} />
+          </Form.Item>
+          <Form.Item
+            name="tlsMode"
+            label="TLS 模式"
+            extra={
+              data?.envTlsMode
+                ? `留空沿用环境变量默认值：${data.envTlsMode}（CHALKLINE_SMTP_TLS）`
+                : 'CHALKLINE_SMTP_TLS 未设置时默认 none'
+            }
+          >
+            <Select
+              allowClear
+              style={{ width: 200 }}
+              placeholder="沿用环境变量默认值"
+              options={[
+                { value: 'none', label: 'none（明文）' },
+                { value: 'starttls', label: 'STARTTLS（587 常用）' },
+                { value: 'tls', label: 'TLS（隐式，465 常用）' },
+              ]}
+            />
+          </Form.Item>
+          <Form.Item
+            name="tlsSkipVerify"
+            label="跳过证书校验"
+            valuePropName="checked"
+            extra="仅内网自签证书场景开启；公网 SMTP 必须关闭（默认关闭）"
+          >
+            <Switch />
           </Form.Item>
           <Form.Item name="username" label="账号（可选）">
             <Input autoComplete="off" />

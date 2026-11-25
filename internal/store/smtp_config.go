@@ -14,22 +14,24 @@ const SMTPConfigKey = "default"
 
 // SMTPConfigRow 是 smtp_configs 行。
 type SMTPConfigRow struct {
-	Enabled     bool
-	Host        string
-	Port        int
-	Username    string
-	PasswordEnc string // AES-GCM 密文；空 = 未配置
-	FromAddr    string
-	UpdatedBy   string
-	UpdatedAt   time.Time
+	Enabled       bool
+	Host          string
+	Port          int
+	Username      string
+	PasswordEnc   string // AES-GCM 密文；空 = 未配置
+	FromAddr      string
+	TLSMode       string // '' = 沿用环境变量；none / starttls / tls
+	TLSSkipVerify *bool  // nil = 沿用环境变量
+	UpdatedBy     string
+	UpdatedAt     time.Time
 }
 
-const smtpConfigCols = `enabled, host, port, username, password_enc, from_addr, updated_by, updated_at`
+const smtpConfigCols = `enabled, host, port, username, password_enc, from_addr, tls_mode, tls_skip_verify, updated_by, updated_at`
 
 func scanSMTPConfig(row rowScanner) (SMTPConfigRow, error) {
 	var c SMTPConfigRow
 	err := row.Scan(&c.Enabled, &c.Host, &c.Port, &c.Username, &c.PasswordEnc,
-		&c.FromAddr, &c.UpdatedBy, &c.UpdatedAt)
+		&c.FromAddr, &c.TLSMode, &c.TLSSkipVerify, &c.UpdatedBy, &c.UpdatedAt)
 	return c, err
 }
 
@@ -42,8 +44,8 @@ func SMTPConfig(ctx context.Context, q Querier) (SMTPConfigRow, error) {
 // UpsertSMTPConfig 写入（或覆盖）配置行。
 func UpsertSMTPConfig(ctx context.Context, q Querier, row SMTPConfigRow) error {
 	_, err := q.Exec(ctx,
-		`INSERT INTO smtp_configs (config_key, enabled, host, port, username, password_enc, from_addr, updated_by, updated_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, now())
+		`INSERT INTO smtp_configs (config_key, enabled, host, port, username, password_enc, from_addr, tls_mode, tls_skip_verify, updated_by, updated_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, now())
 		 ON CONFLICT (config_key) DO UPDATE SET
 		   enabled = EXCLUDED.enabled,
 		   host = EXCLUDED.host,
@@ -51,9 +53,11 @@ func UpsertSMTPConfig(ctx context.Context, q Querier, row SMTPConfigRow) error {
 		   username = EXCLUDED.username,
 		   password_enc = EXCLUDED.password_enc,
 		   from_addr = EXCLUDED.from_addr,
+		   tls_mode = EXCLUDED.tls_mode,
+		   tls_skip_verify = EXCLUDED.tls_skip_verify,
 		   updated_by = EXCLUDED.updated_by,
 		   updated_at = now()`,
 		SMTPConfigKey, row.Enabled, row.Host, row.Port, row.Username,
-		row.PasswordEnc, row.FromAddr, row.UpdatedBy)
+		row.PasswordEnc, row.FromAddr, row.TLSMode, row.TLSSkipVerify, row.UpdatedBy)
 	return err
 }

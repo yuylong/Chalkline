@@ -103,10 +103,11 @@ Redmine 明确**不反向回写状态**：流程状态的唯一事实来源是 C
 
 ## 邮箱配置（M4）
 
-admin 在控制台「邮箱配置」页（位于 Webhook 订阅之前）或 REST（`GET/PATCH /api/v1/integration/smtp`）维护发件服务器：`enabled` / `host` / `port` / `username` / `from` 与发件密码。
+admin 在控制台「邮箱配置」页（位于 Webhook 订阅之前）或 REST（`GET/PATCH /api/v1/integration/smtp`）维护发件服务器：`enabled` / `host` / `port` / `username` / `from` / `tlsMode` / `tlsSkipVerify` 与发件密码。
 
 - **密码存储**：AES-GCM 加密落库（`smtp_configs.password_enc`），密钥来自 `CHALKLINE_SECRET_KEY`（未设置回退 `CHALKLINE_JWT_SECRET`）；API 永不回显，只报「已配置 / 未配置」。这是「凭据不落库」的唯一例外（AGENT 红线 8 / tech.md 约束 10）。
-- **合并语义**：未保存过或字段留空 = 沿用环境变量默认值（`CHALKLINE_SMTP_*`）；`enabled=false` 即整体停发；密码提交空串 = 清除库内密码（回退环境变量）。
+- **TLS/STARTTLS**：`tlsMode` ∈ `none`（明文，默认）/ `starttls`（连接后 EHLO 协商升级，587 常用）/ `tls`（隐式 TLS，465 常用）；`tlsSkipVerify` 跳过证书校验，**仅限内网自签证书场景**，公网 SMTP 必须关闭。
+- **合并语义**：未保存过或字段留空 = 沿用环境变量默认值（`CHALKLINE_SMTP_*`，TLS 默认值来自 `CHALKLINE_SMTP_TLS` / `CHALKLINE_SMTP_TLS_SKIP_VERIFY`）；`enabled=false` 即整体停发；密码提交空串 = 清除库内密码（回退环境变量）；`tlsMode` 提交空串 = 清除库内设置（回退环境变量）。
 - **收件人**：仍经 `CHALKLINE_NOTIFY_EMAILS` 配置（页面只读展示），不进库。
 - **生效时机**：投递器每轮投递前重新解析生效配置，保存后无需重启；密钥变更导致解密失败时按「密码未配置」降级并告警，不阻断投递。
 

@@ -331,11 +331,17 @@ export interface SMTPConfigView {
   port: number
   username: string
   from: string
+  /** TLS 模式：none（明文）/ starttls / tls（隐式 TLS）。 */
+  tlsMode: string
+  /** 跳过 TLS 证书校验（仅内网自签场景）。 */
+  tlsSkipVerify: boolean
   /** 库内密文或环境变量任一已配置（视图永不携带密码明文/密文）。 */
   passwordConfigured: boolean
   envHost: string
   envPort: number
   envFrom: string
+  envTlsMode: string
+  envTlsSkipVerify: boolean
   /** 收件人只经 CHALKLINE_NOTIFY_EMAILS 配置（只读提示）。 */
   envRecipients: string[]
   updatedBy?: string
@@ -348,6 +354,10 @@ export interface SMTPConfigUpdate {
   port?: number
   username?: string
   from?: string
+  /** none / starttls / tls；空串 = 清除库内设置（回退环境变量）。 */
+  tlsMode?: string
+  /** 跳过 TLS 证书校验（仅内网自签场景）。 */
+  tlsSkipVerify?: boolean
   /** 留空 = 不修改；提交空串 = 清除已存密码（回退环境变量）。 */
   password?: string
 }
