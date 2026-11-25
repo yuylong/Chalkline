@@ -83,6 +83,7 @@ services:
       - ./certs:/etc/nginx/certs
     environment:
       CERT_CN: ${CERT_CN:-localhost}
+      NGINX_HTTPS_PORT: ${NGINX_HTTPS_PORT:-443}
     entrypoint: ["/bin/sh", "/etc/nginx/entrypoint.sh"]
     command: ["nginx", "-g", "daemon off;"]
     ports:
