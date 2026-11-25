@@ -295,7 +295,11 @@ type GateResultView struct {
 
 // StartStep 开始当前可执行节点（任务负责人 / owner / pm / admin；迭代为成员+pm 或 owner/admin）。
 func (s *Service) StartStep(ctx context.Context, actor Actor, wtype workitem.Scope, workItemID, nodeID string, expectedVersion int64) (NodeOpResult, error) {
-	var out NodeOpResult
+	var (
+		out      NodeOpResult
+		nodeName string
+		version  int64
+	)
 	err := s.DB.WithTx(ctx, func(q store.Querier) error {
 		if _, _, err := s.stepPermission(ctx, q, actor, wtype, workItemID); err != nil {
 			return err
@@ -304,9 +308,13 @@ func (s *Service) StartStep(ctx context.Context, actor Actor, wtype workitem.Sco
 		if err != nil {
 			return err
 		}
+		nodeName = nodeNameOf(li.Inst, nodeID)
 		now := s.Now()
 		if err := li.Inst.Start(nodeID, resolveVersion(li, nodeID, expectedVersion), now); err != nil {
 			return MapError(err)
+		}
+		if st, serr := li.Inst.State(nodeID); serr == nil {
+			version = st.Version
 		}
 		if err := store.SaveNodeStates(ctx, q, li.Row.ID, li.Inst); err != nil {
 			return err
@@ -320,6 +328,9 @@ func (s *Service) StartStep(ctx context.Context, actor Actor, wtype workitem.Sco
 		}
 		return s.fillNodeOpResult(ctx, q, li, nodeID, &out)
 	})
+	if err == nil {
+		s.recordProcess(startProcessAction(actor, wtype, workItemID, nodeID, nodeName, version))
+	}
 	return out, err
 }
 
@@ -348,7 +359,13 @@ func (in ArtifactInput) toRef(nodeID, submittedBy string) (workitem.ArtifactRef,
 // SubmitStep 提交节点，携带材料与说明；重复提交同节点返回当前状态（幂等，mcp.md 约定）。
 func (s *Service) SubmitStep(ctx context.Context, actor Actor, wtype workitem.Scope, workItemID, nodeID string,
 	expectedVersion int64, artifacts []ArtifactInput, note string) (NodeOpResult, error) {
-	var out NodeOpResult
+	var (
+		out          NodeOpResult
+		toDistribute []artifactToDistribute
+		nodeName     string
+		stateVersion int64
+		stateStatus  workitem.NodeStatus
+	)
 	err := s.DB.WithTx(ctx, func(q store.Querier) error {
 		mc, assignee, err := s.stepPermission(ctx, q, actor, wtype, workItemID)
 		if err != nil {
@@ -361,6 +378,7 @@ func (s *Service) SubmitStep(ctx context.Context, actor Actor, wtype workitem.Sc
 		if err != nil {
 			return err
 		}
+		nodeName = nodeNameOf(li.Inst, nodeID)
 
 		// 材料引用校验（不变量 14：provider 与 kind 匹配 + 外部校验器复核）。
 		before := readySet(li.Inst) // 推进前快照：用于 node.ready 事件 diff
@@ -377,6 +395,11 @@ func (s *Service) SubmitStep(ctx context.Context, actor Actor, wtype workitem.Sc
 			}
 			inRefs = append(inRefs, ref)
 			snapshots = append(snapshots, snap)
+		}
+
+		// 不变量 22：材料来源必须与迭代绑定的 provider 一致（未配置绑定的历史迭代不受影响）。
+		if err := s.checkArtifactBindings(ctx, q, wtype, workItemID, inRefs); err != nil {
+			return err
 		}
 
 		// 替换判定：同 kind 已有材料且内容不同 → 作废该节点既有审批（材料变更语义）。
@@ -427,13 +450,14 @@ func (s *Service) SubmitStep(ctx context.Context, actor Actor, wtype workitem.Sc
 			return MapError(err)
 		}
 
-		// 材料落库（每节点每 kind 一份，替换即作废审批）。
+		// 材料落库（每节点每 kind 一份，替换即作废审批）。外部 provider 只落摘要。
 		for i, ref := range inRefs {
-			row := store.ArtifactRow{ID: s.newID("art"), InstanceID: li.Row.ID, Ref: ref,
+			row := store.ArtifactRow{ID: s.newID("art"), InstanceID: li.Row.ID, Ref: summarizeRef(ref),
 				Snapshot: snapshots[i]}
 			if err := store.ReplaceArtifact(ctx, q, row, replaced); err != nil {
 				return err
 			}
+			toDistribute = append(toDistribute, artifactToDistribute{ID: row.ID, Ref: ref, NodeName: nodeName})
 		}
 
 		if err := store.SaveNodeStates(ctx, q, li.Row.ID, li.Inst); err != nil {
@@ -446,6 +470,7 @@ func (s *Service) SubmitStep(ctx context.Context, actor Actor, wtype workitem.Sc
 
 		// 事件：passed → node.passed；awaiting → gate.pending；新就绪节点 → node.ready。
 		st, _ := li.Inst.State(nodeID)
+		stateVersion, stateStatus = st.Version, st.Status
 		switch st.Status {
 		case workitem.StatusPassed:
 			if err := store.InsertOutbox(ctx, q, "node.passed", string(wtype), workItemID,
@@ -466,13 +491,23 @@ func (s *Service) SubmitStep(ctx context.Context, actor Actor, wtype workitem.Sc
 		}
 		return s.fillNodeOpResult(ctx, q, li, nodeID, &out)
 	})
+	if err == nil && stateVersion > 0 {
+		s.dispatchArtifacts(wtype, workItemID, toDistribute)
+		s.recordProcess(submitProcessAction(actor, wtype, workItemID, nodeID, nodeName,
+			stateVersion, len(toDistribute), stateStatus, note))
+	}
 	return out, err
 }
 
 // AttachArtifact 单独挂接材料：提交前补充或 awaiting_review 期间补挂；
 // 替换已进入评审的材料会作废该节点既有审批（workflow.md「材料变更」）。
 func (s *Service) AttachArtifact(ctx context.Context, actor Actor, wtype workitem.Scope, workItemID, nodeID string, in ArtifactInput) (NodeOpResult, error) {
-	var out NodeOpResult
+	var (
+		out          NodeOpResult
+		toDistribute []artifactToDistribute
+		nodeName     string
+		attached     workitem.ArtifactRef
+	)
 	err := s.DB.WithTx(ctx, func(q store.Querier) error {
 		if _, _, err := s.stepPermission(ctx, q, actor, wtype, workItemID); err != nil {
 			return err
@@ -493,10 +528,15 @@ func (s *Service) AttachArtifact(ctx context.Context, actor Actor, wtype workite
 		if err != nil {
 			return err
 		}
+		if err := s.checkArtifactBindings(ctx, q, wtype, workItemID, []workitem.ArtifactRef{ref}); err != nil {
+			return err
+		}
 		ref, snap, err := s.gateRef(ctx, ref)
 		if err != nil {
 			return err
 		}
+		nodeName = nodeNameOf(li.Inst, nodeID)
+		attached = ref
 		// 已进入评审的材料被替换 → 作废审批；提交前替换不涉及既有审批。
 		reset := st.Status == workitem.StatusAwaitingReview
 		existing := li.Inputs[nodeID].Artifacts
@@ -505,11 +545,12 @@ func (s *Service) AttachArtifact(ctx context.Context, actor Actor, wtype workite
 				reset = true
 			}
 		}
-		row := store.ArtifactRow{ID: s.newID("art"), InstanceID: li.Row.ID, Ref: ref,
+		row := store.ArtifactRow{ID: s.newID("art"), InstanceID: li.Row.ID, Ref: summarizeRef(ref),
 			Snapshot: snap}
 		if err := store.ReplaceArtifact(ctx, q, row, reset); err != nil {
 			return err
 		}
+		toDistribute = append(toDistribute, artifactToDistribute{ID: row.ID, Ref: ref, NodeName: nodeName})
 		if err := audit(ctx, q, actor, "workflow.attach_artifact", string(wtype), workItemID,
 			map[string]any{"node": nodeID, "kind": in.Kind, "provider": in.Provider, "replaced": reset}); err != nil {
 			return err
@@ -521,6 +562,10 @@ func (s *Service) AttachArtifact(ctx context.Context, actor Actor, wtype workite
 		}
 		return s.fillNodeOpResult(ctx, q, li, nodeID, &out)
 	})
+	if err == nil {
+		s.dispatchArtifacts(wtype, workItemID, toDistribute)
+		s.recordProcess(attachProcessAction(actor, wtype, workItemID, nodeID, nodeName, attached))
+	}
 	return out, err
 }
 
@@ -607,7 +652,11 @@ func hasKind(refs []workitem.ArtifactRef, kind workitem.ArtifactKind) bool {
 // 提交人本人为合格评审人时允许自审（不变量 8），同样走留痕流程。
 func (s *Service) ReviewStep(ctx context.Context, actor Actor, wtype workitem.Scope, workItemID, nodeID string,
 	decision workitem.Decision, comment string, expectedVersion int64) (NodeOpResult, error) {
-	var out NodeOpResult
+	var (
+		out      NodeOpResult
+		nodeName string
+		version  int64
+	)
 	err := s.DB.WithTx(ctx, func(q store.Querier) error {
 		mc, _, err := s.stepPermission(ctx, q, actor, wtype, workItemID)
 		if err != nil {
@@ -626,6 +675,7 @@ func (s *Service) ReviewStep(ctx context.Context, actor Actor, wtype workitem.Sc
 		if node.Gate == nil {
 			return MapError(workflow.ErrInvalidTransition)
 		}
+		nodeName = nodeNameOf(li.Inst, nodeID)
 		// 资格判定（服务端，AGENT 红线 2）：全局角色 + 产品非 guest 成员。
 		if !actor.Roles.HasAny(node.Gate.Roles...) {
 			return RoleRequired("需要角色 %v", roleNames(node.Gate.Roles))
@@ -664,6 +714,7 @@ func (s *Service) ReviewStep(ctx context.Context, actor Actor, wtype workitem.Sc
 			return err
 		}
 		st, _ := li.Inst.State(nodeID)
+		version = st.Version
 		switch st.Status {
 		case workitem.StatusRejected:
 			_ = store.InsertOutbox(ctx, q, "node.rejected", string(wtype), workItemID,
@@ -680,6 +731,10 @@ func (s *Service) ReviewStep(ctx context.Context, actor Actor, wtype workitem.Sc
 		}
 		return s.fillNodeOpResultWithGate(ctx, q, li, nodeID, res, &out)
 	})
+	if err == nil {
+		s.recordProcess(reviewProcessAction(actor, wtype, workItemID, nodeID, nodeName,
+			version, decision, comment))
+	}
 	return out, err
 }
 

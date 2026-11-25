@@ -43,6 +43,9 @@ type Config struct {
 	// Redmine：baseURL 与 API key（issue 标题快照，单向出站不回写）。
 	RedmineBaseURL string
 	RedmineToken   string
+	// Git / SVN 分发凭据：成果物推送到代码库时使用（Git 走 GitLab 兼容 commits API，SVN 走 WebDAV）。
+	GitToken string
+	SVNToken string
 	// Webhook 订阅：URL 与 HMAC-SHA256 签名密钥。
 	WebhookURL    string
 	WebhookSecret string
@@ -91,6 +94,8 @@ func Load() (Config, error) {
 		OutlineToken:      os.Getenv("CHALKLINE_OUTLINE_TOKEN"),
 		RedmineBaseURL:    os.Getenv("CHALKLINE_REDMINE_BASE_URL"),
 		RedmineToken:      os.Getenv("CHALKLINE_REDMINE_TOKEN"),
+		GitToken:          os.Getenv("CHALKLINE_GIT_TOKEN"),
+		SVNToken:          os.Getenv("CHALKLINE_SVN_TOKEN"),
 		WebhookURL:        os.Getenv("CHALKLINE_WEBHOOK_URL"),
 		WebhookSecret:     os.Getenv("CHALKLINE_WEBHOOK_SECRET"),
 		SMTPHost:          os.Getenv("CHALKLINE_SMTP_HOST"),

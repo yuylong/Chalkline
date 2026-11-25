@@ -1,7 +1,9 @@
 package integration
 
 import (
+	"bytes"
 	"context"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -56,20 +58,33 @@ func blockedHostError(target string) error {
 	return errRef("目标 %s 不在出站白名单内（CHALKLINE_OUTBOUND_ALLOWLIST）", hostOf(target))
 }
 
-// do 在白名单校验后发起 GET；不允许的目标返回 errRef，不产生网络请求。
-func (c *safeClient) doGet(ctx context.Context, target string, header map[string]string) (*http.Response, error) {
+// do 在白名单校验后发起请求；不允许的目标返回 errRef，不产生网络请求。
+// body 为 nil 表示无请求体（GET / MKCOL）。出站统一不跟随重定向（防 SSRF 绕过）。
+func (c *safeClient) do(ctx context.Context, method, target string, header map[string]string, body []byte) (*http.Response, error) {
 	if !c.allowed(target) {
 		return nil, blockedHostError(target)
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
+	var rdr io.Reader
+	if body != nil {
+		rdr = bytes.NewReader(body)
+	}
+	req, err := http.NewRequestWithContext(ctx, method, target, rdr)
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("Accept", "application/json")
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
 	for k, v := range header {
 		req.Header.Set(k, v)
 	}
 	return c.http.Do(req)
+}
+
+// doGet 保持旧签名（GET 语义）。
+func (c *safeClient) doGet(ctx context.Context, target string, header map[string]string) (*http.Response, error) {
+	return c.do(ctx, http.MethodGet, target, header, nil)
 }
 
 func hostOf(target string) string {

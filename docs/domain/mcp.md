@@ -35,12 +35,14 @@ Agent 每轮先调 `chalkline_get_next_action`，服务端返回结构化结论�
 | `chalkline_list_workflows` | 可用模板列表（按 scope 过滤，含内置模板） |
 | `chalkline_get_pending_reviews` | 我是评审人、待我确认的门禁；条目含 `awaitingSince` 与 `overdue`（超过评审 SLA，M3） |
 | `chalkline_list_product_members` | 产品成员与各自的产品角色 |
+| `chalkline_get_iteration_providers` | 迭代 provider 绑定（成果物 / 流程记录 / 代码库）与冻结状态 |
 
 ### 写
 
 | 工具 | 说明 | 权限 |
 | --- | --- | --- |
-| `chalkline_create_iteration` | 建迭代（一条新生命周期），指定模板 | pm |
+| `chalkline_create_iteration` | 建迭代（一条新生命周期），指定模板与 `providers`（成果物必选且唯一，流程记录可选，代码库可选可多个） | pm |
+| `chalkline_set_iteration_providers` | 整组替换迭代 provider 绑定（已提交成果物后 `409 PROVIDERS_LOCKED`） | pm / 产品 owner |
 | `chalkline_create_task` | 建任务：`kind`、父任务、多个模块，返回分配的多级编号 | pm / admin |
 | `chalkline_decompose_task` | 拆解为子任务（批量），返回 `CHK-12.3` 形式的编号 | 任务负责人 / pm |
 | `chalkline_assign_task` | 指派负责人 | pm / 任务负责人 |
@@ -53,6 +55,8 @@ Agent 每轮先调 `chalkline_get_next_action`，服务端返回结构化结论�
 | `chalkline_remove_product_member` | 移除成员，要求其未终结任务已转派 | 产品 `owner` / `admin` |
 
 权限列与 [model.md](model.md) 的对象级权限表一致，在服务端强制执行：越权写返回 `403`，访问未加入的产品返回 `404`；`get_next_action` 对无权执行的成员不返回该工具。
+
+**材料来源受迭代绑定约束**（不变量 22）：材料提交时 `provider=inline` 表示内容交给 Chalkline，由绑定的成果物 provider 决定落点（外部 provider 只回填摘要与链接）；`pr` 必须来自绑定的代码库；附件（`file` / `url`）不受限。来源与绑定冲突时 `submit_step` / `attach_artifact` 返回 `422 INVALID_ARTIFACT_REF`。
 
 ## 返回契约
 

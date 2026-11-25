@@ -20,8 +20,10 @@ REST（M1）：
 | 端点 | 说明 | 权限 |
 | --- | --- | --- |
 | `GET /api/v1/products/{pid}/iterations` | 迭代列表，可按状态过滤 | 该产品成员 |
-| `POST /api/v1/products/{pid}/iterations` | 建迭代（实例化工作流） | `pm` / `admin` |
-| `GET /api/v1/iterations/{id}` | 迭代详情 + 当前阶段进度 | 该产品成员 |
+| `POST /api/v1/products/{pid}/iterations` | 建迭代（实例化工作流 + 写入 provider 绑定） | `pm` / `admin` |
+| `GET /api/v1/iterations/{id}` | 迭代详情 + 当前阶段进度 + provider 绑定 | 该产品成员 |
+| `GET /api/v1/iterations/{id}/providers` | 迭代 provider 绑定与冻结状态 | 该产品成员 |
+| `PUT /api/v1/iterations/{id}/providers` | 整组替换绑定（已提交成果物后 `409 PROVIDERS_LOCKED`） | 产品成员持 `pm` / owner / `admin` |
 | `GET /api/v1/current-iteration` | 我的当前迭代（未设置返回 `null`） | 登录用户 |
 | `PUT /api/v1/current-iteration` | 设为当前迭代（须对该产品可见、非终态） | 该产品成员 |
 | `DELETE /api/v1/current-iteration` | 取消当前迭代（幂等） | 登录用户 |
@@ -32,11 +34,11 @@ REST（M1）：
 | `DELETE /api/v1/tasks/{id}` | 删任务（仅未终结且无子任务；实例随任务级联清理，409 `TASK_NOT_DELETABLE`） | 任务负责人 / `pm` |
 | `POST /api/v1/tasks/{id}/modules` | 增删模块关联 | 任务负责人 / `pm` |
 
-MCP：`create_iteration` / `create_task` / `decompose_task` / `assign_task` / `link_module` / `list_iterations` / `list_tasks` / `get_task`（见 [mcp.md](../domain/mcp.md)，权限列与对象级权限表一致）。
+MCP：`create_iteration`（含 `providers`）/ `create_task` / `decompose_task` / `assign_task` / `link_module` / `list_iterations` / `list_tasks` / `get_task` / `get_iteration_providers` / `set_iteration_providers`（见 [mcp.md](../domain/mcp.md)，权限列与对象级权限表一致）。
 
 ## 核心流程
 
-- **建迭代**：事务内校验调用者是产品成员 + `pm`/`admin` → 分配 `CHK-IT<n>` 编号 → 写 `iterations` → 调 workflow 实例化生命周期模板（写 `workflow_instances` + 起始节点 `ready`）→ 审计。
+- **建迭代**：事务内校验调用者是产品成员 + `pm`/`admin` → 分配 `CHK-IT<n>` 编号 → 写 `iterations` → 调 workflow 实例化生命周期模板（写 `workflow_instances` + 起始节点 `ready`）→ 写迭代 provider 绑定（成果物必选，见 [integrations.md](../domain/integrations.md)「迭代 Provider」）→ 审计。
 - **建任务/拆子任务**：校验当前迭代所处节点 `allows_task_creation`（不变量 5，向 workflow 查实例当前节点）→ 校验子任务与父同产品同迭代（不变量 2）→ 按父级维度分配编号（并发不重复）→ 写 `tasks` → 继承父任务模板/模块 → 实例化任务工作流 → 审计。
 - **任务状态**：不存独立 `status` 字段做真相；读时由 workflow 实例的终态节点投影（`done` / `cancelled`），未到终态为 `open`（model.md「状态投影」）。
 - **删任务**：仅限 `open` 且无子任务的任务（已终结历史保留，呼应不变量 10「不允许静默丢弃」；有子任务须先删子任务）。权限同改任务字段；事务内先删任务流实例（`node_states` / `gate_approvals` / `artifacts` 外键级联）再删 `tasks` 行，最后审计 `task.delete`。
@@ -52,6 +54,7 @@ M1 新建迁移：
 - `task_modules`：`task_id` + `module_id` 联合主键；模块必须与任务同产品（不变量 2）。
 - `user_current_iterations`（0010）：`user_id` 主键（每人一条）/ `iteration_id`（外键级联删除）/ `updated_at`。
 - 编号分配：用 Postgres sequence 或计数器表按「产品（顶层任务）/ 父任务（子任务）」维度单调递增，**永不复用、永不重排**（不变量 3）。
+- `iteration_providers`（0013，归 integration 模块）：迭代级 provider 绑定，`iteration_id` 外键级联；详情见 [integration.md](integration.md)「M5 增量」。
 
 > 工作流实例与节点状态表归 workflow 模块，本模块只存外键 `workflow_instance_id`。
 

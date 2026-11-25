@@ -25,6 +25,7 @@ import type {
   ArtifactRef,
   InstanceView,
   IterationDetail,
+  IterationProvidersView,
   ListEnvelope,
   MemberView,
   NodeOpResult,
@@ -319,7 +320,7 @@ interface SubmitFormProps {
   onDone?: () => void
 }
 
-function ArtifactFields({ prefix }: { prefix?: number[] }) {
+function ArtifactFields({ prefix, bindingHint }: { prefix?: number[]; bindingHint?: string }) {
   return (
     <>
       <Form.Item
@@ -334,6 +335,7 @@ function ArtifactFields({ prefix }: { prefix?: number[] }) {
         label="来源 provider"
         initialValue="inline"
         rules={[{ required: true, message: '请选择来源' }]}
+        extra={bindingHint}
       >
         <Select options={ARTIFACT_PROVIDERS} />
       </Form.Item>
@@ -379,6 +381,25 @@ export function ArtifactSubmitForm({ scope, workItemId, nodeId, nodeTitle, mode,
   const [form] = Form.useForm<SubmitValues | ArtifactFormValues>()
   const [busy, setBusy] = useState(false)
 
+  // 迭代级 provider 绑定：材料来源必须与绑定一致（后端不变量 22），此处只做提示。
+  const taskQuery = useQuery({
+    queryKey: ['task', workItemId],
+    queryFn: () => apiGet<TaskDetail>(`/tasks/${workItemId}`),
+    enabled: scope === 'task',
+  })
+  const iterationId = scope === 'iteration' ? workItemId : (taskQuery.data?.iterationId ?? '')
+  const providersQuery = useQuery({
+    queryKey: ['iteration-providers', iterationId],
+    queryFn: () => apiGet<IterationProvidersView>(`/iterations/${iterationId}/providers`),
+    enabled: iterationId !== '',
+  })
+  const bindingHint = (() => {
+    const items = providersQuery.data?.items ?? []
+    if (items.length === 0) return undefined
+    const parts = items.map((i) => `${i.categoryLabel}=${i.provider}`)
+    return `本迭代绑定：${parts.join('，')}（材料来源须与绑定一致；附件 file/url 除外）`
+  })()
+
   const submit = async () => {
     const values = await form.validateFields()
     setBusy(true)
@@ -415,7 +436,7 @@ export function ArtifactSubmitForm({ scope, workItemId, nodeId, nodeTitle, mode,
         <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 8 }}>
           向节点「{nodeTitle}」补挂材料：替换已进入评审的材料会作废该节点既有审批。
         </Typography.Text>
-        <ArtifactFields />
+        <ArtifactFields bindingHint={bindingHint} />
         <Button type="primary" htmlType="submit" loading={busy}>
           补挂材料
         </Button>
@@ -445,7 +466,7 @@ export function ArtifactSubmitForm({ scope, workItemId, nodeId, nodeTitle, mode,
                 }
                 style={{ marginBottom: 8 }}
               >
-                <ArtifactFields prefix={[field.name]} />
+                <ArtifactFields prefix={[field.name]} bindingHint={bindingHint} />
               </Card>
             ))}
             <Button type="dashed" onClick={() => add({ provider: 'inline' })} block>

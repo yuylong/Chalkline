@@ -52,6 +52,11 @@ func StageNotAllowedTask(node, stage string) *Error {
 func TaskNotDeletable(format string, args ...any) *Error {
 	return &Error{Status: http.StatusConflict, Code: "TASK_NOT_DELETABLE", Message: fmt.Sprintf(format, args...)}
 }
+
+// ProvidersLocked 表示迭代 provider 绑定已冻结（已提交成果物或迭代终态，不变量 22）。
+func ProvidersLocked(format string, args ...any) *Error {
+	return &Error{Status: http.StatusConflict, Code: "PROVIDERS_LOCKED", Message: fmt.Sprintf(format, args...)}
+}
 func TreeDepthExceeded(what string, depth, max int) *Error {
 	return &Error{Status: http.StatusUnprocessableEntity, Code: "TREE_DEPTH_EXCEEDED",
 		Message: fmt.Sprintf("%s深度 %d 超过上限 %d", what, depth, max)}

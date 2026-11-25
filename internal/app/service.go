@@ -49,6 +49,12 @@ type Service struct {
 	// SMTPTestSend 是测试邮件发送通道（依赖倒置：notify.SMTP 实现，server 组装层注入；
 	// nil 时测试发送报内部错误，不影响其余用例）。
 	SMTPTestSend func(ctx context.Context, rt SMTPRuntime, recipients []string) error
+	// Distributor 是成果物分发通道（依赖倒置：integration.Dispatcher 实现；nil 时分发跳过）。
+	Distributor ArtifactDistributor
+	// Process 是流程记录通道（依赖倒置：integration.Dispatcher 实现；nil 时跳过）。
+	Process ProcessRecorder
+	// Async 决定事务后分发/流程记录的执行方式；nil 时同步执行（单测确定性强）。
+	Async func(fn func())
 }
 
 // Options 是 NewService 的可选配置（M3 评审 SLA 与集成默认值；M4 邮箱配置）。
@@ -60,6 +66,11 @@ type Options struct {
 	SecretKey        string
 	// SMTPTestSend 注入测试邮件发送通道（server 组装层用 notify.SMTP 实现）。
 	SMTPTestSend func(ctx context.Context, rt SMTPRuntime, recipients []string) error
+	// Distributor / Process 注入成果物分发与流程记录通道（server 组装层用 integration.Dispatcher）。
+	Distributor ArtifactDistributor
+	Process     ProcessRecorder
+	// Async 注入事务后任务的执行方式（server 用 goroutine；nil 即同步）。
+	Async func(fn func())
 }
 
 // NewService 组装服务。gate 可为 nil：此时材料只做 domain 格式校验。
@@ -68,7 +79,8 @@ func NewService(db *store.DB, log *slog.Logger, jwt *auth.JWTManager, gate Artif
 		ReviewSLA: opts.ReviewSLA, ReviewEscalation: opts.ReviewEscalation,
 		ProviderDefaults: opts.ProviderDefaults,
 		SMTPDefaults:     opts.SMTPDefaults, SecretKey: opts.SecretKey,
-		SMTPTestSend: opts.SMTPTestSend}
+		SMTPTestSend: opts.SMTPTestSend,
+		Distributor:  opts.Distributor, Process: opts.Process, Async: opts.Async}
 }
 
 // newID 生成带类型前缀的短 id（mcp.md：所有 ID 带类型前缀）。

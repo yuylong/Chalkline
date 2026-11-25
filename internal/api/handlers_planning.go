@@ -10,11 +10,33 @@ import (
 )
 
 type createIterationReq struct {
-	Name       string `json:"name"`
-	Goal       string `json:"goal"`
-	StartsOn   string `json:"startsOn"`
-	EndsOn     string `json:"endsOn"`
-	WorkflowID string `json:"workflowId"`
+	Name       string                 `json:"name"`
+	Goal       string                 `json:"goal"`
+	StartsOn   string                 `json:"startsOn"`
+	EndsOn     string                 `json:"endsOn"`
+	WorkflowID string                 `json:"workflowId"`
+	Providers  []providerBindingInput `json:"providers"`
+}
+
+// providerBindingInput 是迭代级 provider 绑定入参（连接信息随迭代固化）。
+type providerBindingInput struct {
+	Category    string `json:"category"`
+	Provider    string `json:"provider"`
+	BaseURL     string `json:"baseUrl"`
+	Target      string `json:"target"`
+	DirTemplate string `json:"dirTemplate"`
+	Branch      string `json:"branch"`
+}
+
+func toProviderInputs(in []providerBindingInput) []app.IterationProviderInput {
+	out := make([]app.IterationProviderInput, 0, len(in))
+	for _, p := range in {
+		out = append(out, app.IterationProviderInput{
+			Category: p.Category, Provider: p.Provider, BaseURL: p.BaseURL,
+			Target: p.Target, DirTemplate: p.DirTemplate, Branch: p.Branch,
+		})
+	}
+	return out
 }
 
 func (h *handlers) createIteration(w http.ResponseWriter, r *http.Request) {
@@ -40,6 +62,7 @@ func (h *handlers) createIteration(w http.ResponseWriter, r *http.Request) {
 	}
 	view, err := h.svc().CreateIteration(r.Context(), actor, pathParam(r, "pid"), app.CreateIterationInput{
 		Name: req.Name, Goal: req.Goal, StartsOn: starts, EndsOn: ends, WorkflowID: req.WorkflowID,
+		Providers: toProviderInputs(req.Providers),
 	})
 	if err != nil {
 		writeAppError(w, err)
@@ -136,6 +159,47 @@ func (h *handlers) deleteCurrentIteration(w http.ResponseWriter, r *http.Request
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "cleared"})
+}
+
+// ---- 迭代 provider 绑定（docs/domain/integrations.md「迭代 Provider」）----
+
+func (h *handlers) getIterationProviders(w http.ResponseWriter, r *http.Request) {
+	actor, err := h.actor(r)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	view, err := h.svc().GetIterationProviders(r.Context(), actor, pathParam(r, "id"))
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, view)
+}
+
+type setIterationProvidersReq struct {
+	Items []providerBindingInput `json:"items"`
+}
+
+// setIterationProviders 整组替换绑定：仅迭代初始化阶段（未提交成果物、未终结）可改。
+func (h *handlers) setIterationProviders(w http.ResponseWriter, r *http.Request) {
+	actor, err := h.actor(r)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	var req setIterationProvidersReq
+	if err := decode(r, &req); err != nil {
+		writeAppError(w, err)
+		return
+	}
+	view, err := h.svc().SetIterationProviders(r.Context(), actor, pathParam(r, "id"),
+		toProviderInputs(req.Items))
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, view)
 }
 
 type createTaskReq struct {

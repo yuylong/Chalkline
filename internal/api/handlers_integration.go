@@ -9,8 +9,23 @@ import (
 	"github.com/yuylong/Chalkline/internal/app"
 )
 
-func (h *handlers) listProviderConfigs(w http.ResponseWriter, r *http.Request) {
+// listProviderOptions 全局连接默认值（登录即可读），供迭代 provider 绑定预填 baseURL。
+// 只返回已启用的 provider 与地址，不含任何凭据信息。
+func (h *handlers) listProviderOptions(w http.ResponseWriter, r *http.Request) {
 	actor, err := h.actor(r)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	items, err := h.svc().ListProviderOptions(r.Context(), actor)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
+func (h *handlers) listProviderConfigs(w http.ResponseWriter, r *http.Request) {	actor, err := h.actor(r)
 	if err != nil {
 		writeAppError(w, err)
 		return

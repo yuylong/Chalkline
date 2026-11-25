@@ -49,6 +49,9 @@ type API interface {
 	CreateIteration(ctx context.Context, actor Actor, productID string, in CreateIterationInput) (IterationView, error)
 	ListIterations(ctx context.Context, actor Actor, productID string, status *planning.IterationStatus) ([]IterationView, error)
 	GetIteration(ctx context.Context, actor Actor, id string) (IterationDetail, error)
+	// 迭代级 provider 绑定（docs/domain/integrations.md「迭代 Provider」）。
+	GetIterationProviders(ctx context.Context, actor Actor, iterationID string) (IterationProvidersView, error)
+	SetIterationProviders(ctx context.Context, actor Actor, iterationID string, inputs []IterationProviderInput) (IterationProvidersView, error)
 	// 个人「当前迭代」偏好：首页直接展示该迭代看板。
 	GetCurrentIteration(ctx context.Context, actor Actor) (CurrentIterationView, error)
 	SetCurrentIteration(ctx context.Context, actor Actor, iterationID string) (IterationDetail, error)
@@ -89,6 +92,8 @@ type API interface {
 	// integration（M3 provider 配置，admin；凭据仍只读环境变量）
 	ListProviderConfigs(ctx context.Context, actor Actor) ([]ProviderConfigView, error)
 	UpdateProviderConfig(ctx context.Context, actor Actor, kind string, in ProviderConfigInput) (ProviderConfigView, error)
+	// ListProviderOptions 全局连接默认值（成员可读，供迭代 provider 绑定预填地址）。
+	ListProviderOptions(ctx context.Context, actor Actor) ([]ProviderOptionView, error)
 
 	// 邮箱配置（M4 SMTP 发件配置，admin；密码加密落库，永不回显）
 	GetSMTPConfig(ctx context.Context, actor Actor) (SMTPConfigView, error)

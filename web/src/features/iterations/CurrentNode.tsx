@@ -19,6 +19,7 @@ import type {
   NodeOpResult,
 } from '../../shared/types'
 import { CurrentNodeDetail } from '../gates/CurrentNodePanel'
+import { ProviderBindingSummary } from './Providers'
 
 export default function IterationCurrentNodePage() {
   const { id = '', nodeId = '' } = useParams()
@@ -110,6 +111,10 @@ export default function IterationCurrentNodePage() {
             {node.completedAt ? ` · 完成 ${fmtTime(node.completedAt)}` : ''}
           </Typography.Text>
         </Space>
+      </Card>
+
+      <Card title="阶段连接（迭代 Provider）">
+        <ProviderBindingSummary providers={itQuery.data.providers} />
       </Card>
 
       <Card title="节点详情">

@@ -43,6 +43,34 @@ type ProviderConfigInput struct {
 	BaseURL *string
 }
 
+// ProviderOptionView 是供成员选型的全局连接默认值（只含地址，不含任何凭据）。
+type ProviderOptionView struct {
+	Kind    string `json:"kind"`
+	Label   string `json:"label"`
+	BaseURL string `json:"baseUrl"`
+	Enabled bool   `json:"enabled"`
+}
+
+// ListProviderOptions 列出全局连接默认值，供迭代创建/配置时预填 baseURL。
+// 任意登录成员可读：只暴露已启用的 provider 与地址，凭据是否配置等信息仍仅 admin 可见。
+func (s *Service) ListProviderOptions(ctx context.Context, _ Actor) ([]ProviderOptionView, error) {
+	rows, err := store.ListProviderConfigs(ctx, s.DB.Q())
+	if err != nil {
+		return nil, err
+	}
+	merged := mergeProviderConfigs(s.ProviderDefaults, rows)
+	out := make([]ProviderOptionView, 0, len(merged))
+	for _, v := range merged {
+		if !v.Enabled {
+			continue
+		}
+		out = append(out, ProviderOptionView{
+			Kind: v.Kind, Label: v.Label, BaseURL: v.BaseURL, Enabled: v.Enabled,
+		})
+	}
+	return out, nil
+}
+
 // ListProviderConfigs 列出全部 provider 配置（admin）。
 func (s *Service) ListProviderConfigs(ctx context.Context, actor Actor) ([]ProviderConfigView, error) {
 	if !actor.IsAdmin {

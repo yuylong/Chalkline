@@ -103,6 +103,15 @@ func Run(ctx context.Context) error {
 		Recipients: resolveNotifyRecipients(getSvc),
 	}
 
+	// 迭代级 provider 分发通道（成果物推送 + 流程记录）。凭据只来自环境变量；
+	// 出站仍过 safeClient 白名单（allowlist 为空时全部分发失败并记回执，不阻断流程）。
+	dispatcher := integration.NewDispatcher(safeClient, integration.DispatchCredentials{
+		OutlineToken: cfg.OutlineToken,
+		RedmineToken: cfg.RedmineToken,
+		GitToken:     cfg.GitToken,
+		SVNToken:     cfg.SVNToken,
+	})
+
 	// 数据库初始化：连接 → 迁移 → 种子 → admin 引导 → 组装 Service。
 	go func() {
 		for {
@@ -126,6 +135,10 @@ func Run(ctx context.Context) error {
 								TLSMode: cfg.SMTPTLSMode, TLSSkipVerify: cfg.SMTPTLSSkipVerify,
 							},
 							SecretKey: cfg.SecretKey,
+							// 成果物分发与流程记录（迭代级 provider 绑定）。
+							Distributor: dispatcher,
+							Process:     dispatcher,
+							Async:       func(fn func()) { go fn() },
 							// 测试邮件走与投递器同一 SMTP 通道（依赖倒置：app 不 import integration）。
 							SMTPTestSend: func(ctx context.Context, rt app.SMTPRuntime, recipients []string) error {
 								return smtpSender.SendTest(ctx, notify.SMTPRuntime{

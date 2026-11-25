@@ -151,11 +151,43 @@ export interface NodeStateView {
   completedAt?: string
 }
 
+/** 迭代级 provider 绑定（成果物 / 流程记录 / 代码库）。 */
+export interface IterationProviderView {
+  category: string // artifact | process | code
+  categoryLabel: string
+  provider: string // inline | outline | git | svn | redmine
+  baseUrl?: string
+  target?: string
+  dirTemplate?: string
+  branch?: string
+  /** 可点击跳转的外部地址；inline 为空。 */
+  linkUrl?: string
+}
+
+export interface IterationProviderInput {
+  category: string
+  provider: string
+  baseUrl?: string
+  target?: string
+  dirTemplate?: string
+  branch?: string
+}
+
+export interface IterationProvidersView {
+  iterationId: string
+  items: IterationProviderView[]
+  /** 已提交成果物或迭代终结：绑定冻结。 */
+  locked: boolean
+  editable: boolean
+  lockedReason?: string
+}
+
 export interface IterationDetail extends IterationView {
   currentNodes: NodeStateView[]
   progressPct: number
   openTasks: number
   workflowName: string
+  providers: IterationProvidersView
 }
 
 /** 个人「当前迭代」：登录后首页直接展示该迭代看板；未设置为 null。 */
@@ -323,6 +355,14 @@ export interface ProviderConfigView {
 export interface ProviderConfigUpdate {
   enabled?: boolean
   baseUrl?: string
+}
+
+/** 全局连接默认值（成员可读）：供迭代 provider 绑定预填 baseURL，不含凭据。 */
+export interface ProviderOptionView {
+  kind: string
+  label: string
+  baseUrl: string
+  enabled: boolean
 }
 
 // ---- 邮箱配置（admin；密码加密落库，永不回显）----
