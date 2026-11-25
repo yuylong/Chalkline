@@ -99,3 +99,18 @@ func (h *handlers) updateSMTPConfig(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, view)
 }
+
+// testSMTPConfig 用当前生效配置发送一封测试邮件（admin；收件人为
+// CHALKLINE_NOTIFY_EMAILS 配置的列表）。失败返回可展示的错误信息。
+func (h *handlers) testSMTPConfig(w http.ResponseWriter, r *http.Request) {
+	actor, err := h.actor(r)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	if err := h.svc().TestSMTPConfig(r.Context(), actor); err != nil {
+		writeAppError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"sent": true})
+}

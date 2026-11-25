@@ -147,6 +147,7 @@ func NewRouter(d Deps) http.Handler {
 				// M4：邮箱配置（admin；密码 AES-GCM 加密落库，永不回显）
 				admin.Get("/integration/smtp", h.getSMTPConfig)
 				admin.Patch("/integration/smtp", h.updateSMTPConfig)
+				admin.Post("/integration/smtp/test", h.testSMTPConfig)
 			})
 		})
 	})

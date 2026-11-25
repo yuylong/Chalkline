@@ -141,3 +141,24 @@ func TestValidateSMTPInputTLS(t *testing.T) {
 		t.Fatalf("仅改跳过证书校验应通过: %v", err)
 	}
 }
+
+func TestValidateSMTPTest(t *testing.T) {
+	base := SMTPRuntime{Enabled: true, Host: "smtp.example.com", From: "chalk@example.com"}
+	rcpt := []string{"pm@example.com"}
+
+	if err := validateSMTPTest(SMTPRuntime{Enabled: false, Host: "smtp.example.com", From: "chalk@example.com"}, rcpt); err == nil {
+		t.Fatal("未启用应报错")
+	}
+	if err := validateSMTPTest(SMTPRuntime{Enabled: true, From: "chalk@example.com"}, rcpt); err == nil {
+		t.Fatal("host 缺失应报错")
+	}
+	if err := validateSMTPTest(SMTPRuntime{Enabled: true, Host: "smtp.example.com"}, rcpt); err == nil {
+		t.Fatal("发件人缺失应报错")
+	}
+	if err := validateSMTPTest(base, nil); err == nil {
+		t.Fatal("无收件人应报错")
+	}
+	if err := validateSMTPTest(base, rcpt); err != nil {
+		t.Fatalf("配置齐全应通过: %v", err)
+	}
+}

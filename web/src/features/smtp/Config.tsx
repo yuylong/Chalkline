@@ -4,7 +4,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { App, Button, Card, Form, Input, InputNumber, Popconfirm, Select, Space, Switch, Tag, Typography } from 'antd'
 import { useEffect } from 'react'
-import { apiGet, apiPatch } from '../../shared/api'
+import { apiGet, apiPatch, apiPost } from '../../shared/api'
 import { fmtTime } from '../../shared/status'
 import { ApiErrorBanner } from '../../shared/ui'
 import type { SMTPConfigUpdate, SMTPConfigView } from '../../shared/types'
@@ -75,6 +75,12 @@ export default function SmtpConfig() {
       message.success('已清除保存的密码（回退环境变量 CHALKLINE_SMTP_PASSWORD）')
       void invalidate()
     },
+    onError: (err: Error) => message.error(err.message),
+  })
+
+  const testMut = useMutation({
+    mutationFn: () => apiPost<{ sent: boolean }>('/integration/smtp/test', {}),
+    onSuccess: () => message.success('测试邮件已发送，请到收件箱查收'),
     onError: (err: Error) => message.error(err.message),
   })
 
@@ -209,6 +215,16 @@ export default function SmtpConfig() {
               <Button type="primary" htmlType="submit" loading={saveMut.isPending}>
                 保存配置
               </Button>
+              <Popconfirm
+                title="发送测试邮件？"
+                description="将用当前生效配置向 CHALKLINE_NOTIFY_EMAILS 收件人发送一封测试邮件"
+                onConfirm={() => testMut.mutate()}
+                disabled={!data?.enabled}
+              >
+                <Button loading={testMut.isPending} disabled={!data?.enabled}>
+                  发送测试邮件
+                </Button>
+              </Popconfirm>
               {data?.updatedAt && (
                 <Typography.Text type="secondary" style={{ fontSize: 12 }}>
                   最近更新：{fmtTime(data.updatedAt)}

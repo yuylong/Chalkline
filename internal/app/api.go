@@ -94,6 +94,8 @@ type API interface {
 	// 邮箱配置（M4 SMTP 发件配置，admin；密码加密落库，永不回显）
 	GetSMTPConfig(ctx context.Context, actor Actor) (SMTPConfigView, error)
 	UpdateSMTPConfig(ctx context.Context, actor Actor, in SMTPConfigInput) (SMTPConfigView, error)
+	// TestSMTPConfig 用当前生效配置发送测试邮件（admin）。
+	TestSMTPConfig(ctx context.Context, actor Actor) error
 }
 
 // 编译期保证 *Service 实现 API。

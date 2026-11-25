@@ -75,8 +75,11 @@ func (m *SMTP) timeout() time.Duration {
 }
 
 // tlsMode 归一化 TLS 模式；空或未知值按 none（明文，保持既有行为）。
-func (m *SMTP) tlsMode() string {
-	switch strings.ToLower(strings.TrimSpace(m.TLSMode)) {
+func (m *SMTP) tlsMode() string { return normalizeTLSMode(m.TLSMode) }
+
+// normalizeTLSMode 归一化 TLS 模式（none / starttls / tls）。
+func normalizeTLSMode(mode string) string {
+	switch strings.ToLower(strings.TrimSpace(mode)) {
 	case "starttls":
 		return "starttls"
 	case "tls":
@@ -114,6 +117,32 @@ func (m *SMTP) Send(ctx context.Context, ev store.OutboxRow) error {
 	}
 	addr := net.JoinHostPort(host, fmt.Sprintf("%d", port))
 	return m.sendMail(ctx, addr, host, username, password, from, tlsMode, skipVerify, msg)
+}
+
+// SendTest 发送测试邮件（管理台「发送测试邮件」按钮）：走与事件投递完全相同的
+// 拨号 / TLS / 认证路径，收件人与正文由调用方给定。失败直接返回错误（不静默）。
+func (m *SMTP) SendTest(ctx context.Context, cfg SMTPRuntime, to []string) error {
+	port := cfg.Port
+	if port == 0 {
+		port = 25
+	}
+	msg := m.buildTestMessage(cfg.From, to)
+	addr := net.JoinHostPort(cfg.Host, fmt.Sprintf("%d", port))
+	return m.sendMail(ctx, addr, cfg.Host, cfg.Username, cfg.Password, cfg.From,
+		normalizeTLSMode(cfg.TLSMode), cfg.TLSSkipVerify, msg)
+}
+
+// buildTestMessage 构造测试邮件（固定提示文本，便于收件人一眼识别来源）。
+func (m *SMTP) buildTestMessage(from string, to []string) []byte {
+	var b strings.Builder
+	b.WriteString("From: " + from + "\r\n")
+	b.WriteString("To: " + strings.Join(to, ", ") + "\r\n")
+	b.WriteString("Subject: [Chalkline] 测试邮件\r\n")
+	b.WriteString("MIME-Version: 1.0\r\n")
+	b.WriteString("Content-Type: text/plain; charset=utf-8\r\n")
+	b.WriteString("\r\n")
+	b.WriteString("这是一封来自 Chalkline 控制台「邮箱配置」页的测试邮件。收到本邮件即表示当前发件配置有效。\r\n")
+	return []byte(b.String())
 }
 
 // buildMessage 构造纯文本邮件（正文为事件元数据 JSON，不携带业务正文）。

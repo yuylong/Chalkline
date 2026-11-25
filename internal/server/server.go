@@ -95,6 +95,9 @@ func Run(ctx context.Context) error {
 	// M3 实时推送：进程内事件总线（outbox tailer 发布，SSE 连接订阅）。
 	eventHub := events.NewHub()
 
+	// M4 邮箱配置：SMTP 通道单实例——投递器与「发送测试邮件」共用同一拨号/TLS 路径。
+	smtpSender := &notify.SMTP{To: cfg.NotifyEmails, Resolve: resolveSMTP(getSvc)}
+
 	// 数据库初始化：连接 → 迁移 → 种子 → admin 引导 → 组装 Service。
 	go func() {
 		for {
@@ -118,6 +121,14 @@ func Run(ctx context.Context) error {
 								TLSMode: cfg.SMTPTLSMode, TLSSkipVerify: cfg.SMTPTLSSkipVerify,
 							},
 							SecretKey: cfg.SecretKey,
+							// 测试邮件走与投递器同一 SMTP 通道（依赖倒置：app 不 import integration）。
+							SMTPTestSend: func(ctx context.Context, rt app.SMTPRuntime, recipients []string) error {
+								return smtpSender.SendTest(ctx, notify.SMTPRuntime{
+									Enabled: rt.Enabled, Host: rt.Host, Port: rt.Port,
+									Username: rt.Username, Password: rt.Password, From: rt.From,
+									TLSMode: rt.TLSMode, TLSSkipVerify: rt.TLSSkipVerify,
+								}, recipients)
+							},
 						})
 						created, berr := s.BootstrapAdmin(ctx, cfg.AdminUsername, cfg.AdminPassword)
 						if berr != nil {
@@ -139,7 +150,7 @@ func Run(ctx context.Context) error {
 			}
 			if derr == nil {
 				logger.Info("数据库就绪：迁移、种子与引导完成")
-				startDispatcher(ctx, db, cfg, logger, resolveSMTP(getSvc))
+				startDispatcher(ctx, db, cfg, logger, smtpSender)
 				// M3：评审 SLA 监控器（超期提醒与升级链，只写水位与事件，不改状态）。
 				if impl, ok := svc.(*app.Service); ok {
 					go impl.RunReviewSLA(ctx, cfg.ReviewScanInterval, logger)
@@ -280,15 +291,16 @@ func resolveSMTP(getSvc func() app.API) func(context.Context) (notify.SMTPRuntim
 // 无论是否配置通道都启动：无通道且无订阅时事件直接标记完成，避免 outbox
 // 无限滞留 pending（不变量 15）。
 func startDispatcher(ctx context.Context, db *store.DB, cfg platform.Config, logger *slog.Logger,
-	resolveSMTP func(context.Context) (notify.SMTPRuntime, bool)) {
+	smtpSender *notify.SMTP) {
 	senders := []notify.Sender{}
 	if cfg.WebhookURL != "" {
 		senders = append(senders, &notify.Webhook{URL: cfg.WebhookURL, Secret: cfg.WebhookSecret})
 		logger.Info("webhook 通知已启用")
 	}
-	// SMTP 通道恒挂载：生效配置每轮经 resolveSMTP 解析（管理台保存立即生效；
-	// 未启用或未配置完整时 Send 静默跳过）。收件人仍来自 CHALKLINE_NOTIFY_EMAILS。
-	senders = append(senders, &notify.SMTP{To: cfg.NotifyEmails, Resolve: resolveSMTP})
+	// SMTP 通道恒挂载（与「发送测试邮件」共用同一实例）：生效配置每轮经 Resolve
+	// 解析（管理台保存立即生效；未启用或未配置完整时 Send 静默跳过）。
+	// 收件人仍来自 CHALKLINE_NOTIFY_EMAILS。
+	senders = append(senders, smtpSender)
 	if envSMTPReady(cfg) {
 		logger.Info("SMTP 邮件通知已启用", "host", cfg.SMTPHost, "recipients", len(cfg.NotifyEmails))
 	}

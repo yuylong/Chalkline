@@ -7,6 +7,7 @@ package app
 import (
 	"context"
 	"errors"
+	"net/http"
 	"net/mail"
 	"strings"
 	"time"
@@ -325,4 +326,51 @@ func validateSMTPInput(in SMTPConfigInput) error {
 		}
 	}
 	return nil
+}
+
+// TestSMTPConfig 用当前生效配置发送一封测试邮件到 CHALKLINE_NOTIFY_EMAILS
+// 收件人（admin；写审计）。发送失败返回 SMTP_SEND_FAILED（502），错误信息可直接
+// 展示给管理台（拨号/握手/认证/TLS 各阶段均有中文提示）。
+func (s *Service) TestSMTPConfig(ctx context.Context, actor Actor) error {
+	if !actor.IsAdmin {
+		return RoleRequired("需要 admin 测试邮箱配置")
+	}
+	rt, err := s.EffectiveSMTP(ctx)
+	if err != nil {
+		return err
+	}
+	recipients := s.SMTPDefaults.Recipients
+	if err := validateSMTPTest(rt, recipients); err != nil {
+		return err
+	}
+	if s.SMTPTestSend == nil {
+		return Internal(errors.New("测试发送通道未装配"))
+	}
+	if err := s.SMTPTestSend(ctx, rt, recipients); err != nil {
+		return smtpSendFailed(err)
+	}
+	return audit(ctx, s.DB.Q(), actor, "integration.smtp.test", "smtp", store.SMTPConfigKey, map[string]any{
+		"host": rt.Host, "port": rt.Port, "tls_mode": rt.TLSMode,
+		"tls_skip_verify": rt.TLSSkipVerify, "recipients": len(recipients),
+	})
+}
+
+// validateSMTPTest 校验测试发送前置条件（生效配置完整且已启用）。
+func validateSMTPTest(rt SMTPRuntime, recipients []string) error {
+	if !rt.Enabled {
+		return Invalid("邮件通知未启用，请先在上方打开启用开关并保存")
+	}
+	if rt.Host == "" || rt.From == "" {
+		return Invalid("发件服务器或发件人未配置，请补全并保存后重试")
+	}
+	if len(recipients) == 0 {
+		return Invalid("未配置收件人（CHALKLINE_NOTIFY_EMAILS），测试邮件无处可发")
+	}
+	return nil
+}
+
+// smtpSendFailed 把投递错误包装为可展示的对外错误（502，上游 SMTP 问题）。
+func smtpSendFailed(err error) *Error {
+	return &Error{Status: http.StatusBadGateway, Code: "SMTP_SEND_FAILED",
+		Message: "测试邮件发送失败：" + err.Error()}
 }
