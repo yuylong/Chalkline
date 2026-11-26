@@ -487,7 +487,7 @@ func (d Deps) registerWriteTools(s *mcp.Server) {
 
 	mcp.AddTool[taskCreateArg, any](s, &mcp.Tool{
 		Name:        "chalkline_create_task",
-		Description: "建任务（parentTaskId 非空即拆解）：编号由服务端分配并返回；只能在 allows_task_creation 的迭代阶段调用。",
+		Description: "建任务（parentTaskId 非空即拆解）：编号由服务端分配并返回；只能在迭代当前阶段 allows_task_kinds 白名单包含该类型的节点调用；bug 只能作为一级任务。",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in taskCreateArg) (*mcp.CallToolResult, any, error) {
 		svc, actor, err := d.svc(ctx)
 		if err != nil {
@@ -505,7 +505,7 @@ func (d Deps) registerWriteTools(s *mcp.Server) {
 		Children []taskCreateArg `json:"children"`
 	}, any](s, &mcp.Tool{
 		Name:        "chalkline_decompose_task",
-		Description: "批量拆解为子任务，返回 <parent>.m 形式的编号；子任务继承父任务模板与模块。",
+		Description: "批量拆解为子任务，返回 <parent>.m 形式的编号；子任务继承父任务模板与模块；bug 任务不可拆解。",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in struct {
 		TaskID   string          `json:"taskId"`
 		Children []taskCreateArg `json:"children"`

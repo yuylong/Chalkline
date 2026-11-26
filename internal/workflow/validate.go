@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sort"
 
+	"github.com/yuylong/Chalkline/internal/domain/planning"
 	"github.com/yuylong/Chalkline/internal/domain/workitem"
 )
 
@@ -51,14 +52,27 @@ func (d Definition) Validate() error {
 			return fmt.Errorf("%w: 节点 %s due_in_days 需 ≥ 0", ErrInvalidDefinition, n.ID)
 		}
 		if d.Scope == workitem.ScopeTask {
-			// allows_task_creation / require_iteration_tasks_done 仅 iteration 作用域有效。
+			// allows_task_creation / allows_task_kinds / require_iteration_tasks_done
+			// 仅 iteration 作用域有效。
 			if n.AllowsTaskCreation {
 				return fmt.Errorf("%w: 节点 %s 声明 allows_task_creation，但该属性仅 iteration 作用域有效",
+					ErrInvalidDefinition, n.ID)
+			}
+			if len(n.AllowsTaskKinds) > 0 {
+				return fmt.Errorf("%w: 节点 %s 声明 allows_task_kinds，但该属性仅 iteration 作用域有效",
 					ErrInvalidDefinition, n.ID)
 			}
 			if n.RequireIterationTasksDone {
 				return fmt.Errorf("%w: 节点 %s 声明 require_iteration_tasks_done，但该属性仅 iteration 作用域有效",
 					ErrInvalidDefinition, n.ID)
+			}
+		} else {
+			// 白名单里的任务类型必须合法（未知类型直接拒绝入库）。
+			for _, k := range n.AllowsTaskKinds {
+				if !planning.TaskKind(k).Valid() {
+					return fmt.Errorf("%w: 节点 %s allows_task_kinds 含未知任务类型 %q",
+						ErrInvalidDefinition, n.ID, k)
+				}
 			}
 		}
 	}

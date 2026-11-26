@@ -40,6 +40,7 @@ export const taskKindMeta: Record<string, { label: string; color: string }> = {
   test: { label: '测试', color: 'cyan' },
   ops: { label: '运维', color: 'gold' },
   summary: { label: '总结', color: 'green' },
+  bug: { label: '缺陷', color: 'red' },
 }
 
 export const memberRoleMeta: Record<string, { label: string; color: string }> = {

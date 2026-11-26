@@ -73,6 +73,8 @@ export interface ProductView {
   description: string
   defaultIterationWorkflowId: string
   defaultTaskWorkflowId: string
+  /** 按任务类型的默认任务流模板（kind → workflowId）；未覆盖类型回退 defaultTaskWorkflowId。 */
+  taskWorkflowDefaults: Record<string, string>
   createdBy: string
   createdAt: string
 }

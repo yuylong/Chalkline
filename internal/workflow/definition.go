@@ -43,8 +43,13 @@ type Node struct {
 	Outcome workitem.Outcome `yaml:"outcome,omitempty" json:"outcome,omitempty"`
 	// Gate 准出门禁；省略即不拦截，提交直接通过。
 	Gate *workitem.Gate `yaml:"gate,omitempty" json:"gate,omitempty"`
-	// AllowsTaskCreation 仅 iteration 作用域有效：该阶段允许创建任务（声明式白名单）。
+	// AllowsTaskCreation 仅 iteration 作用域有效：该阶段允许创建任务。
+	// 它是 allows_task_kinds 的语法糖——true 等价于「全部类型」，保留给旧模板；
+	// 新模板建议用 allows_task_kinds 显式列出可建的任务类型。
 	AllowsTaskCreation bool `yaml:"allows_task_creation,omitempty" json:"allows_task_creation,omitempty"`
+	// AllowsTaskKinds 仅 iteration 作用域有效：该阶段允许创建的任务类型白名单
+	// （声明式，如研发 [dev, bug]、测评 [bug]）。空 = 不允许任何类型。
+	AllowsTaskKinds []string `yaml:"allows_task_kinds,omitempty" json:"allows_task_kinds,omitempty"`
 	// RequireIterationTasksDone 仅 iteration 作用域有效：
 	// 该节点 passed 需迭代下全部任务已终结（不变量 18）。
 	RequireIterationTasksDone bool `yaml:"require_iteration_tasks_done,omitempty" json:"require_iteration_tasks_done,omitempty"`
@@ -56,6 +61,20 @@ type Node struct {
 type Edge struct {
 	From string `yaml:"from" json:"from"`
 	To   string `yaml:"to" json:"to"`
+}
+
+// AllowsTaskKind 判定该节点是否允许创建指定类型的任务：
+// allows_task_creation: true 是「全部类型」的语法糖，否则查 allows_task_kinds 白名单。
+func (n Node) AllowsTaskKind(kind string) bool {
+	if n.AllowsTaskCreation {
+		return true
+	}
+	for _, k := range n.AllowsTaskKinds {
+		if k == kind {
+			return true
+		}
+	}
+	return false
 }
 
 // Definition 是一份工作流模板。流程定义存于数据库（JSON），

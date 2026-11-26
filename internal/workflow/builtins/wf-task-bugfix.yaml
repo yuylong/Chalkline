@@ -1,0 +1,14 @@
+# 缺陷修复：kind=bug 任务的默认模板。修复完成后由 qa 以测试执行记录做回归验证；
+# bug 未终结时迭代发布节点（require_iteration_tasks_done）保持阻塞。
+id: wf-task-bugfix
+name: 缺陷修复
+scope: task
+version: 1
+nodes:
+  - { id: fix, name: 修复, type: normal }
+  - { id: regress, name: 回归验证, type: normal,
+      gate: { approvals: 1, roles: [qa], artifacts: [{ kind: test_execution, required: true }] } }
+  - { id: done, name: 完成, type: terminal }
+edges:
+  - { from: fix,     to: regress }
+  - { from: regress, to: done }

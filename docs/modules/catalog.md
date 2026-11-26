@@ -46,7 +46,7 @@ Go（被其他模块调用）：`catalog.IsMember(productID, userID)` / `MemberR
 
 M1 新建迁移（表名遵循复数 `snake_case`）：
 
-- `products`：`id` / `key`（2–8 大写，唯一）/ `name` / `description` / `status` / `default_iteration_workflow_id` / `default_task_workflow_id` / `created_by` / 时间戳。`key` 不可改。
+- `products`：`id` / `key`（2–8 大写，唯一）/ `name` / `description` / `status` / `default_iteration_workflow_id` / `default_task_workflow_id` / `task_workflow_defaults`（按类型默认任务流，kind → workflow_id）/ `created_by` / 时间戳。`key` 不可改。
 - `product_members`：`product_id` + `user_id` 联合主键 / `member_role` / `created_at` / `created_by`。
 - `modules`：`id` / `product_id` / `parent_id` / `name` / `path`（物化，如 `/catalog/task-tree`）/ `sort_order` / 时间戳；`(product_id, parent_id, name)` 唯一。
 - `documents`：`id` / `owner_type` / `owner_id` / `content`（Markdown）/ `version` / 时间戳。

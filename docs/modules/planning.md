@@ -40,7 +40,7 @@ MCP：`create_iteration`（含 `providers`）/ `create_task` / `decompose_task` 
 ## 核心流程
 
 - **建迭代**：事务内校验调用者是产品成员 + `pm`/`admin` → 分配 `CHK-IT<n>` 编号 → 写 `iterations` → 调 workflow 实例化生命周期模板（写 `workflow_instances` + 起始节点 `ready`）→ 写迭代 provider 绑定（成果物必选，见 [integrations.md](../domain/integrations.md)「迭代 Provider」）→ 审计。
-- **建任务/拆子任务**：校验当前迭代所处节点 `allows_task_creation`（不变量 5，向 workflow 查实例当前节点）→ 校验子任务与父同产品同迭代（不变量 2）→ 按父级维度分配编号（并发不重复）→ 写 `tasks` → 继承父任务模板/模块 → 实例化任务工作流 → 审计。
+- **建任务/拆子任务**：校验当前迭代所处节点的 `allows_task_kinds` 白名单包含该类型（不变量 5，向 workflow 查实例当前节点）→ 校验子任务与父同产品同迭代（不变量 2）→ `bug` 只能作为一级任务、不可拆解 → 按父级维度分配编号（并发不重复）→ 写 `tasks` → 继承父任务模板/模块（无继承时回退产品按类型默认 `task_workflow_defaults`，再回退产品默认）→ 实例化任务工作流 → 审计。
 - **任务状态**：不存独立 `status` 字段做真相；读时由 workflow 实例的终态节点投影（`done` / `cancelled`），未到终态为 `open`（model.md「状态投影」）。
 - **删任务**：仅限 `open` 且无子任务的任务（已终结历史保留，呼应不变量 10「不允许静默丢弃」；有子任务须先删子任务）。权限同改任务字段；事务内先删任务流实例（`node_states` / `gate_approvals` / `artifacts` 外键级联）再删 `tasks` 行，最后审计 `task.delete`。
 - **移除迭代（收口）**：迭代进入终态前，其下未终结任务必须显式转移或取消（不变量 10，由 workflow 迭代收口节点 `require_iteration_tasks_done` 拦截）。
@@ -63,7 +63,7 @@ M1 新建迁移：
 
 - 任务 `product_id` = 迭代 `product_id`；`TaskModule` 的模块与任务同产品（不变量 2）。
 - 编号唯一、不可变、不复用；父子关系不可变（不变量 3）。
-- 任务只创建在 `allows_task_creation` 的迭代节点（不变量 5）。
+- 任务只创建在 `allows_task_kinds` 白名单包含该类型的迭代节点（不变量 5；`allows_task_creation: true` 是「全部类型」的语法糖）；`bug` 只能作为一级任务、不可拆解。
 - 一个任务一个负责人；父任务负责人收口（不变量 4）。
 - 任务深度 ≤ 3（不变量 1）；模块深度 ≤ 5 归 catalog。
 - 任务进入终态前全部子任务 `done`（不变量 9，由 workflow `require_children_done` 拦截，本模块提供子任务终结状态查询）。
@@ -85,7 +85,7 @@ M1 新建迁移：
 2. `internal/store`：planning 相关 sqlc 查询（全部带产品成员过滤），编号分配函数（事务内取号）。
 3. `internal/domain/planning` 补充：编号分配与延伸的领域服务、子任务模板/模块继承校验。
 4. `internal/app/planning`：建迭代（+ workflow 实例化）、建任务/拆子任务、指派、模块关联的用例编排（事务 + 审计 + 不变量校验）。
-5. 跨模块：与 workflow 约定「创建实例」「查当前节点是否 allows_task_creation」「查子任务终结状态」的接口。
+5. 跨模块：与 workflow 约定「创建实例」「查当前节点 allows_task_kinds 白名单」「查子任务终结状态」的接口。
 6. `internal/api`：上表 REST 端点 + DTO；`STAGE_NOT_ALLOW_TASK`/`TREE_DEPTH_EXCEEDED` 等错误码映射（见 [mcp.md](../domain/mcp.md)）。
 7. `internal/mcp`：`create_iteration` / `create_task` / `decompose_task` / `assign_task` / `link_module` / 列表与详情读工具。
 8. 集成测试：编号并发安全、拆解边界、跨产品拒绝、收口约束。

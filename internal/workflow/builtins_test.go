@@ -8,7 +8,7 @@ func TestBuiltinsAllValid(t *testing.T) {
 	if err != nil {
 		t.Fatalf("内置模板解析失败: %v", err)
 	}
-	want := 5 // 两个生命周期 + 三个任务模板
+	want := 7 // 两个生命周期 + 五个任务模板
 	if len(builtins) != want {
 		t.Fatalf("内置模板数 = %d, 期望 %d", len(builtins), want)
 	}
@@ -19,7 +19,7 @@ func TestBuiltinsAllValid(t *testing.T) {
 		}
 		scopes[string(def.Scope)]++
 	}
-	if scopes["iteration"] != 2 || scopes["task"] != 3 {
+	if scopes["iteration"] != 2 || scopes["task"] != 5 {
 		t.Errorf("scope 分布异常: %+v", scopes)
 	}
 }
@@ -39,20 +39,33 @@ func TestLifecycleTemplateParallelStructure(t *testing.T) {
 	if len(pred) != 2 {
 		t.Fatalf("build 前驱数 = %d, 期望 2（AND 汇合）", len(pred))
 	}
-	// 允许建任务的节点：任务拆解 / 研发 / 测试设计。
-	allow := map[string]bool{}
+	// 允许建任务的节点（按类型白名单）：任务拆解（全类型）/ 研发 [dev, bug] /
+	// 测试设计 [test] / 测评 [bug]。
+	allow := map[string][]string{}
 	for _, n := range def.Nodes {
-		if n.AllowsTaskCreation {
-			allow[n.ID] = true
+		if n.AllowsTaskCreation || len(n.AllowsTaskKinds) > 0 {
+			allow[n.ID] = n.AllowsTaskKinds
 		}
 	}
-	for _, id := range []string{"breakdown", "build", "test_design"} {
-		if !allow[id] {
-			t.Errorf("节点 %s 应允许建任务", id)
-		}
+	if _, ok := allow["breakdown"]; !ok {
+		t.Error("节点 breakdown 应允许建任务")
 	}
-	if len(allow) != 3 {
-		t.Errorf("allows_task_creation 节点数 = %d, 期望 3", len(allow))
+	if kinds := allow["build"]; len(kinds) != 2 || kinds[0] != "dev" || kinds[1] != "bug" {
+		t.Errorf("build 白名单异常: %v", kinds)
+	}
+	if kinds := allow["test_design"]; len(kinds) != 1 || kinds[0] != "test" {
+		t.Errorf("test_design 白名单异常: %v", kinds)
+	}
+	if kinds := allow["assess"]; len(kinds) != 1 || kinds[0] != "bug" {
+		t.Errorf("assess 应只允许建 bug 任务: %v", kinds)
+	}
+	if len(allow) != 4 {
+		t.Errorf("允许建任务的节点数 = %d, 期望 4", len(allow))
+	}
+	// 白名单判定：测评允许 bug、拒绝 dev。
+	assess, _ := def.Node("assess")
+	if !assess.AllowsTaskKind("bug") || assess.AllowsTaskKind("dev") {
+		t.Error("assess 应只允许 bug 类型")
 	}
 	// 发布节点声明迭代收口。
 	n, _ := def.Node("release")

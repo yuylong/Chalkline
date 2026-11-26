@@ -148,6 +148,28 @@ nodes:
 edges:
   - { from: a, to: done }
 `,
+		"task作用域声明allows_task_kinds": `
+id: wf-scope-kinds
+name: 越界白名单
+scope: task
+version: 1
+nodes:
+  - { id: a, name: A, type: normal, allows_task_kinds: [dev] }
+  - { id: done, name: D, type: terminal }
+edges:
+  - { from: a, to: done }
+`,
+		"iteration作用域白名单类型非法": `
+id: wf-bad-kind
+name: 非法类型
+scope: iteration
+version: 1
+nodes:
+  - { id: a, name: A, type: normal, allows_task_kinds: [wizard] }
+  - { id: done, name: D, type: terminal }
+edges:
+  - { from: a, to: done }
+`,
 		"门禁角色非法": `
 id: wf-r
 name: 角色
@@ -220,6 +242,41 @@ edges:
 `)
 }
 
+func TestAllowsTaskKind(t *testing.T) {
+	// allows_task_creation: true 是「全部类型」的语法糖（旧模板兼容）；
+	// allows_task_kinds 是显式白名单；两者都无 = 不允许任何类型。
+	def := mustParse(t, `
+id: wf-kinds
+name: 类型白名单
+scope: iteration
+version: 1
+nodes:
+  - { id: sugar, name: 语法糖, type: normal, allows_task_creation: true }
+  - { id: list, name: 白名单, type: normal, allows_task_kinds: [dev, bug] }
+  - { id: none, name: 不允许, type: normal }
+  - { id: done, name: 完成, type: terminal }
+edges:
+  - { from: sugar, to: list }
+  - { from: list,   to: none }
+  - { from: none,   to: done }
+`)
+	sugar, _ := def.Node("sugar")
+	if !sugar.AllowsTaskKind("dev") || !sugar.AllowsTaskKind("bug") || !sugar.AllowsTaskKind("test") {
+		t.Error("allows_task_creation: true 应允许全部类型")
+	}
+	list, _ := def.Node("list")
+	if !list.AllowsTaskKind("dev") || !list.AllowsTaskKind("bug") {
+		t.Error("白名单应包含 dev / bug")
+	}
+	if list.AllowsTaskKind("test") || list.AllowsTaskKind("") {
+		t.Error("白名单外的类型应被拒绝")
+	}
+	none, _ := def.Node("none")
+	if none.AllowsTaskKind("dev") {
+		t.Error("未声明白名单的节点应拒绝一切类型")
+	}
+}
+
 func TestNormalizeGateModeDefaults(t *testing.T) {
 	def := mustParse(t, `
 id: wf-n
@@ -238,8 +295,7 @@ edges:
 	}
 }
 
-func TestRolesSerialize(t *testing.T) {
-	// 角色从 YAML 字符串解析为 identity.Role。
+func TestRolesSerialize(t *testing.T) {	// 角色从 YAML 字符串解析为 identity.Role。
 	def := mustParse(t, validTaskYAML())
 	n, _ := def.Node("b")
 	if len(n.Gate.Roles) != 1 || n.Gate.Roles[0] != identity.RoleReviewer {

@@ -76,11 +76,12 @@ edges:
 | 属性 | 说明 |
 | --- | --- |
 | `gate` | 门禁配置，省略即不拦截，提交直接通过 |
-| `allows_task_creation` | 仅 `iteration` 作用域有效；该阶段允许创建任务，默认 `false` |
+| `allows_task_kinds` | 仅 `iteration` 作用域有效；该阶段允许创建的**任务类型白名单**（声明式，如研发 `[dev, bug]`、测评 `[bug]`），空 = 不允许任何类型 |
+| `allows_task_creation` | 仅 `iteration` 作用域有效；`allows_task_kinds` 的语法糖——`true` 等价于「全部类型」，保留给旧模板 |
 | `require_iteration_tasks_done` | 仅 `iteration` 作用域有效；为 `true` 时该节点 `passed` 需迭代下全部任务终结，默认 `false` |
 | `due_in_days` | 该阶段期望耗时，超期在控制台标红（不阻断） |
 
-`allows_task_creation` 是声明式白名单，不是条件逻辑——它保证「规格没批完不能开工建任务」，同时不把规则写进引擎。
+`allows_task_kinds` 是声明式白名单，不是条件逻辑——它保证「规格没批完不能开工建任务」「测评阶段只能建缺陷任务」，同时不把规则写进引擎。**不给节点加语义类型**（如 `type: test`）：那会变成变相的条件表达式，且自定义流程改名/删节点后对不上固定枚举；阶段语义全部由 `allows_task_kinds` + `gate.artifacts` + `gate.roles` 组合表达。
 
 ## 门禁语义
 
@@ -155,7 +156,7 @@ edges:
 - **汇合（join）**：多前驱节点采用 **AND 语义**——全部前驱 `passed` 才 `ready`。不做 OR-join（任一前驱通过即放行），避免「哪条路走通了」变得不可判定。
 - **单支驳回不连坐**：驳回只回退该分支的提交，并行分支照常推进与评审。
 - **门禁独立**：并行节点各配各的门禁，审批记录互不共享。
-- **并行建任务**：`allows_task_creation` 在并行分支上各自生效——「研发」建开发任务、「测试设计」建测试任务，互不等待。
+- **并行建任务**：`allows_task_kinds` 在并行分支上各自生效——「研发」建开发/缺陷任务、「测试设计」建测试任务，互不等待。
 - 单个模板并行分支建议 ≤ 3 条；再多应拆成两个工作流，或下沉为子任务承载。
 
 状态投影不变：实例存在任一 `in_progress` / `awaiting_review` 节点即视为「进行中」，串行模板同理。
@@ -169,8 +170,21 @@ edges:
 | 全生命周期（默认） | iteration | 竞品调研◆ → {产品规划◆ → 任务拆解◆ ∥ 关键技术调研◆} → {研发 ∥ 测试设计◆} → 测评◆ → 发布◆ → 总结◆ |
 | 轻量交付周期 | iteration | 规划◆ → 任务拆解 → {研发 ∥ 测试设计◆} → 测试验证◆ → 发布◆ → 总结◆ |
 | 标准开发任务 | task | 澄清 → 规格◆ → 实现 → 测试设计◆ → 测试执行◆ → 完成 |
+| 实现切片 | task | 澄清 → 实现◆(pr) → 完成 |
 | 调研任务 | task | 调研提纲 → 信息收集 → 分析 → 调研报告◆ → 完成 |
 | 测试任务 | task | 测试设计◆ → 用例评审◆ → 测试执行 → 缺陷回归 → 测试报告◆ → 完成 |
+| 缺陷修复 | task | 修复 → 回归验证◆(test_execution) → 完成 |
+
+「实现切片」是二/三级子任务的默认模板：子任务是纯开发拆解，只交付代码改动，测试设计/测试执行上移到一级任务。「缺陷修复」是 `kind=bug` 任务的默认模板，回归验证由 `qa` 以测试执行记录把关。
+
+迭代节点的任务类型白名单（`allows_task_kinds`）：
+
+| 节点 | 允许创建的类型 |
+| --- | --- |
+| 任务拆解 | 全类型（research / design / dev / test / ops / summary） |
+| 研发 | `dev` / `bug`（开发中自测发现的缺陷当场可记） |
+| 测试设计 | `test` |
+| 测评 / 测试验证 | `bug`（测评阶段发现的 BUG 有正式入口） |
 
 「全生命周期」默认用于新迭代；若团队是常规短迭代，把产品的默认迭代模板改为「轻量交付周期」即可，前者保留备用。
 
@@ -209,12 +223,13 @@ nodes:
       gate: { approvals: 1, roles: [reviewer], artifacts: [{ kind: research_report, required: true }, { kind: tech_spike, required: true }] } }
   - { id: planning, name: 产品规划, type: normal,
       gate: { approvals: 1, roles: [pm], artifacts: [{ kind: spec, required: true }] } }
-  - { id: breakdown, name: 任务拆解, type: normal, allows_task_creation: true,
+  - { id: breakdown, name: 任务拆解, type: normal,
+      allows_task_kinds: [research, design, dev, test, ops, summary],
       gate: { approvals: 1, roles: [pm, reviewer] } }
-  - { id: build, name: 研发, type: normal, allows_task_creation: true }
-  - { id: test_design, name: 测试设计, type: normal, allows_task_creation: true,
+  - { id: build, name: 研发, type: normal, allows_task_kinds: [dev, bug] }
+  - { id: test_design, name: 测试设计, type: normal, allows_task_kinds: [test],
       gate: { approvals: 1, roles: [qa], artifacts: [{ kind: test_plan, required: true }] } }
-  - { id: assess, name: 测评, type: normal,
+  - { id: assess, name: 测评, type: normal, allows_task_kinds: [bug],
       gate: { approvals: 1, roles: [qa, reviewer], artifacts: [{ kind: test_report, required: true }] } }
   - { id: release, name: 发布, type: normal, require_iteration_tasks_done: true,
       gate: { approvals: 1, roles: [pm, admin], artifacts: [{ kind: test_report, required: true }, { kind: pr, required: true }] } }
@@ -237,7 +252,7 @@ edges:
 
 关键点：
 
-- 任务只能在带 `allows_task_creation: true` 的节点创建（任务拆解 / 研发 / 测试设计）——调研和规划没通过时，任何人都无法建任务。
+- 任务只能在 `allows_task_kinds` 白名单包含该类型的节点创建（任务拆解全类型 / 研发 `[dev, bug]` / 测试设计 `[test]` / 测评 `[bug]`）——调研和规划没通过时，任何人都无法建任务；测评阶段发现的 BUG 则有正式入口。
 - 「任务拆解」与「关键技术调研」**并行**：市场调研通过后即可进入规划与拆解，技术验证同步进行，互不等待。
 - 「研发」是 **AND 汇合**：任务拆解确认 + 关键技术调研通过后才开工——技术没验证过的东西不该直接开发。
 - 「研发」与「测试设计」**并行**：测试设计不必等开发全部结束才开始，两边都完成才进入「测评」。
@@ -249,6 +264,7 @@ edges:
 
 - 迭代进入「任务拆解」后，团队才在迭代下建任务；一级任务在拆解节点建立，较大的任务再拆成二级、三级子任务，每个任务跑自己的任务流（开发/调研/测试各选模板）。
 - 迭代的「测评」门禁看的是本轮整体测试报告，任务流里的测试节点管单个任务的验证，两者不重复但互为证据。
+- 测评阶段发现的缺陷建 `kind=bug` 的一级任务（走「缺陷修复」模板）；发布节点声明 `require_iteration_tasks_done`，缺陷未终结时发布保持阻塞——BUG 清零才能发布。
 - 迭代「总结」门禁必交 `summary`，用于沉淀本轮的经验与下一轮输入。
 
 ## 可定制边界

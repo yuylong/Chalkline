@@ -5,6 +5,7 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -22,26 +23,46 @@ type ProductRow struct {
 	Status                     product.Status
 	DefaultIterationWorkflowID string
 	DefaultTaskWorkflowID      string
-	CreatedBy                  string
-	CreatedAt                  time.Time
+	// TaskWorkflowDefaults 是按任务类型的默认任务流模板（kind → workflow_id）；
+	// 未覆盖的类型回退 DefaultTaskWorkflowID。
+	TaskWorkflowDefaults map[string]string
+	CreatedBy            string
+	CreatedAt            time.Time
 }
 
-const productCols = `id, key, name, description, status, default_iteration_workflow_id, default_task_workflow_id, created_by, created_at`
+const productCols = `id, key, name, description, status, default_iteration_workflow_id, default_task_workflow_id, task_workflow_defaults, created_by, created_at`
 
 func scanProduct(row rowScanner) (ProductRow, error) {
 	var p ProductRow
+	var defaultsJSON []byte
 	err := row.Scan(&p.ID, &p.Key, &p.Name, &p.Description, &p.Status,
-		&p.DefaultIterationWorkflowID, &p.DefaultTaskWorkflowID, &p.CreatedBy, &p.CreatedAt)
-	return p, err
+		&p.DefaultIterationWorkflowID, &p.DefaultTaskWorkflowID, &defaultsJSON, &p.CreatedBy, &p.CreatedAt)
+	if err != nil {
+		return ProductRow{}, err
+	}
+	if len(defaultsJSON) > 0 {
+		if err := json.Unmarshal(defaultsJSON, &p.TaskWorkflowDefaults); err != nil {
+			return ProductRow{}, fmt.Errorf("store: 产品 %s task_workflow_defaults 非法: %w", p.ID, err)
+		}
+	}
+	return p, nil
 }
 
 // InsertProduct 写入产品。
 func InsertProduct(ctx context.Context, q Querier, p ProductRow) error {
-	_, err := q.Exec(ctx,
-		`INSERT INTO products (id, key, name, description, status, default_iteration_workflow_id, default_task_workflow_id, created_by)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+	defaults := p.TaskWorkflowDefaults
+	if defaults == nil {
+		defaults = map[string]string{}
+	}
+	defaultsJSON, err := json.Marshal(defaults)
+	if err != nil {
+		return err
+	}
+	_, err = q.Exec(ctx,
+		`INSERT INTO products (id, key, name, description, status, default_iteration_workflow_id, default_task_workflow_id, task_workflow_defaults, created_by)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
 		p.ID, p.Key, p.Name, p.Description, string(p.Status),
-		p.DefaultIterationWorkflowID, p.DefaultTaskWorkflowID, p.CreatedBy)
+		p.DefaultIterationWorkflowID, p.DefaultTaskWorkflowID, defaultsJSON, p.CreatedBy)
 	return err
 }
 
@@ -61,7 +82,7 @@ func ListVisibleProducts(ctx context.Context, q Querier, userID string, isAdmin 
 		return scanAll(ctx, q, `SELECT `+productCols+` FROM products ORDER BY created_at DESC`, scanProduct)
 	}
 	return scanAll(ctx, q,
-		`SELECT p.id, p.key, p.name, p.description, p.status, p.default_iteration_workflow_id, p.default_task_workflow_id, p.created_by, p.created_at
+		`SELECT p.id, p.key, p.name, p.description, p.status, p.default_iteration_workflow_id, p.default_task_workflow_id, p.task_workflow_defaults, p.created_by, p.created_at
 		 FROM products p
 		 JOIN product_members pm ON pm.product_id = p.id AND pm.user_id = $1
 		 ORDER BY p.created_at DESC`, scanProduct, userID)
@@ -133,7 +154,7 @@ func CountVisibleProducts(ctx context.Context, q Querier, userID string, isAdmin
 
 // productColsRe 是带表前缀的产品列（分页查询联 WHERE 用）。
 const productColsRe = `p.id, p.key, p.name, p.description, p.status,
- p.default_iteration_workflow_id, p.default_task_workflow_id, p.created_by, p.created_at`
+ p.default_iteration_workflow_id, p.default_task_workflow_id, p.task_workflow_defaults, p.created_by, p.created_at`
 
 // ProductUpdate 是产品可更新字段（nil 即不改）。
 type ProductUpdate struct {
@@ -141,22 +162,32 @@ type ProductUpdate struct {
 	Description                *string
 	DefaultIterationWorkflowID *string
 	DefaultTaskWorkflowID      *string
+	TaskWorkflowDefaults       *map[string]string // 非 nil 即整组替换
 	Status                     *product.Status
 }
 
 // UpdateProduct 更新产品字段并归档。
 func UpdateProduct(ctx context.Context, q Querier, id string, u ProductUpdate) error {
+	var defaultsJSON any
+	if u.TaskWorkflowDefaults != nil {
+		b, err := json.Marshal(*u.TaskWorkflowDefaults)
+		if err != nil {
+			return err
+		}
+		defaultsJSON = b
+	}
 	tag, err := q.Exec(ctx,
 		`UPDATE products SET
 		   name = COALESCE($2, name),
 		   description = COALESCE($3, description),
 		   default_iteration_workflow_id = COALESCE($4, default_iteration_workflow_id),
 		   default_task_workflow_id = COALESCE($5, default_task_workflow_id),
-		   status = COALESCE($6, status),
+		   task_workflow_defaults = COALESCE($6, task_workflow_defaults),
+		   status = COALESCE($7, status),
 		   updated_at = now()
 		 WHERE id = $1`,
 		id, u.Name, u.Description, u.DefaultIterationWorkflowID, u.DefaultTaskWorkflowID,
-		statusPtr(u.Status))
+		defaultsJSON, statusPtr(u.Status))
 	if err != nil {
 		return err
 	}
