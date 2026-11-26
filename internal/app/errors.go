@@ -45,9 +45,9 @@ func Unauthorized(format string, args ...any) *Error {
 func Invalid(format string, args ...any) *Error {
 	return &Error{Status: http.StatusUnprocessableEntity, Code: "INVALID_PARAMETER", Message: fmt.Sprintf(format, args...)}
 }
-func StageNotAllowedTask(node, stage string) *Error {
+func StageNotAllowedTask(node, stage string, kind planning.TaskKind) *Error {
 	return &Error{Status: http.StatusConflict, Code: "STAGE_NOT_ALLOW_TASK",
-		Message: fmt.Sprintf("当前阶段 %s（节点 %s）不允许创建任务，模板未声明 allows_task_creation", stage, node)}
+		Message: fmt.Sprintf("当前阶段 %s（节点 %s）不允许创建 %s 类型任务，模板未在 allows_task_kinds 中声明该类型", stage, node, kind)}
 }
 func TaskNotDeletable(format string, args ...any) *Error {
 	return &Error{Status: http.StatusConflict, Code: "TASK_NOT_DELETABLE", Message: fmt.Sprintf(format, args...)}

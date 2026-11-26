@@ -86,11 +86,14 @@ func (h *handlers) getProduct(w http.ResponseWriter, r *http.Request) {
 }
 
 type updateProductReq struct {
-	Name                       *string `json:"name"`
-	Description                *string `json:"description"`
-	DefaultIterationWorkflowID *string `json:"defaultIterationWorkflowId"`
-	DefaultTaskWorkflowID      *string `json:"defaultTaskWorkflowId"`
-	Archive                    bool    `json:"archive"`
+	Name                       *string           `json:"name"`
+	Description                *string           `json:"description"`
+	DefaultIterationWorkflowID *string           `json:"defaultIterationWorkflowId"`
+	DefaultTaskWorkflowID      *string           `json:"defaultTaskWorkflowId"`
+	// TaskWorkflowDefaults 按任务类型的默认任务流模板（kind → workflowId）；
+	// 非 nil 即整组替换，空对象 = 清空（全部回退产品默认）。
+	TaskWorkflowDefaults map[string]string `json:"taskWorkflowDefaults"`
+	Archive              bool              `json:"archive"`
 }
 
 func (h *handlers) updateProduct(w http.ResponseWriter, r *http.Request) {
@@ -104,10 +107,15 @@ func (h *handlers) updateProduct(w http.ResponseWriter, r *http.Request) {
 		writeAppError(w, err)
 		return
 	}
+	var defaults *map[string]string
+	if req.TaskWorkflowDefaults != nil {
+		defaults = &req.TaskWorkflowDefaults
+	}
 	view, err := h.svc().UpdateProduct(r.Context(), actor, pathParam(r, "id"), app.ProductUpdateInput{
 		Name: req.Name, Description: req.Description,
 		DefaultIterationWorkflowID: req.DefaultIterationWorkflowID,
 		DefaultTaskWorkflowID:      req.DefaultTaskWorkflowID,
+		TaskWorkflowDefaults:       defaults,
 		Archive:                    req.Archive,
 	})
 	if err != nil {

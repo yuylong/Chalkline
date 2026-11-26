@@ -1,0 +1,16 @@
+# 实现切片：二/三级子任务的默认模板。子任务是纯开发拆解——
+# 测试设计/测试执行上移到一级任务（需求级），切片只交付代码改动。
+id: wf-task-slice
+name: 实现切片
+scope: task
+version: 1
+settings:
+  require_children_done: true
+nodes:
+  - { id: clarify, name: 澄清, type: normal }
+  - { id: implement, name: 实现, type: normal,
+      gate: { approvals: 1, roles: [reviewer], artifacts: [{ kind: pr, required: true }] } }
+  - { id: done, name: 完成, type: terminal }
+edges:
+  - { from: clarify,   to: implement }
+  - { from: implement, to: done }

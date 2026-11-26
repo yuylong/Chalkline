@@ -125,7 +125,7 @@ export function IterationPane({ iterationId }: { iterationId: string }) {
   const tasks = tasksQuery.data?.items ?? []
 
   // 新建一级任务（POST /iterations/{id}/tasks）：模块树与任务流模板仅在弹窗
-  // 打开时拉取；是否允许建任务由后端按当前阶段 allows_task_creation 校验。
+  // 打开时拉取；是否允许建该类型任务由后端按当前阶段 allows_task_kinds 白名单校验。
   const [taskOpen, setTaskOpen] = useState(false)
   const [taskForm] = Form.useForm<CreateTaskInput>()
   const modulesQuery = useQuery({
@@ -353,7 +353,7 @@ export function IterationPane({ iterationId }: { iterationId: string }) {
             name="title"
             label="标题"
             rules={[{ required: true, message: '请输入标题' }]}
-            extra="仅当前阶段声明 allows_task_creation 时可创建，否则后端会拒绝并提示"
+            extra="仅当前阶段 allows_task_kinds 白名单包含所选类型时可创建；缺陷（bug）只能作为一级任务"
           >
             <Input />
           </Form.Item>

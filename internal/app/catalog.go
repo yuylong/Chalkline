@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/yuylong/Chalkline/internal/domain/identity"
+	"github.com/yuylong/Chalkline/internal/domain/planning"
 	"github.com/yuylong/Chalkline/internal/domain/product"
 	"github.com/yuylong/Chalkline/internal/store"
 )
@@ -28,16 +29,24 @@ type ProductView struct {
 	Description                string `json:"description"`
 	DefaultIterationWorkflowID string `json:"defaultIterationWorkflowId"`
 	DefaultTaskWorkflowID      string `json:"defaultTaskWorkflowId"`
-	CreatedBy                  string `json:"createdBy"`
-	CreatedAt                  string `json:"createdAt"`
+	// TaskWorkflowDefaults 按任务类型的默认任务流模板（kind → workflowId）；
+	// 未覆盖的类型回退 defaultTaskWorkflowId。
+	TaskWorkflowDefaults map[string]string `json:"taskWorkflowDefaults"`
+	CreatedBy           string            `json:"createdBy"`
+	CreatedAt           string            `json:"createdAt"`
 }
 
 func viewProduct(p store.ProductRow) ProductView {
+	defaults := p.TaskWorkflowDefaults
+	if defaults == nil {
+		defaults = map[string]string{}
+	}
 	return ProductView{
 		ProductLite:                ProductLite{ID: p.ID, Key: p.Key, Name: p.Name, Status: string(p.Status)},
 		Description:                p.Description,
 		DefaultIterationWorkflowID: p.DefaultIterationWorkflowID,
 		DefaultTaskWorkflowID:      p.DefaultTaskWorkflowID,
+		TaskWorkflowDefaults:       defaults,
 		CreatedBy:                  p.CreatedBy,
 		CreatedAt:                  p.CreatedAt.UTC().Format(time.RFC3339),
 	}
@@ -64,7 +73,9 @@ func (s *Service) CreateProduct(ctx context.Context, actor Actor, in CreateProdu
 		Status:                     product.StatusActive,
 		DefaultIterationWorkflowID: "wf-iteration-lifecycle", // 内置默认模板
 		DefaultTaskWorkflowID:      "wf-task-standard",
-		CreatedBy:                  p.CreatedBy,
+		// bug 默认走内置「缺陷修复」模板；其余类型回退产品默认（可改）。
+		TaskWorkflowDefaults: map[string]string{string(planning.KindBug): "wf-task-bugfix"},
+		CreatedBy:           p.CreatedBy,
 	}
 	err = s.DB.WithTx(ctx, func(q store.Querier) error {
 		if err := store.InsertProduct(ctx, q, row); err != nil {
@@ -215,7 +226,9 @@ type ProductUpdateInput struct {
 	Description                *string
 	DefaultIterationWorkflowID *string
 	DefaultTaskWorkflowID      *string
-	Archive                    bool // true → archived
+	// TaskWorkflowDefaults 非 nil 即整组替换（kind → workflowId）；键必须是合法任务类型。
+	TaskWorkflowDefaults *map[string]string
+	Archive               bool // true → archived
 }
 
 // UpdateProduct 改名/默认模板/归档：产品 owner 或 admin。
@@ -252,11 +265,20 @@ func (s *Service) UpdateProduct(ctx context.Context, actor Actor, id string, in 
 			}
 		}
 		if in.Name != nil || in.Description != nil ||
-			in.DefaultIterationWorkflowID != nil || in.DefaultTaskWorkflowID != nil {
+			in.DefaultIterationWorkflowID != nil || in.DefaultTaskWorkflowID != nil ||
+			in.TaskWorkflowDefaults != nil {
+			if in.TaskWorkflowDefaults != nil {
+				for k := range *in.TaskWorkflowDefaults {
+					if !planning.TaskKind(k).Valid() {
+						return Invalid("taskWorkflowDefaults 含未知任务类型 %q", k)
+					}
+				}
+			}
 			if err := store.UpdateProduct(ctx, q, id, store.ProductUpdate{
 				Name: in.Name, Description: in.Description,
 				DefaultIterationWorkflowID: in.DefaultIterationWorkflowID,
 				DefaultTaskWorkflowID:      in.DefaultTaskWorkflowID,
+				TaskWorkflowDefaults:        in.TaskWorkflowDefaults,
 			}); err != nil {
 				return err
 			}

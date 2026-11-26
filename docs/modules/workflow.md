@@ -97,7 +97,7 @@ MCP：`get_next_action` / `start_step` / `submit_step` / `attach_artifact` / `re
 4. 材料替换重置审批的 app 逻辑（任务 3 的一部分，独立验收）。
 5. `internal/api`：模板管理 REST + 实例状态查询 + pending reviews 端点。
 6. `internal/mcp`：上表 8 个 MCP 工具（协议转换，调 app，不写规则）。
-7. 与 planning 集成：迭代/任务创建时调用 `CreateInstance`；查询当前节点 `allows_task_creation`。
+7. 与 planning 集成：迭代/任务创建时调用 `CreateInstance`；查询当前节点 `allows_task_kinds` 白名单。
 8. 集成测试：端到端状态机、并发乐观锁、驳回重提、材料替换（testcontainers 真实 PG）。
 9. 回归：确认 M0 引擎单测全绿，行为未变。
 10. 文档：验收后更新 `docs/modules/README.md` 状态。

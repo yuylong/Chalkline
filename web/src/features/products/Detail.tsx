@@ -22,7 +22,7 @@ import dayjs from 'dayjs'
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { apiDelete, apiGet, apiPatch, apiPost, apiPut } from '../../shared/api'
-import { fmtDate, fmtTime, iterationStatusMeta, memberRoleMeta, memberNameMap, memberNameOf, MEMBER_ROLES, userLabel } from '../../shared/status'
+import { fmtDate, fmtTime, iterationStatusMeta, memberRoleMeta, memberNameMap, memberNameOf, MEMBER_ROLES, taskKindMeta, userLabel } from '../../shared/status'
 import { ApiErrorBanner, DetailError, PageLoading } from '../../shared/ui'
 import { formToProviders, ProviderBindingFields, type ProviderFormValues } from '../iterations/Providers'
 import type {
@@ -229,6 +229,16 @@ export default function ProductDetail() {
             { key: 'desc', label: '描述', children: p.description || '—' },
             { key: 'itwf', label: '默认迭代工作流', children: wfName(p.defaultIterationWorkflowId) },
             { key: 'tswf', label: '默认任务工作流', children: wfName(p.defaultTaskWorkflowId) },
+            {
+              key: 'kindwf',
+              label: '按类型默认任务流',
+              children:
+                Object.entries(p.taskWorkflowDefaults ?? {}).length > 0
+                  ? Object.entries(p.taskWorkflowDefaults)
+                      .map(([k, wf]) => `${taskKindMeta[k]?.label ?? k}：${wfName(wf)}`)
+                      .join('；')
+                  : '—',
+            },
             { key: 'created', label: '创建时间', children: fmtTime(p.createdAt) },
             { key: 'createdBy', label: '创建人', children: memberNameOf(memberNames, p.createdBy) },
           ]}

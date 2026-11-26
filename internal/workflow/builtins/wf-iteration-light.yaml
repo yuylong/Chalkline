@@ -7,11 +7,12 @@ version: 1
 nodes:
   - { id: planning, name: 规划, type: normal,
       gate: { approvals: 1, roles: [pm], artifacts: [{ kind: spec, required: true }] } }
-  - { id: breakdown, name: 任务拆解, type: normal, allows_task_creation: true }
-  - { id: build, name: 研发, type: normal, allows_task_creation: true }
-  - { id: test_design, name: 测试设计, type: normal, allows_task_creation: true,
+  - { id: breakdown, name: 任务拆解, type: normal,
+      allows_task_kinds: [research, design, dev, test, ops, summary] }
+  - { id: build, name: 研发, type: normal, allows_task_kinds: [dev, bug] }
+  - { id: test_design, name: 测试设计, type: normal, allows_task_kinds: [test],
       gate: { approvals: 1, roles: [qa], artifacts: [{ kind: test_plan, required: true }] } }
-  - { id: verify, name: 测试验证, type: normal,
+  - { id: verify, name: 测试验证, type: normal, allows_task_kinds: [bug],
       gate: { approvals: 1, roles: [qa, reviewer], artifacts: [{ kind: test_report, required: true }] } }
   - { id: release, name: 发布, type: normal, require_iteration_tasks_done: true,
       gate: { approvals: 1, roles: [pm], artifacts: [{ kind: test_report, required: true }, { kind: pr, required: true }] } }

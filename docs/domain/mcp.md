@@ -44,7 +44,7 @@ Agent 每轮先调 `chalkline_get_next_action`，服务端返回结构化结论�
 | `chalkline_create_iteration` | 建迭代（一条新生命周期），指定模板与 `providers`（成果物必选且唯一，流程记录可选，代码库可选可多个） | pm |
 | `chalkline_set_iteration_providers` | 整组替换迭代 provider 绑定（结构配置；已提交成果物后 `409 PROVIDERS_LOCKED`） | pm / 产品 owner |
 | `chalkline_set_iteration_provider_credential` | 轮换 provider 写权限凭据（token / 用户名密码；加密落库、永不回显；**不受冻结限制**） | pm / 产品 owner |
-| `chalkline_create_task` | 建任务：`kind`、父任务、多个模块，返回分配的多级编号 | pm / admin |
+| `chalkline_create_task` | 建任务：`kind`（`bug` 只能作为一级任务）、父任务、多个模块，返回分配的多级编号 | pm / admin |
 | `chalkline_decompose_task` | 拆解为子任务（批量），返回 `CHK-12.3` 形式的编号 | 任务负责人 / pm |
 | `chalkline_assign_task` | 指派负责人 | pm / 任务负责人 |
 | `chalkline_link_module` | 增删任务与模块的关联 | pm / 任务负责人 |

@@ -16,11 +16,14 @@ const (
 	KindTest     TaskKind = "test"
 	KindOps      TaskKind = "ops"
 	KindSummary  TaskKind = "summary"
+	// KindBug 是测试/使用中发现的缺陷。bug 只能作为一级任务挂在迭代下，
+	// 不可拆解；修复走「缺陷修复」模板，回归验证后终结（docs/domain/model.md）。
+	KindBug TaskKind = "bug"
 )
 
 func (k TaskKind) Valid() bool {
 	switch k {
-	case KindResearch, KindDesign, KindDev, KindTest, KindOps, KindSummary:
+	case KindResearch, KindDesign, KindDev, KindTest, KindOps, KindSummary, KindBug:
 		return true
 	}
 	return false
@@ -92,8 +95,14 @@ func NewTask(id, productID, iterationID string, parent *Task, number TaskNumber,
 }
 
 // ensureDecomposable 强制任务拆解规则：子任务必须与父任务同产品、同迭代，
-// 深度 ≤ 3，且编号必须是父编号向下延伸一级。
+// 深度 ≤ 3，且编号必须是父编号向下延伸一级。bug 不可拆解、只能作为一级任务。
 func ensureDecomposable(parent *Task, child *Task) error {
+	if parent.Kind == KindBug {
+		return fmt.Errorf("%w: bug 任务 %s 不可拆解，缺陷修复是原子工作", ErrValidation, parent.Number)
+	}
+	if child.Kind == KindBug {
+		return fmt.Errorf("%w: bug 只能作为一级任务，不可挂为子任务", ErrValidation)
+	}
 	if parent.ProductID != child.ProductID {
 		return fmt.Errorf("%w: 子任务与父任务必须同产品（不变量 2）", ErrValidation)
 	}

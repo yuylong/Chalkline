@@ -305,7 +305,7 @@ type CreateTaskInput struct {
 	WorkflowID   string // 可选；子任务默认继承父任务模板
 }
 
-// CreateTask 建任务：校验当前迭代阶段 allows_task_creation（不变量 5）、
+// CreateTask 建任务：校验当前迭代阶段允许该类型（不变量 5，allows_task_kinds 白名单）、
 // 编号按父级维度原子分配、同产品同迭代（不变量 2）、实例化任务流。
 func (s *Service) CreateTask(ctx context.Context, actor Actor, in CreateTaskInput) (TaskView, error) {
 	var out TaskView
@@ -354,8 +354,12 @@ func (s *Service) createTaskInTx(ctx context.Context, q store.Querier, actor Act
 		}
 	}
 
-	// 阶段校验（不变量 5）：迭代当前 actionable 节点须有 allows_task_creation。
-	if err := s.ensureIterationAllowsTasks(ctx, q, it); err != nil {
+	// 类型缺省 dev；阶段校验（不变量 5）按类型白名单判定。
+	kind := in.Kind
+	if kind == "" {
+		kind = planning.KindDev
+	}
+	if err := s.ensureIterationAllowsKind(ctx, q, it, kind); err != nil {
 		return TaskView{}, err
 	}
 
@@ -391,10 +395,13 @@ func (s *Service) createTaskInTx(ctx context.Context, q store.Querier, actor Act
 		}
 	}
 
-	// 任务流模板：显式指定 > 继承父任务 > 产品默认。
+	// 任务流模板：显式指定 > 继承父任务 > 产品按类型默认 > 产品默认。
 	wfID := in.WorkflowID
 	if wfID == "" && parent != nil {
 		wfID = parent.WorkflowID
+	}
+	if wfID == "" {
+		wfID = p.TaskWorkflowDefaults[string(kind)]
 	}
 	if wfID == "" {
 		wfID = p.DefaultTaskWorkflowID
@@ -414,15 +421,11 @@ func (s *Service) createTaskInTx(ctx context.Context, q store.Querier, actor Act
 		return TaskView{}, MapError(err)
 	}
 
-	// 领域构造（含拆解不变量：同产品同迭代 / 深度 ≤ 3 / 编号延伸）。
+	// 领域构造（含拆解不变量：同产品同迭代 / 深度 ≤ 3 / 编号延伸 / bug 不可拆）。
 	var parentDom *planning.Task
 	if parent != nil {
 		pd := parentTaskDomain(*parent)
 		parentDom = &pd
-	}
-	kind := in.Kind
-	if kind == "" {
-		kind = planning.KindDev
 	}
 	priority := in.Priority
 	if priority == "" {
@@ -527,8 +530,9 @@ func parentTaskDomain(t store.TaskRow) planning.Task {
 	return dom
 }
 
-// ensureIterationAllowsTasks 强制不变量 5：只在 allows_task_creation 的迭代节点建任务。
-func (s *Service) ensureIterationAllowsTasks(ctx context.Context, q store.Querier, it store.IterationRow) error {
+// ensureIterationAllowsKind 强制不变量 5：只在迭代当前节点
+// allows_task_kinds 白名单（或 allows_task_creation 语法糖）包含该类型时建任务。
+func (s *Service) ensureIterationAllowsKind(ctx context.Context, q store.Querier, it store.IterationRow, kind planning.TaskKind) error {
 	instRow, err := store.InstanceByWorkItem(ctx, q, workitem.ScopeIteration, it.ID)
 	if err != nil {
 		return wrapNotFound(err, "迭代实例不存在")
@@ -542,8 +546,7 @@ func (s *Service) ensureIterationAllowsTasks(ctx context.Context, q store.Querie
 		return err
 	}
 	for _, id := range inst.CurrentNodes() {
-		node, ok := inst.Definition.Node(id)
-		if ok && node.AllowsTaskCreation {
+		if node, ok := inst.Definition.Node(id); ok && node.AllowsTaskKind(string(kind)) {
 			return nil
 		}
 	}
@@ -553,7 +556,7 @@ func (s *Service) ensureIterationAllowsTasks(ctx context.Context, q store.Querie
 			stage = node.Name
 		}
 	}
-	return StageNotAllowedTask(stageNodeName(inst), stage)
+	return StageNotAllowedTask(stageNodeName(inst), stage, kind)
 }
 
 func stageNodeName(inst *workflow.Instance) string {

@@ -368,9 +368,11 @@ export default function TaskDetailPage() {
       <Card
         title="子任务"
         extra={
-          <Button size="small" type="primary" onClick={() => setDecomposeOpen(true)}>
-            拆解子任务
-          </Button>
+          t.kind !== 'bug' ? (
+            <Button size="small" type="primary" onClick={() => setDecomposeOpen(true)}>
+              拆解子任务
+            </Button>
+          ) : undefined
         }
       >
         <TaskTree key={taskQuery.dataUpdatedAt} roots={t.children} memberNames={memberNames} />
@@ -422,7 +424,7 @@ export default function TaskDetailPage() {
                       <Form.Item name={[field.name, 'kind']} label="类型" initialValue="dev">
                         <Select
                           style={{ width: 120 }}
-                          options={TASK_KINDS.map((k) => ({
+                          options={TASK_KINDS.filter((k) => k !== 'bug').map((k) => ({
                             value: k,
                             label: taskKindMeta[k]?.label ?? k,
                           }))}
