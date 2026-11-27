@@ -40,8 +40,9 @@ type Service struct {
 	ReviewSLA time.Duration
 	// ReviewEscalation 升级阈值（M3：超过即升级给产品 owner/admin；0 = 默认 72h）。
 	ReviewEscalation time.Duration
-	// ProviderDefaults 是环境变量提供的集成 provider 默认配置（M3 管理台展示与环境提示）。
-	ProviderDefaults []ProviderDefault
+	// EnvSecretConfigured 报告服务端环境变量是否为该 provider 配置了公共凭据
+	// （CHALKLINE_*_TOKEN；仅用于界面提示回退链，不参与连接地址选择）。
+	EnvSecretConfigured map[string]bool
 	// SMTPDefaults 是环境变量提供的 SMTP 发件默认值（M4 邮箱配置；Password 只进内存）。
 	SMTPDefaults SMTPEnvDefaults
 	// SecretKey 是静态凭据加密密钥（M4：SMTP 密码加密落库；来自 CHALKLINE_SECRET_KEY）。
@@ -60,11 +61,11 @@ type Service struct {
 	Async func(fn func())
 }
 
-// Options 是 NewService 的可选配置（M3 评审 SLA 与集成默认值；M4 邮箱配置）。
+// Options 是 NewService 的可选配置（M3 评审 SLA；M4 邮箱配置）。
 type Options struct {
-	ReviewSLA        time.Duration
-	ReviewEscalation time.Duration
-	ProviderDefaults []ProviderDefault
+	ReviewSLA          time.Duration
+	ReviewEscalation   time.Duration
+	EnvSecretConfigured map[string]bool
 	SMTPDefaults     SMTPEnvDefaults
 	SecretKey        string
 	// SMTPTestSend 注入测试邮件发送通道（server 组装层用 notify.SMTP 实现）。
@@ -82,7 +83,7 @@ type Options struct {
 func NewService(db *store.DB, log *slog.Logger, jwt *auth.JWTManager, gate ArtifactGate, opts Options) *Service {
 	return &Service{DB: db, Log: log, JWT: jwt, Now: time.Now, Gate: gate,
 		ReviewSLA: opts.ReviewSLA, ReviewEscalation: opts.ReviewEscalation,
-		ProviderDefaults: opts.ProviderDefaults,
+		EnvSecretConfigured: opts.EnvSecretConfigured,
 		SMTPDefaults:     opts.SMTPDefaults, SecretKey: opts.SecretKey,
 		SMTPTestSend: opts.SMTPTestSend,
 		LDAP:         opts.LDAP,

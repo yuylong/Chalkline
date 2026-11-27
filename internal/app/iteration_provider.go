@@ -33,7 +33,8 @@ type IterationProviderView struct {
 	// AuthType：''（未配置）/ token / basic。
 	AuthType     string `json:"authType,omitempty"`
 	AuthUsername string `json:"authUsername,omitempty"`
-	// SecretConfigured 表示迭代级已保存凭据（密文）；EnvSecretConfigured 表示服务端环境变量已配置。
+	// SecretConfigured 表示迭代级已保存凭据（密文）；EnvSecretConfigured 表示服务端环境变量已配置
+	// （CHALKLINE_*_TOKEN，仅作回退提示；地址选择与它无关）。
 	SecretConfigured    bool `json:"secretConfigured"`
 	EnvSecretConfigured bool `json:"envSecretConfigured"`
 	// PersonalSecretConfigured 表示当前查看人已为该 provider + baseURL 配置个人凭据；
@@ -330,10 +331,7 @@ func (s *Service) providerViewsFor(ctx context.Context, q store.Querier,
 			DirTemplate: r.DirTemplate,
 			Branch:      r.Branch,
 		}
-		envConfigured := false
-		if def, ok := s.providerDefault(r.Provider); ok {
-			envConfigured = def.TokenConfigured
-		}
+		envConfigured := s.EnvSecretConfigured[r.Provider]
 		personal := false
 		if q != nil && viewer.UserID != "" {
 			personal, _ = s.personalCredentialConfigured(ctx, q, viewer.UserID, b)

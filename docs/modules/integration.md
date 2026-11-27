@@ -42,11 +42,10 @@ type Provider interface {
 
 - `outbox_events`（M0 `0001_platform_baseline.sql` 已建，M2 `0007_integration.sql` 增加 `next_attempt_at`）：`id` / `event_type` / `payload`（id、标题、链接、操作者，不携带正文）/ `status`（pending/sent/failed）/ `attempts` / `last_error` / `next_attempt_at` / 时间戳。
 - `external_links`（`0007_integration.sql` 已建）：`subject_type` / `subject_id` / `provider` / `external_id` / `url`，唯一键 `(subject_type, subject_id, provider, external_id)`，用于 Redmine issue 回写、Outline 文档归属等稳定关联（见 model.md「ExternalLink」）；store 提供 `UpsertExternalLink` / `ListExternalLinks`。
-- `integration_provider_configs`（`0009_provider_config.sql`）：`provider` / `enabled` / `base_url` / `updated_by` / `updated_at`。只存启停与地址覆盖，**不存凭据**；无行 = 使用环境变量默认值。
-- `provider_endpoints`（`0017_provider_endpoints.sql`）：连接目录——admin 维护的多套外部系统地址（`kind` / `label` / `base_url` / `note` / `enabled`，唯一键 `(kind, base_url)`）。迭代绑定弹窗的下拉建议来源，也可自行填写额外地址；只存地址与展示名，不存任何凭据。
+- `provider_endpoints`（`0017_provider_endpoints.sql`）：全局 Provider 服务器列表——admin 维护的多套外部系统地址（`kind` / `label` / `base_url` / `note` / `enabled`，唯一键 `(kind, base_url)`）。这是全局 provider 配置的唯一形态：没有「默认 git / 默认 svn / 默认 outline / 默认 redmine」，任何选择 provider 的地方（迭代绑定、个人凭据）都从列表取下拉建议，也可手填任意地址；只存地址与展示名，不存任何凭据。
 - `user_provider_credentials`（`0017_provider_endpoints.sql`）：成员个人凭据——按 `(user_id, provider, base_url)` 配置本人 Key（`auth_type` / `auth_username` / `secret_enc` AES-GCM 密文）。出站解析顺序：提交人个人凭据 → 迭代绑定凭据 → 服务端环境变量；API 永不回显，只报「已配置 / 未配置」。
 - `smtp_configs`（`0011_add_smtp_config.sql`，单行 `config_key='default'`）：`enabled` / `host` / `port` / `username` / `password_enc`（AES-GCM 密文）/ `from_addr` / `updated_by` / `updated_at`。**唯一落库凭据**：SMTP 发件密码，加密存储（`platform.Seal`，密钥 `CHALKLINE_SECRET_KEY`，回退 `CHALKLINE_JWT_SECRET`），API 永不回显。
-- 各 provider 的 `base_url` 与凭据：环境变量/密钥文件，**不入库**（base_url 可由管理台覆盖并持久化，凭据永不入库——SMTP 发件密码是唯一例外，见上）。
+- 各 provider 的 `base_url` 与凭据：环境变量/密钥文件，**不入库**（快照适配器沿用环境变量构造值；迭代绑定的地址随迭代固化，凭据永不入库——SMTP 发件密码是唯一例外，见上）。
 
 ## 不变量（本模块保证）
 
@@ -80,7 +79,7 @@ type Provider interface {
 ## 开放问题
 
 - 各适配器的优先级：M2 先做 `outline` + `git`（门禁材料最常用），`redmine`/`svn` 按需？→ **已定**：M2 四个全部实现，Validate 均为本地校验（不出站），Snapshot 仅 outline/redmine 做，且白名单为空时零出站。
-- 是否需要配置化的 provider 启停与 base_url 管理界面？→ **已定并交付**：M3 控制台 `/integrations` + `integration_provider_configs`（凭据仍只读环境变量，见下「Provider 配置可视化」）。
+- 是否需要配置化的 provider 启停与 base_url 管理界面？→ **已定并交付，后被 M7 取代**：M3 曾交付按 kind 的启停与地址覆盖（`integration_provider_configs`）；M7 起全局 provider 配置只有「服务器列表」（`provider_endpoints`），按 kind 的默认配置与运行时覆盖整体移除（见下「M7 增量」）。
 - `next_attempt_at` 与 `attempts` 的语义？→ **已定**：`attempts` 累计失败次数，`next_attempt_at` 控制下次可投递时间（指数退避），达到 5 次标 `failed`。
 
 ## M3 增量：Webhook 订阅管理与开放 API 策略
@@ -94,12 +93,9 @@ type Provider interface {
 - 代码：`internal/store/webhooks.go`、`internal/app/webhooks.go`、`internal/api/handlers_scale.go`、`notify/dispatcher.go`（`SubscriptionSource`）；迁移 `0008_scale.sql`。
 - 测试：`notify/dispatcher_subs_test.go`（event_types 过滤、订阅失败不阻断事件、签名头）。
 
-## M3 增量：Provider 配置可视化（已交付）
+## M3 增量：Provider 配置可视化（已交付，M7 起移除）
 
-- **表**：`integration_provider_configs`（迁移 `0009_provider_config.sql`）只存 `provider` / `enabled` / `base_url` / `updated_by` / `updated_at`；**凭据不落库**。
-- **REST（admin）**：`GET /api/v1/integration/providers`、`PATCH /api/v1/integration/providers/{kind}`；仅 `enabled` 与 `baseUrl` 可改，`baseUrl` 必须为 http(s) 且不得内嵌凭据。
-- **运行时生效**：`integration.Registry.WithConfig` 注入解析器（server 组装层读 store）；停用 → 跳过外部快照（本地格式与私网/回环校验仍执行）；`baseURL` 非空 → 以不可变副本覆盖环境变量值。未写入行 = 使用环境变量默认值。
-- **控制台**：`/integrations`（admin）展示 label、生效 baseURL、环境变量默认值、凭据是否已配置（布尔）、启停开关与最近更新人/时间。
+> 曾交付按 kind 的启停与 `base_url` 覆盖（`integration_provider_configs` + `Registry.WithConfig` 运行时解析）。M7 起被「服务器列表」模型取代：表已随迁移 `0018_drop_provider_default_config.sql` 删除，REST `/integration/providers` 与 `/integration/provider-options` 下线，运行时覆盖机制一并移除（见「M7 增量」）。
 
 ## M4 增量：邮箱配置（已交付）
 
@@ -131,7 +127,6 @@ type Provider interface {
   - `GET /api/v1/iterations/{id}/providers`（成员）/ `PUT /api/v1/iterations/{id}/providers`（产品成员持 pm、owner、admin）：返回 `items` + `locked` / `editable` / `lockedReason`；结构修改在冻结后返回 `409 PROVIDERS_LOCKED`。
   - `PUT /api/v1/iterations/{id}/providers/{providerId}/credential`（产品成员持 pm、owner、admin）：**只更新认证方式与凭据，不受冻结限制**；`authSecret` 留空表示保持库内已有密文；审计 `iteration.providers.credential` 只记录方式与「是否更换」，绝不写密钥。
   - `GET /api/v1/iterations/{id}` 的 `providers` 字段随详情返回，节点详情页据此展示连接。
-  - `GET /api/v1/integration/provider-options`（任意登录成员）：全局连接默认值（`kind` / `label` / `baseUrl` / `enabled`），供迭代创建与配置弹窗预填地址；**不含任何凭据信息**（admin 专用的 `/integration/providers` 仍保留）。
 - **MCP**：`chalkline_create_iteration` 接收 `providers`；新增 `chalkline_get_iteration_providers` / `chalkline_set_iteration_providers` / `chalkline_set_iteration_provider_credential`（轮换 Key，不受冻结限制）。材料提交时来源必须与绑定一致，否则 `422 INVALID_ARTIFACT_REF`。
 - **分发**（`internal/integration/dispatch.go`，app 经 `ArtifactDistributor` / `ProcessRecorder` 依赖倒置调用）
   - 成果物：`outline` 建文档（集合 + 标题）；`git` 走 GitLab 兼容 `repository/commits`（文件已存在自动改用 `update`）；`svn` 走 WebDAV（`MKCOL` 建目录 + `PUT` 写文件）。
@@ -149,6 +144,16 @@ type Provider interface {
 - **连接目录**（`provider_endpoints`，迁移 `0017_provider_endpoints.sql`）：admin 增删改查多套外部系统地址（多个 git / svn / redmine / outline）；REST `GET/POST /api/v1/integration/endpoints`、`PATCH/DELETE /api/v1/integration/endpoints/{id}`（写操作 admin）；成员读已启用项作迭代绑定弹窗的下拉建议，也可自行填写额外地址。审计 `integration.endpoint.create/update/delete`。
 - **个人凭据**（`user_provider_credentials`，同迁移）：成员经 `GET/PUT /api/v1/me/credentials`、`DELETE /api/v1/me/credentials/{provider}?baseUrl=…` 自助维护本人 Key；Secret AES-GCM 加密落库（`platform.Seal`），API 永不回显；审计 `user.credential.set/delete` 只记方式与「是否更换」。
 - **出站优先级**：`app.withSubmitterAuth` 在成果物分发与流程记录前解析提交人个人凭据，未配置回退迭代绑定凭据（再回退环境变量）；解密失败按「未配置」降级并告警，不阻断流程（不变量 15）。
-- **控制台**：管理台「Provider 管理」页新增「连接目录」卡片（增删改查 + 启停）；新增全员可见「我的凭据」页（`/credentials`）；迭代绑定弹窗的 baseURL 建议合并目录项（带展示名）；迭代详情页在查看人缺个人 Key 时给出告警。
+- **控制台**：管理台「Provider 管理」页即服务器列表（增删改查 + 启停 + 类型筛选按钮条）；新增全员可见「我的凭据」页（`/credentials`）；迭代绑定弹窗的 baseURL 建议来自服务器列表（带展示名）；迭代详情页在查看人缺个人 Key 时给出告警。
 - **入口分层与权限标记**：`IterationProvidersView` 新增 `canManageCredential` / `canManageBinding`——前者决定是否显示「更新公共凭据」（产品成员 + `pm` 或 admin），后者决定是否显示「配置」（还要求未冻结）；普通成员只看到只读绑定 + 「我的凭据」引导，避免点到 403。迭代级按钮改名为「更新公共凭据」，弹窗内说明「公共 Key 与个人 Key 的区别」；材料提交 / 补挂表单顶部新增「本次将以谁的 Key 出站」提示条（缺个人 Key 为 warning 并带跳转）。
 - 代码：`internal/store/provider_endpoint.go`、`internal/store/user_provider_credential.go`、`internal/app/provider_endpoint.go`、`internal/app/user_credential.go`、`internal/app/distribute.go`（`withSubmitterAuth`）、`internal/api/handlers_provider_endpoint.go`；前端 `web/src/features/integrations/Providers.tsx`、`web/src/features/credentials/My.tsx`、`web/src/features/iterations/Providers.tsx`。
+
+## M7 增量：全局 Provider 服务器列表（已交付）
+
+> 取消「默认 provider」概念：全局 provider 配置只有一张服务器列表（`provider_endpoints`），每条记录一个服务器的类型、名称与地址。
+
+- **移除**：`integration_provider_configs` 表（迁移 `0018_drop_provider_default_config.sql`）、REST `GET/PATCH /integration/providers` 与 `GET /integration/provider-options`、`integration.Registry` 的运行时配置解析（`WithConfig` / `ProviderConfig` / `WithBaseURL` 副本）。快照适配器沿用环境变量构造值；`CHALKLINE_*_TOKEN` 仍作为公共凭据回退（界面只提示「是否已配置」，经 `app.Options.EnvSecretConfigured` 注入）。
+- **类型注册表**：`app.providerKindLabels` 静态声明 git / svn / outline / redmine 的展示名与合法类型（目录与个人凭据校验共用），不再依赖环境变量组装。
+- **控制台**：`/integrations`（admin）即服务器列表——列表上方是类型按钮条（「所有」+ 各类型，带数量），一键筛选；任何选择 provider 的地方（迭代绑定、我的凭据）都从列表取下拉建议，也可手填任意地址。
+- **个人凭据**：`PUT /api/v1/me/credentials` 的 `baseUrl` 必填——凭据按 (provider, 服务器地址) 生效，没有「默认地址」；历史空地址行仍可列出与删除。
+- 代码：`internal/app/integration.go`（仅余 `normalizeBaseURL`）、`internal/app/provider_endpoint.go`、`internal/app/user_credential.go`、`internal/app/iteration_provider.go`、`internal/integration/provider.go`、`internal/server/server.go`；前端 `web/src/features/integrations/Providers.tsx`、`web/src/features/iterations/Providers.tsx`、`web/src/features/credentials/My.tsx`。

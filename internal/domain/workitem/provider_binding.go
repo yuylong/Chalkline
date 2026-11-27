@@ -2,8 +2,8 @@ package workitem
 
 // provider_binding.go：迭代级 provider 绑定（docs/domain/integrations.md「迭代 Provider」）。
 //
-// 与全局连接配置（integration_provider_configs）的区别：
-//   - 全局配置回答「这套部署能连哪些外部系统」（baseURL / 凭据 / 启停）；
+// 与全局服务器列表（provider_endpoints）的区别：
+//   - 服务器列表回答「这套部署能连哪些外部系统」（类型 / 名称 / 地址，不含凭据）；
 //   - 迭代绑定回答「这个迭代的成果物、流程记录、代码分别落在哪里」，连接信息随迭代固化，
 //     迭代创建或初始化阶段配置，首次提交成果物后冻结（不变量 22）。
 

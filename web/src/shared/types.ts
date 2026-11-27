@@ -380,34 +380,9 @@ export interface WebhookView {
   lastError?: string
 }
 
-// ---- M3：集成 provider 配置（admin；凭据只读环境变量）----
-
-export interface ProviderConfigView {
-  kind: string
-  label: string
-  enabled: boolean
-  baseUrl: string // 生效值（库内覆盖优先）
-  envBaseUrl: string // 环境变量默认值（只读提示）
-  tokenRequired: boolean
-  tokenConfigured: boolean
-  updatedBy?: string
-  updatedAt?: string
-}
-
-export interface ProviderConfigUpdate {
-  enabled?: boolean
-  baseUrl?: string
-}
-
-/** 全局连接默认值（成员可读）：供迭代 provider 绑定预填 baseURL，不含凭据。 */
-export interface ProviderOptionView {
-  kind: string
-  label: string
-  baseUrl: string
-  enabled: boolean
-}
-
-// ---- 连接目录（admin 增删改查；成员可读已启用项）----
+// ---- 全局 Provider 服务器列表（admin 增删改查；成员可读已启用项）----
+// 每条记录一个服务器的类型、名称与地址；没有「默认 provider」概念，
+// 任何选择处都从列表选取或手填地址。
 
 export interface ProviderEndpointView {
   id: string
@@ -450,7 +425,7 @@ export interface UserCredentialView {
 
 export interface UserCredentialSet {
   provider: string
-  /** 空 = 适用于该 provider 的默认地址。 */
+  /** 凭据按具体服务器地址生效；必填。 */
   baseUrl?: string
   authType?: string
   authUsername?: string
