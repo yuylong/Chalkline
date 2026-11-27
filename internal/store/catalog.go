@@ -301,22 +301,30 @@ type ModuleRow struct {
 	Name      string
 	Path      string
 	SortOrder int
+	// 基本信息（0016 迁移）。
+	Description string
+	TechStack   []string
+	OwnerID     string
+	Developers  []string
+	Testers     []string
 }
 
 func scanModule(row rowScanner) (ModuleRow, error) {
 	var m ModuleRow
-	err := row.Scan(&m.ID, &m.ProductID, &m.ParentID, &m.Name, &m.Path, &m.SortOrder)
+	err := row.Scan(&m.ID, &m.ProductID, &m.ParentID, &m.Name, &m.Path, &m.SortOrder,
+		&m.Description, &m.TechStack, &m.OwnerID, &m.Developers, &m.Testers)
 	return m, err
 }
 
-const moduleCols = "id, product_id, parent_id, name, path, sort_order"
+const moduleCols = "id, product_id, parent_id, name, path, sort_order, description, tech_stack, owner_id, developers, testers"
 
 // InsertModule 写入模块。
 func InsertModule(ctx context.Context, q Querier, m ModuleRow) error {
 	_, err := q.Exec(ctx,
-		`INSERT INTO modules (id, product_id, parent_id, name, path, sort_order)
-		 VALUES ($1, $2, $3, $4, $5, $6)`,
-		m.ID, m.ProductID, m.ParentID, m.Name, m.Path, m.SortOrder)
+		`INSERT INTO modules (id, product_id, parent_id, name, path, sort_order, description, tech_stack, owner_id, developers, testers)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+		m.ID, m.ProductID, m.ParentID, m.Name, m.Path, m.SortOrder,
+		m.Description, m.TechStack, m.OwnerID, m.Developers, m.Testers)
 	return err
 }
 
@@ -364,6 +372,60 @@ func RepathSubtree(ctx context.Context, q Querier, productID, oldPrefix, newPref
 		 WHERE product_id = $1 AND path LIKE $2 || '/%'`,
 		productID, oldPrefix, newPrefix)
 	return err
+}
+
+// ModuleInfoUpdate 是模块基本信息可更新字段（nil 即不改；人员字段空指针可清空）。
+type ModuleInfoUpdate struct {
+	Description *string
+	TechStack   *[]string
+	OwnerID     *string
+	Developers  *[]string
+	Testers     *[]string
+}
+
+// UpdateModuleInfo 更新模块基本信息（不改名/不移动，不动 path）。
+func UpdateModuleInfo(ctx context.Context, q Querier, productID, moduleID string, u ModuleInfoUpdate) error {
+	tag, err := q.Exec(ctx,
+		`UPDATE modules SET
+		   description = COALESCE($3, description),
+		   tech_stack  = COALESCE($4, tech_stack),
+		   owner_id    = COALESCE($5, owner_id),
+		   developers  = COALESCE($6, developers),
+		   testers     = COALESCE($7, testers)
+		 WHERE id = $2 AND product_id = $1`,
+		productID, moduleID,
+		u.Description, u.TechStack, u.OwnerID, u.Developers, u.Testers)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// CountTasksInModuleSubtree 统计挂靠模块子树（含自身）的任务数。
+// 删除守卫用：> 0 时需显式 force 确认（task_modules 随删除级联解除）。
+func CountTasksInModuleSubtree(ctx context.Context, q Querier, productID, path string) (int64, error) {
+	var n int64
+	err := q.QueryRow(ctx,
+		`SELECT count(DISTINCT tm.task_id)
+		 FROM task_modules tm JOIN modules m ON m.id = tm.module_id
+		 WHERE m.product_id = $1 AND (m.path = $2 OR m.path LIKE $2 || '/%')`,
+		productID, path).Scan(&n)
+	return n, err
+}
+
+// DeleteModuleSubtree 删除模块及其整棵子树（parent_id 级联）。
+// 返回删除的模块数供审计；0 即模块不存在。
+func DeleteModuleSubtree(ctx context.Context, q Querier, productID, moduleID string) (int64, error) {
+	tag, err := q.Exec(ctx,
+		`DELETE FROM modules WHERE product_id = $1 AND id = $2`,
+		productID, moduleID)
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
 }
 
 // ProductIDsOfMember 列成员身份（排除 guest——guest 只读不可审批）的产品 id。

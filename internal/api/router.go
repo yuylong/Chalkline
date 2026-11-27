@@ -82,6 +82,7 @@ func NewRouter(d Deps) http.Handler {
 			g.Get("/products/{id}/modules", h.listModules)
 			g.Post("/products/{id}/modules", h.createModule)
 			g.Patch("/products/{id}/modules/{mid}", h.updateModule)
+			g.Delete("/products/{id}/modules/{mid}", h.deleteModule)
 			g.Put("/documents/{ownerType}/{ownerID}", h.upsertDocument)
 			g.Get("/documents/{ownerType}/{ownerID}", h.getDocument)
 

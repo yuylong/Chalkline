@@ -39,9 +39,11 @@ type API interface {
 	ListMemberCandidates(ctx context.Context, actor Actor, productID string) ([]UserView, error)
 	UpsertMember(ctx context.Context, actor Actor, productID, userID string, role product.MemberRole) error
 	RemoveMember(ctx context.Context, actor Actor, productID, userID string) error
-	CreateModule(ctx context.Context, actor Actor, productID, parentID, name string, sortOrder int) (ModuleView, error)
+	CreateModule(ctx context.Context, actor Actor, productID, parentID, name string, sortOrder int, info ModuleInfoInput) (ModuleView, error)
 	ListModules(ctx context.Context, actor Actor, productID string) ([]ModuleView, error)
 	UpdateModule(ctx context.Context, actor Actor, productID, moduleID string, in UpdateModuleInput) (ModuleView, error)
+	// DeleteModule 删除模块子树；有任务挂靠时须 force 确认（409 MODULE_HAS_TASKS）。
+	DeleteModule(ctx context.Context, actor Actor, productID, moduleID string, force bool) error
 	UpsertDocument(ctx context.Context, actor Actor, in UpsertDocumentInput) (DocumentView, error)
 	GetDocument(ctx context.Context, actor Actor, ownerType, ownerID string) (DocumentView, error)
 

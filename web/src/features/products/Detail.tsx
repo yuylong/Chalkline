@@ -1,4 +1,4 @@
-// 产品详情：基本信息、迭代列表（跳看板）、成员表、模块树（只读 + 新建）。
+// 产品详情：基本信息、迭代列表（跳看板）、成员表、模块树（点击查看/编辑/删除）。
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   App,
@@ -6,17 +6,20 @@ import {
   Card,
   DatePicker,
   Descriptions,
+  Drawer,
   Form,
   Input,
   InputNumber,
   Modal,
   Popconfirm,
   Select,
+  Space,
   Table,
   Tag,
   Tree,
   TreeSelect,
   Typography,
+  type FormInstance,
 } from 'antd'
 import dayjs from 'dayjs'
 import { useState } from 'react'
@@ -50,6 +53,37 @@ function toTreeNodes(mods: ModuleView[]): ModuleNode[] {
   }))
 }
 
+/** 平铺模块树为 id → 模块映射（点击节点取基本信息用）。 */
+function flattenModules(mods: ModuleView[], out: Map<string, ModuleView> = new Map()): Map<string, ModuleView> {
+  for (const m of mods) {
+    out.set(m.id, m)
+    if (m.children?.length) flattenModules(m.children, out)
+  }
+  return out
+}
+
+/** 模块基本信息表单值（建/改共用）。 */
+type ModuleInfoFormValues = {
+  parentId?: string
+  name: string
+  sortOrder?: number
+  description?: string
+  techStack?: string[]
+  ownerId?: string
+  developers?: string[]
+  testers?: string[]
+}
+
+function toInfoPayload(v: ModuleInfoFormValues) {
+  return {
+    description: v.description ?? '',
+    techStack: v.techStack ?? [],
+    ownerId: v.ownerId ?? '',
+    developers: v.developers ?? [],
+    testers: v.testers ?? [],
+  }
+}
+
 export default function ProductDetail() {
   const { id = '' } = useParams()
   const navigate = useNavigate()
@@ -59,7 +93,11 @@ export default function ProductDetail() {
   const [moduleOpen, setModuleOpen] = useState(false)
   const [memberOpen, setMemberOpen] = useState(false)
   const [iterationOpen, setIterationOpen] = useState(false)
-  const [moduleForm] = Form.useForm<{ parentId?: string; name: string; sortOrder?: number }>()
+  // 模块详情抽屉：selectedModuleId 非空即打开；moduleEditing 为编辑态。
+  const [selectedModuleId, setSelectedModuleId] = useState<string | null>(null)
+  const [moduleEditing, setModuleEditing] = useState(false)
+  const [moduleForm] = Form.useForm<ModuleInfoFormValues>()
+  const [editForm] = Form.useForm<{ name: string } & Omit<ModuleInfoFormValues, 'parentId' | 'sortOrder' | 'name'>>()
   const [memberForm] = Form.useForm<{ userId: string; role: string }>()
   const [iterationForm] = Form.useForm<
     {
@@ -87,11 +125,12 @@ export default function ProductDetail() {
     (workflows?.items ?? []).find((w) => w.id === wfId)?.name ?? wfId
 
   const createModuleMut = useMutation({
-    mutationFn: (v: { parentId?: string; name: string; sortOrder?: number }) =>
+    mutationFn: (v: ModuleInfoFormValues) =>
       apiPost<ModuleView>(`/products/${id}/modules`, {
         parentId: v.parentId ?? '',
         name: v.name,
         sortOrder: v.sortOrder ?? 0,
+        info: toInfoPayload(v),
       }),
     onSuccess: () => {
       message.success('模块已创建')
@@ -100,6 +139,48 @@ export default function ProductDetail() {
       queryClient.invalidateQueries({ queryKey: ['product', id] })
     },
     onError: (err: Error) => message.error(err.message),
+  })
+
+  const updateModuleMut = useMutation({
+    mutationFn: (v: { moduleId: string; values: ModuleInfoFormValues }) =>
+      apiPatch<ModuleView>(`/products/${id}/modules/${v.moduleId}`, {
+        name: v.values.name,
+        info: toInfoPayload(v.values),
+      }),
+    onSuccess: () => {
+      message.success('模块已保存')
+      setModuleEditing(false)
+      queryClient.invalidateQueries({ queryKey: ['product', id] })
+    },
+    onError: (err: Error) => message.error(err.message),
+  })
+
+  // 删除模块子树：有任务挂靠时后端 409 MODULE_HAS_TASKS，确认后带 force 重试。
+  const deleteModuleMut = useMutation({
+    mutationFn: (v: { moduleId: string; force: boolean }) =>
+      apiDelete(`/products/${id}/modules/${v.moduleId}${v.force ? '?force=true' : ''}`),
+    onSuccess: () => {
+      message.success('模块已删除')
+      setSelectedModuleId(null)
+      setModuleEditing(false)
+      queryClient.invalidateQueries({ queryKey: ['product', id] })
+    },
+    onError: (err: Error) => {
+      const apiErr = err as { code?: string; details?: { tasks?: number } }
+      if (apiErr.code === 'MODULE_HAS_TASKS') {
+        const tasks = apiErr.details?.tasks ?? 0
+        Modal.confirm({
+          title: '该模块子树内有任务挂靠',
+          content: `共 ${tasks} 个任务挂靠此模块子树。强制删除会解除挂靠关系（任务本身保留），确认删除？`,
+          okText: '强制删除',
+          okButtonProps: { danger: true },
+          cancelText: '取消',
+          onOk: () => deleteModuleMut.mutate({ moduleId: selectedModuleId ?? '', force: true }),
+        })
+        return
+      }
+      message.error(err.message)
+    },
   })
 
   const upsertMemberMut = useMutation({
@@ -195,6 +276,10 @@ export default function ProductDetail() {
   if (detail.isPending) return <PageLoading />
   const p = detail.data
   const memberNames = memberNameMap(p.members)
+  const moduleIndex = flattenModules(p.modules)
+  const selectedModule = selectedModuleId ? moduleIndex.get(selectedModuleId) : undefined
+  // 模块人员字段候选 = 产品成员（owner/member/guest 均可被指定为责任人/开发者/测试者）。
+  const memberOptions = p.members.map((m) => ({ value: m.userId, label: userLabel(m) }))
   const myRole = p.members.find((m) => m.userId === whoami?.user.id)?.role
   const isAdmin = whoami?.user.roles.includes('admin') === true
   const canManageMembers = isAdmin || myRole === 'owner'
@@ -383,7 +468,19 @@ export default function ProductDetail() {
         extra={<Button size="small" onClick={() => setModuleOpen(true)}>新建模块</Button>}
       >
         {p.modules.length ? (
-          <Tree treeData={toTreeNodes(p.modules)} defaultExpandAll blockNode />
+          <Tree
+            treeData={toTreeNodes(p.modules)}
+            defaultExpandAll
+            blockNode
+            onSelect={(keys) => {
+              // 取消选中（再点同一节点）不关抽屉以外的逻辑；空 key 忽略。
+              const key = keys[0]
+              if (typeof key === 'string') {
+                setSelectedModuleId(key)
+                setModuleEditing(false)
+              }
+            }}
+          />
         ) : (
           <Typography.Text type="secondary">暂无模块</Typography.Text>
         )}
@@ -412,8 +509,37 @@ export default function ProductDetail() {
           <Form.Item name="sortOrder" label="排序号" initialValue={0}>
             <InputNumber min={0} />
           </Form.Item>
+          <ModuleInfoFields memberOptions={memberOptions} />
         </Form>
       </Modal>
+
+      <ModuleInfoDrawer
+        module={selectedModule}
+        memberNames={memberNames}
+        memberOptions={memberOptions}
+        editing={moduleEditing}
+        saving={updateModuleMut.isPending}
+        deleting={deleteModuleMut.isPending}
+        onStartEdit={() => {
+          setModuleEditing(true)
+          editForm.setFieldsValue({
+            name: selectedModule?.name,
+            description: selectedModule?.description,
+            techStack: selectedModule?.techStack ?? [],
+            ownerId: selectedModule?.ownerId || undefined,
+            developers: selectedModule?.developers ?? [],
+            testers: selectedModule?.testers ?? [],
+          })
+        }}
+        onCancelEdit={() => setModuleEditing(false)}
+        onSave={(v) => selectedModule && updateModuleMut.mutate({ moduleId: selectedModule.id, values: v })}
+        onDelete={() => selectedModule && deleteModuleMut.mutate({ moduleId: selectedModule.id, force: false })}
+        onClose={() => {
+          setSelectedModuleId(null)
+          setModuleEditing(false)
+        }}
+        form={editForm}
+      />
 
       <Modal
         title="添加成员"
@@ -485,5 +611,146 @@ export default function ProductDetail() {
         </Form>
       </Modal>
     </div>
+  )
+}
+
+/** 模块基本信息表单字段（新建/编辑共用）。人员候选为产品成员。 */
+function ModuleInfoFields({ memberOptions }: { memberOptions: { value: string; label: string }[] }) {
+  return (
+    <>
+      <Form.Item name="description" label="功能简介">
+        <Input.TextArea rows={3} maxLength={2000} showCount placeholder="该模块负责什么、边界在哪" />
+      </Form.Item>
+      <Form.Item name="techStack" label="技术栈（标签，可多选/自由输入）">
+        <Select
+          mode="tags"
+          allowClear
+          placeholder="如 go、react、postgresql"
+          tokenSeparators={[',', ' ']}
+        />
+      </Form.Item>
+      <Form.Item name="ownerId" label="主要责任人">
+        <Select
+          allowClear
+          showSearch
+          optionFilterProp="label"
+          placeholder="未指定"
+          options={memberOptions}
+        />
+      </Form.Item>
+      <Form.Item name="developers" label="开发者（可多选）">
+        <Select mode="multiple" allowClear showSearch optionFilterProp="label" options={memberOptions} />
+      </Form.Item>
+      <Form.Item name="testers" label="测试者（可多选）">
+        <Select mode="multiple" allowClear showSearch optionFilterProp="label" options={memberOptions} />
+      </Form.Item>
+    </>
+  )
+}
+
+/** 模块详情抽屉：查看基本信息，可进入编辑态或删除（有任务挂靠时二次确认）。 */
+function ModuleInfoDrawer({
+  module,
+  memberNames,
+  memberOptions,
+  editing,
+  saving,
+  deleting,
+  onStartEdit,
+  onCancelEdit,
+  onSave,
+  onDelete,
+  onClose,
+  form,
+}: {
+  module?: ModuleView
+  memberNames: Record<string, string>
+  memberOptions: { value: string; label: string }[]
+  editing: boolean
+  saving: boolean
+  deleting: boolean
+  onStartEdit: () => void
+  onCancelEdit: () => void
+  onSave: (v: { name: string } & Record<string, unknown>) => void
+  onDelete: () => void
+  onClose: () => void
+  form: FormInstance
+}) {
+  if (!module) return null
+  const names = (ids: string[]) =>
+    ids.length ? ids.map((uid) => memberNameOf(memberNames, uid)).join('、') : '—'
+  return (
+    <Drawer
+      open={Boolean(module)}
+      onClose={onClose}
+      width={480}
+      title={
+        <Space>
+          <span>{module.name}</span>
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+            {module.path}
+          </Typography.Text>
+        </Space>
+      }
+      extra={
+        editing ? undefined : (
+          <Space>
+            <Button size="small" onClick={onStartEdit}>
+              编辑
+            </Button>
+            <Popconfirm
+              title="确认删除该模块？"
+              description="将删除整棵子模块树；有任务挂靠时会再次确认"
+              okText="删除"
+              okButtonProps={{ danger: true }}
+              onConfirm={onDelete}
+            >
+              <Button size="small" danger loading={deleting}>
+                删除
+              </Button>
+            </Popconfirm>
+          </Space>
+        )
+      }
+    >
+      {editing ? (
+        <Form form={form} layout="vertical" onFinish={(v) => onSave(v as { name: string } & Record<string, unknown>)}>
+          <Form.Item name="name" label="模块名" rules={[{ required: true, message: '请输入模块名' }]}>
+            <Input />
+          </Form.Item>
+          <ModuleInfoFields memberOptions={memberOptions} />
+          <Form.Item style={{ marginBottom: 0, textAlign: 'right' }}>
+            <Space>
+              <Button onClick={onCancelEdit}>取消</Button>
+              <Button type="primary" htmlType="submit" loading={saving}>
+                保存
+              </Button>
+            </Space>
+          </Form.Item>
+        </Form>
+      ) : (
+        <Descriptions
+          column={1}
+          size="small"
+          items={[
+            { key: 'desc', label: '功能简介', children: module.description || '—' },
+            {
+              key: 'tech',
+              label: '技术栈',
+              children: module.techStack.length
+                ? module.techStack.map((t) => (
+                    <Tag key={t} color="blue">
+                      {t}
+                    </Tag>
+                  ))
+                : '—',
+            },
+            { key: 'owner', label: '主要责任人', children: memberNameOf(memberNames, module.ownerId) },
+            { key: 'devs', label: '开发者', children: names(module.developers) },
+            { key: 'testers', label: '测试者', children: names(module.testers) },
+          ]}
+        />
+      )}
+    </Drawer>
   )
 }

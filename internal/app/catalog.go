@@ -32,8 +32,8 @@ type ProductView struct {
 	// TaskWorkflowDefaults 按任务类型的默认任务流模板（kind → workflowId）；
 	// 未覆盖的类型回退 defaultTaskWorkflowId。
 	TaskWorkflowDefaults map[string]string `json:"taskWorkflowDefaults"`
-	CreatedBy           string            `json:"createdBy"`
-	CreatedAt           string            `json:"createdAt"`
+	CreatedBy            string            `json:"createdBy"`
+	CreatedAt            string            `json:"createdAt"`
 }
 
 func viewProduct(p store.ProductRow) ProductView {
@@ -75,7 +75,7 @@ func (s *Service) CreateProduct(ctx context.Context, actor Actor, in CreateProdu
 		DefaultTaskWorkflowID:      "wf-task-standard",
 		// bug 默认走内置「缺陷修复」模板；其余类型回退产品默认（可改）。
 		TaskWorkflowDefaults: map[string]string{string(planning.KindBug): "wf-task-bugfix"},
-		CreatedBy:           p.CreatedBy,
+		CreatedBy:            p.CreatedBy,
 	}
 	err = s.DB.WithTx(ctx, func(q store.Querier) error {
 		if err := store.InsertProduct(ctx, q, row); err != nil {
@@ -110,19 +110,38 @@ type MemberView struct {
 
 // ModuleView 是模块节点视图（组树用）。
 type ModuleView struct {
-	ID        string       `json:"id"`
-	ProductID string       `json:"productId"`
-	ParentID  string       `json:"parentId,omitempty"`
-	Name      string       `json:"name"`
-	Path      string       `json:"path"`
-	SortOrder int          `json:"sortOrder"`
-	Children  []ModuleView `json:"children,omitempty"`
+	ID        string `json:"id"`
+	ProductID string `json:"productId"`
+	ParentID  string `json:"parentId,omitempty"`
+	Name      string `json:"name"`
+	Path      string `json:"path"`
+	SortOrder int    `json:"sortOrder"`
+	// 基本信息（0016 迁移）：人员字段为 user_id，空即未指定。
+	Description string       `json:"description"`
+	TechStack   []string     `json:"techStack"`
+	OwnerID     string       `json:"ownerId"`
+	Developers  []string     `json:"developers"`
+	Testers     []string     `json:"testers"`
+	Children    []ModuleView `json:"children,omitempty"`
 }
 
 func viewModule(m store.ModuleRow) ModuleView {
-	v := ModuleView{ID: m.ID, ProductID: m.ProductID, Name: m.Name, Path: m.Path, SortOrder: m.SortOrder}
+	v := ModuleView{
+		ID: m.ID, ProductID: m.ProductID, Name: m.Name, Path: m.Path, SortOrder: m.SortOrder,
+		Description: m.Description, TechStack: m.TechStack, OwnerID: m.OwnerID,
+		Developers: m.Developers, Testers: m.Testers,
+	}
 	if m.ParentID != nil {
 		v.ParentID = *m.ParentID
+	}
+	if v.TechStack == nil {
+		v.TechStack = []string{}
+	}
+	if v.Developers == nil {
+		v.Developers = []string{}
+	}
+	if v.Testers == nil {
+		v.Testers = []string{}
 	}
 	return v
 }
@@ -228,7 +247,7 @@ type ProductUpdateInput struct {
 	DefaultTaskWorkflowID      *string
 	// TaskWorkflowDefaults 非 nil 即整组替换（kind → workflowId）；键必须是合法任务类型。
 	TaskWorkflowDefaults *map[string]string
-	Archive               bool // true → archived
+	Archive              bool // true → archived
 }
 
 // UpdateProduct 改名/默认模板/归档：产品 owner 或 admin。
@@ -278,7 +297,7 @@ func (s *Service) UpdateProduct(ctx context.Context, actor Actor, id string, in 
 				Name: in.Name, Description: in.Description,
 				DefaultIterationWorkflowID: in.DefaultIterationWorkflowID,
 				DefaultTaskWorkflowID:      in.DefaultTaskWorkflowID,
-				TaskWorkflowDefaults:        in.TaskWorkflowDefaults,
+				TaskWorkflowDefaults:       in.TaskWorkflowDefaults,
 			}); err != nil {
 				return err
 			}
@@ -410,8 +429,36 @@ func (s *Service) RemoveMember(ctx context.Context, actor Actor, productID, user
 	})
 }
 
+// ModuleInfoInput 是模块基本信息入参（建/改共用）。
+type ModuleInfoInput struct {
+	Description string
+	TechStack   []string
+	OwnerID     string
+	Developers  []string
+	Testers     []string
+}
+
+// validateModuleInfo 校验基本信息并核对人员存在性（成员候选由前端下拉保证，
+// 此处只查存在性，与任务指派校验一致）。
+func validateModuleInfo(ctx context.Context, q store.Querier, in ModuleInfoInput) error {
+	if err := product.ValidateModuleInfo(in.Description, in.TechStack, in.Developers, in.Testers); err != nil {
+		return MapError(err)
+	}
+	for _, uid := range append(append([]string{}, in.Developers...), in.Testers...) {
+		if _, err := store.UserByID(ctx, q, uid); err != nil {
+			return wrapNotFound(err, "人员不存在")
+		}
+	}
+	if in.OwnerID != "" {
+		if _, err := store.UserByID(ctx, q, in.OwnerID); err != nil {
+			return wrapNotFound(err, "主要责任人不存在")
+		}
+	}
+	return nil
+}
+
 // CreateModule 建模块：产品 owner/member 且持 pm，或 admin；同级名唯一（不变量 1）。
-func (s *Service) CreateModule(ctx context.Context, actor Actor, productID, parentID, name string, sortOrder int) (ModuleView, error) {
+func (s *Service) CreateModule(ctx context.Context, actor Actor, productID, parentID, name string, sortOrder int, info ModuleInfoInput) (ModuleView, error) {
 	var out ModuleView
 	err := s.DB.WithTx(ctx, func(q store.Querier) error {
 		mc, err := s.mustView(ctx, q, actor, productID)
@@ -419,6 +466,9 @@ func (s *Service) CreateModule(ctx context.Context, actor Actor, productID, pare
 			return err
 		}
 		if err := canCreateInProduct(mc, actor); err != nil {
+			return err
+		}
+		if err := validateModuleInfo(ctx, q, info); err != nil {
 			return err
 		}
 		var parentPath string
@@ -456,7 +506,9 @@ func (s *Service) CreateModule(ctx context.Context, actor Actor, productID, pare
 		if err != nil {
 			return MapError(err)
 		}
-		row := store.ModuleRow{ID: m.ID, ProductID: m.ProductID, ParentID: parentPtr, Name: m.Name, Path: path, SortOrder: m.SortOrder}
+		row := store.ModuleRow{ID: m.ID, ProductID: m.ProductID, ParentID: parentPtr, Name: m.Name, Path: path, SortOrder: m.SortOrder,
+			Description: info.Description, TechStack: info.TechStack, OwnerID: info.OwnerID,
+			Developers: info.Developers, Testers: info.Testers}
 		if err := store.InsertModule(ctx, q, row); err != nil {
 			if store.IsDuplicate(err) {
 				return Invalid("同级已存在模块名 %q", name)
@@ -469,13 +521,15 @@ func (s *Service) CreateModule(ctx context.Context, actor Actor, productID, pare
 	return out, err
 }
 
-// UpdateModuleInput 模块更新：改名/移动子树。
+// UpdateModuleInput 模块更新：改名/移动子树/基本信息。
 type UpdateModuleInput struct {
 	Name     *string
 	ParentID *string // nil 不动；"" 提升为根；有值换父
+	// Info 非 nil 即更新基本信息（整组替换语义，与产品 taskWorkflowDefaults 一致）。
+	Info *ModuleInfoInput
 }
 
-// UpdateModule 改名/移动子树：整棵子树重算 path（不变量 1；不许移到自身子孙下）。
+// UpdateModule 改名/移动子树/基本信息：整棵子树重算 path（不变量 1；不许移到自身子孙下）。
 // in.ParentID：nil 不动；"" 提升为根；其他值换父。
 func (s *Service) UpdateModule(ctx context.Context, actor Actor, productID, moduleID string, in UpdateModuleInput) (ModuleView, error) {
 	var out ModuleView
@@ -486,6 +540,11 @@ func (s *Service) UpdateModule(ctx context.Context, actor Actor, productID, modu
 		}
 		if err := canCreateInProduct(mc, actor); err != nil {
 			return err
+		}
+		if in.Info != nil {
+			if err := validateModuleInfo(ctx, q, *in.Info); err != nil {
+				return err
+			}
 		}
 		m, err := store.ModuleByID(ctx, q, moduleID)
 		if err != nil {
@@ -528,6 +587,19 @@ func (s *Service) UpdateModule(ctx context.Context, actor Actor, productID, modu
 		}
 		renaming := in.Name != nil && name != m.Name
 		if !moving && !renaming {
+			if in.Info != nil {
+				if err := store.UpdateModuleInfo(ctx, q, productID, moduleID, store.ModuleInfoUpdate{
+					Description: &in.Info.Description, TechStack: &in.Info.TechStack,
+					OwnerID: &in.Info.OwnerID, Developers: &in.Info.Developers, Testers: &in.Info.Testers,
+				}); err != nil {
+					return err
+				}
+				m.Description, m.TechStack = in.Info.Description, in.Info.TechStack
+				m.OwnerID, m.Developers, m.Testers = in.Info.OwnerID, in.Info.Developers, in.Info.Testers
+				out = viewModule(m)
+				return audit(ctx, q, actor, "module.update", "module", moduleID,
+					map[string]any{"info": true})
+			}
 			out = viewModule(m)
 			return nil // 幂等 no-op
 		}
@@ -569,9 +641,19 @@ func (s *Service) UpdateModule(ctx context.Context, actor Actor, productID, modu
 		m.Path = newPath
 		m.Name = name
 		m.ParentID = newParent
+		if in.Info != nil {
+			if err := store.UpdateModuleInfo(ctx, q, productID, moduleID, store.ModuleInfoUpdate{
+				Description: &in.Info.Description, TechStack: &in.Info.TechStack,
+				OwnerID: &in.Info.OwnerID, Developers: &in.Info.Developers, Testers: &in.Info.Testers,
+			}); err != nil {
+				return err
+			}
+			m.Description, m.TechStack = in.Info.Description, in.Info.TechStack
+			m.OwnerID, m.Developers, m.Testers = in.Info.OwnerID, in.Info.Developers, in.Info.Testers
+		}
 		out = viewModule(m)
 		return audit(ctx, q, actor, "module.update", "module", moduleID,
-			map[string]any{"path": m.Path, "name": m.Name})
+			map[string]any{"path": m.Path, "name": m.Name, "info": in.Info != nil})
 	})
 	return out, err
 }
@@ -602,6 +684,46 @@ func (s *Service) ListModules(ctx context.Context, actor Actor, productID string
 		return nil, err
 	}
 	return buildModuleTree(rows), nil
+}
+
+// DeleteModule 删除模块及其整棵子树：产品 owner/pm 成员或 admin。
+// 子树内有任务挂靠时须 force=true 显式确认（挂靠关系随 task_modules 级联解除，
+// 任务本身不动）；否则 409 MODULE_HAS_TASKS。
+func (s *Service) DeleteModule(ctx context.Context, actor Actor, productID, moduleID string, force bool) error {
+	return s.DB.WithTx(ctx, func(q store.Querier) error {
+		mc, err := s.mustView(ctx, q, actor, productID)
+		if err != nil {
+			return err
+		}
+		if err := canCreateInProduct(mc, actor); err != nil {
+			return err
+		}
+		m, err := store.ModuleByID(ctx, q, moduleID)
+		if err != nil {
+			return wrapNotFound(err, "模块不存在")
+		}
+		if m.ProductID != productID {
+			return NotFound("模块不存在或不可见")
+		}
+		tasks, err := store.CountTasksInModuleSubtree(ctx, q, productID, m.Path)
+		if err != nil {
+			return err
+		}
+		if tasks > 0 && !force {
+			return &Error{Status: http.StatusConflict, Code: "MODULE_HAS_TASKS",
+				Message: fmt.Sprintf("模块子树内有 %d 个任务挂靠，需确认后强制删除（挂靠关系将解除，任务保留）", tasks),
+				Details: map[string]any{"tasks": tasks}}
+		}
+		deleted, err := store.DeleteModuleSubtree(ctx, q, productID, moduleID)
+		if err != nil {
+			return err
+		}
+		if deleted == 0 {
+			return NotFound("模块不存在")
+		}
+		return audit(ctx, q, actor, "module.delete", "module", moduleID,
+			map[string]any{"path": m.Path, "tasks": tasks, "force": force})
+	})
 }
 
 // UpsertDocumentInput 文档保存入参。

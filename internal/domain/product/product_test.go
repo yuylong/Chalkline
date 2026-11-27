@@ -70,3 +70,34 @@ func TestModuleTree(t *testing.T) {
 		t.Error("路径必须以 / 开头")
 	}
 }
+
+func TestValidateModuleInfo(t *testing.T) {
+	// 合法：空信息与完整信息都应通过。
+	if err := ValidateModuleInfo("", nil, nil, nil); err != nil {
+		t.Fatalf("空基本信息应合法: %v", err)
+	}
+	if err := ValidateModuleInfo("目录模块", []string{"go", "pgx"}, []string{"usr_1"}, []string{"usr_2"}); err != nil {
+		t.Fatalf("完整基本信息应合法: %v", err)
+	}
+	// 简介超长。
+	if err := ValidateModuleInfo(string(make([]rune, MaxModuleDescription+1)), nil, nil, nil); err == nil {
+		t.Error("简介超长应拒绝")
+	}
+	// 技术栈：重复 / 超数 / 空标签。
+	if err := ValidateModuleInfo("", []string{"go", "go"}, nil, nil); err == nil {
+		t.Error("技术栈重复应拒绝")
+	}
+	if err := ValidateModuleInfo("", make([]string, MaxModuleTechStack+1), nil, nil); err == nil {
+		t.Error("技术栈超数应拒绝")
+	}
+	if err := ValidateModuleInfo("", []string{""}, nil, nil); err == nil {
+		t.Error("空技术栈标签应拒绝")
+	}
+	// 人员：空 id / 重复。
+	if err := ValidateModuleInfo("", nil, []string{""}, nil); err == nil {
+		t.Error("空人员 id 应拒绝")
+	}
+	if err := ValidateModuleInfo("", nil, []string{"usr_1", "usr_1"}, nil); err == nil {
+		t.Error("开发者重复应拒绝")
+	}
+}
