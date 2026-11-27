@@ -6,6 +6,10 @@
 deploy/.env
 deploy/certs/
 
+# Trae 本地配置（MCP 配置含访问令牌；skill 从 agent/skills/ 复制而来）
+.trae/mcp.json
+.trae/skills/
+
 # 前端
 web/node_modules/
 web/dist/
