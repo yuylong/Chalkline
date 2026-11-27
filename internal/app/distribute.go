@@ -50,6 +50,25 @@ type artifactToDistribute struct {
 	NodeName string
 }
 
+// dispatchActor 是本次出站的提交人：优先以其个人凭据出站（外部系统可见
+// 「对应员工提交」），未配置时回退绑定上的公共凭据。
+type dispatchActor struct {
+	UserID   string
+	Username string
+}
+
+// withSubmitterAuth 解析本次出站凭据：提交人个人凭据优先，未配置时回退
+// 迭代绑定上的凭据（其自身未配置时由 Dispatcher 回退服务端环境变量）。
+func (s *Service) withSubmitterAuth(ctx context.Context, q store.Querier,
+	actor dispatchActor, b workitem.ProviderBinding) workitem.ProviderBinding {
+	if auth, ok := s.personalCredentialFor(ctx, q, actor.UserID, b); ok {
+		out := b
+		out.Auth = auth
+		return out
+	}
+	return b
+}
+
 // processAction 是待记录的一次流程动作。
 type processAction struct {
 	WorkItemType workitem.Scope
@@ -59,6 +78,8 @@ type processAction struct {
 	NodeTitle    string // 建票标题（仅节点动作使用）
 	Key          string // 幂等键：同一事实只推一次
 	Body         string
+	// ActorID 是动作发起人：出站时优先以其个人凭据建票/回复（外部系统可见对应员工）。
+	ActorID string
 }
 
 // ---- 成果物分发 ----
@@ -90,7 +111,9 @@ func (s *Service) dispatchArtifacts(wtype workitem.Scope, workItemID string, ite
 			return
 		}
 		for _, a := range items {
-			s.dispatchOne(ctx, iterationID, it.Number, binding, a)
+			// 提交人个人凭据优先：外部系统可见「对应员工提交」；未配置回退绑定凭据。
+			b := s.withSubmitterAuth(ctx, q, dispatchActor{UserID: a.Ref.SubmittedBy}, binding)
+			s.dispatchOne(ctx, iterationID, it.Number, b, a)
 		}
 	})
 }
@@ -171,6 +194,10 @@ func (s *Service) recordOneProcess(ctx context.Context, a processAction) {
 	binding, ok := workitem.ProcessBinding(bindings)
 	if !ok {
 		return
+	}
+	// 动作发起人个人凭据优先：建票/回复以对应员工身份落在外部系统。
+	if a.ActorID != "" {
+		binding = s.withSubmitterAuth(ctx, q, dispatchActor{UserID: a.ActorID}, binding)
 	}
 	subject, err := s.processSubject(ctx, q, a, iterationID)
 	if err != nil {
@@ -339,7 +366,7 @@ func startProcessAction(actor Actor, wtype workitem.Scope, workItemID, nodeID, n
 	return processAction{
 		WorkItemType: wtype, WorkItemID: workItemID, NodeID: nodeID, NodeName: nodeName,
 		Key:  fmt.Sprintf("start:%s:%d", nodeID, version),
-		Body: processBody(actor, "开始节点", "节点："+nodeName),
+		Body: processBody(actor, "开始节点", "节点："+nodeName), ActorID: actor.UserID,
 	}
 }
 
@@ -356,7 +383,7 @@ func submitProcessAction(actor Actor, wtype workitem.Scope, workItemID, nodeID, 
 	return processAction{
 		WorkItemType: wtype, WorkItemID: workItemID, NodeID: nodeID, NodeName: nodeName,
 		Key:  fmt.Sprintf("submit:%s:%d", nodeID, version),
-		Body: processBody(actor, "提交节点", lines...),
+		Body: processBody(actor, "提交节点", lines...), ActorID: actor.UserID,
 	}
 }
 
@@ -373,7 +400,7 @@ func reviewProcessAction(actor Actor, wtype workitem.Scope, workItemID, nodeID, 
 	return processAction{
 		WorkItemType: wtype, WorkItemID: workItemID, NodeID: nodeID, NodeName: nodeName,
 		Key:  fmt.Sprintf("review:%s:%d", nodeID, version),
-		Body: processBody(actor, action, lines...),
+		Body: processBody(actor, action, lines...), ActorID: actor.UserID,
 	}
 }
 
@@ -385,7 +412,7 @@ func attachProcessAction(actor Actor, wtype workitem.Scope, workItemID, nodeID, 
 		WorkItemType: wtype, WorkItemID: workItemID, NodeID: nodeID, NodeName: nodeName,
 		Key: "attach:" + nodeID + ":" + hex.EncodeToString(sum[:6]),
 		Body: processBody(actor, "补挂成果物", "节点："+nodeName,
-			"类型："+string(ref.Kind), "来源："+string(ref.Provider)),
+			"类型："+string(ref.Kind), "来源："+string(ref.Provider)), ActorID: actor.UserID,
 	}
 }
 
@@ -393,6 +420,6 @@ func taskCreateProcessAction(actor Actor, taskID, number, title string) processA
 	return processAction{
 		WorkItemType: workitem.ScopeTask, WorkItemID: taskID,
 		Key:  "task.create:" + taskID,
-		Body: processBody(actor, "创建任务", "编号："+number, "标题："+title),
+		Body: processBody(actor, "创建任务", "编号："+number, "标题："+title), ActorID: actor.UserID,
 	}
 }

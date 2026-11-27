@@ -118,6 +118,12 @@ func NewRouter(d Deps) http.Handler {
 
 			// 集成连接默认值：成员可读，供迭代 provider 绑定预填地址（凭据仍只读环境变量）。
 			g.Get("/integration/provider-options", h.listProviderOptions)
+			// 连接目录：admin 看全部（含停用），成员只看已启用；迭代绑定弹窗的下拉建议。
+			g.Get("/integration/endpoints", h.listProviderEndpoints)
+			// 个人 provider 凭据：成员自助维护（只写不读，永不回显）。
+			g.Get("/me/credentials", h.listMyCredentials)
+			g.Put("/me/credentials", h.setMyCredential)
+			g.Delete("/me/credentials/{provider}", h.deleteMyCredential)
 
 			// workflow：节点操作（与 MCP 工具同一套用例与错误码）
 			g.Post("/tasks/{id}/steps/start", h.taskStartStep)
@@ -154,6 +160,10 @@ func NewRouter(d Deps) http.Handler {
 				// M3：集成 provider 配置（admin；凭据仍只读环境变量）
 				admin.Get("/integration/providers", h.listProviderConfigs)
 				admin.Patch("/integration/providers/{kind}", h.updateProviderConfig)
+				// 连接目录（admin 增删改查；多个 git / svn / redmine / outline）
+				admin.Post("/integration/endpoints", h.createProviderEndpoint)
+				admin.Patch("/integration/endpoints/{id}", h.updateProviderEndpoint)
+				admin.Delete("/integration/endpoints/{id}", h.deleteProviderEndpoint)
 				// M4：邮箱配置（admin；密码 AES-GCM 加密落库，永不回显）
 				admin.Get("/integration/smtp", h.getSMTPConfig)
 				admin.Patch("/integration/smtp", h.updateSMTPConfig)

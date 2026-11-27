@@ -97,6 +97,17 @@ type API interface {
 	// ListProviderOptions 全局连接默认值（成员可读，供迭代 provider 绑定预填地址）。
 	ListProviderOptions(ctx context.Context, actor Actor) ([]ProviderOptionView, error)
 
+	// 连接目录（admin 增删改查；成员可读已启用项用于迭代绑定选择）
+	ListProviderEndpoints(ctx context.Context, actor Actor) ([]ProviderEndpointView, error)
+	CreateProviderEndpoint(ctx context.Context, actor Actor, in ProviderEndpointInput) (ProviderEndpointView, error)
+	UpdateProviderEndpoint(ctx context.Context, actor Actor, id string, in ProviderEndpointUpdateInput) (ProviderEndpointView, error)
+	DeleteProviderEndpoint(ctx context.Context, actor Actor, id string) error
+
+	// 个人 provider 凭据（成员自助维护；分发时优先以本人身份出站）
+	ListMyCredentials(ctx context.Context, actor Actor) ([]UserCredentialView, error)
+	SetMyCredential(ctx context.Context, actor Actor, in UserCredentialInput) (UserCredentialView, error)
+	DeleteMyCredential(ctx context.Context, actor Actor, provider, baseURL string) error
+
 	// 邮箱配置（M4 SMTP 发件配置，admin；密码加密落库，永不回显）
 	GetSMTPConfig(ctx context.Context, actor Actor) (SMTPConfigView, error)
 	UpdateSMTPConfig(ctx context.Context, actor Actor, in SMTPConfigInput) (SMTPConfigView, error)
