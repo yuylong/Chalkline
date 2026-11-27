@@ -12,7 +12,7 @@
 | catalog | 产品、产品成员、模块树、产品文档 | `internal/domain/product` | [catalog.md](catalog.md) | M1 · 已交付；M3 规模化（搜索/分页/归档守卫/概览）已交付 |
 | planning | 迭代、任务、子任务、指派、跨模块关联 | `internal/domain/planning` | [planning.md](planning.md) | M1 · 已交付 |
 | workflow | 工作流模板、实例、节点状态、门禁裁决、材料引用 | `internal/workflow` | [workflow.md](workflow.md) | M1 · 已交付（引擎核心 M0）；M3 模板导入导出与评审 SLA 已交付 |
-| mcp-gateway | MCP 服务、工具注册、PAT 鉴权 | `internal/mcp` | [mcp-gateway.md](mcp-gateway.md) | M1 · 已交付（22 工具） |
+| mcp-gateway | MCP 服务、工具注册、PAT 鉴权 | `internal/mcp` | [mcp-gateway.md](mcp-gateway.md) | M1 · 已交付（25 工具） |
 | integration | 外部系统适配：Git/SVN、Outline、Redmine、邮件、Webhook | `internal/integration` | [integration.md](integration.md) | M2 · 已交付；M3 Webhook 订阅管理与开放 API 策略已交付 |
 | console | 控制台：产品总览、迭代看板、任务树、审批队列 | `web/src/features` | [console.md](console.md) | M2 · 已交付；M3 SSE 实时刷新、审计页、订阅页、规模化列表已交付 |
 | platform | 配置、日志、迁移、部署脚本 | `internal/platform` `deploy` | [platform.md](platform.md) | M0 · 已交付；M3 新增 SLA/事件间隔配置与 0008 迁移 |

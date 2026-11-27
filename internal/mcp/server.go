@@ -572,6 +572,44 @@ func (d Deps) registerWriteTools(s *mcp.Server) {
 	})
 
 	mcp.AddTool[struct {
+		ProductID   string   `json:"productId"`
+		ModuleID    string   `json:"moduleId"`
+		Description string   `json:"description"`
+		TechStack   []string `json:"techStack,omitempty"`
+		OwnerID     string   `json:"ownerId,omitempty"`
+		Developers  []string `json:"developers,omitempty"`
+		Testers     []string `json:"testers,omitempty"`
+	}, any](s, &mcp.Tool{
+		Name: "chalkline_update_module",
+		Description: "更新模块基本信息：功能简介、技术栈标签、主要责任人、开发者、测试者。" +
+			"整组替换语义——未传的字段按清空处理，需先读取现有值再整体提交。" +
+			"不改名、不移动子树（改名/移动在控制台操作）。需产品成员身份并持 pm，或产品 owner / admin。",
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in struct {
+		ProductID   string   `json:"productId"`
+		ModuleID    string   `json:"moduleId"`
+		Description string   `json:"description"`
+		TechStack   []string `json:"techStack,omitempty"`
+		OwnerID     string   `json:"ownerId,omitempty"`
+		Developers  []string `json:"developers,omitempty"`
+		Testers     []string `json:"testers,omitempty"`
+	}) (*mcp.CallToolResult, any, error) {
+		svc, actor, err := d.svc(ctx)
+		if err != nil {
+			return fail(err)
+		}
+		out, err := svc.UpdateModule(ctx, actor, in.ProductID, in.ModuleID, app.UpdateModuleInput{
+			Info: &app.ModuleInfoInput{
+				Description: in.Description, TechStack: in.TechStack, OwnerID: in.OwnerID,
+				Developers: in.Developers, Testers: in.Testers,
+			},
+		})
+		if err != nil {
+			return fail(err)
+		}
+		return nil, out, nil
+	})
+
+	mcp.AddTool[struct {
 		workItemRef
 		NodeID          string `json:"nodeId"`
 		ExpectedVersion int64  `json:"expectedVersion,omitempty"`

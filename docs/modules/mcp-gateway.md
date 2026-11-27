@@ -7,7 +7,7 @@
 负责：
 
 - **MCP 服务端**：`POST /mcp`（streamable HTTP transport），用 `modelcontextprotocol/go-sdk` 暴露工具。
-- **工具注册与协议转换**：把 24 个工具（13 读 + 11 写）的入参/出参转换为 app 层调用，**不写任何业务规则**（AGENT 红线 3）。
+- **工具注册与协议转换**：把 25 个工具（12 读 + 13 写）的入参/出参转换为 app 层调用，**不写任何业务规则**（AGENT 红线 3）。
 - **鉴权接入**：MCP 路径走 PAT（与 identity 协作），注入 `actor_id`。
 - **错误包络**：把 app 层错误翻译为 mcp.md 定义的错误码与 HTTP 状态（401/403/404/409/422/503），`message` 可直接展示。
 - **契约一致性**：工具名、参数、错误码与 `docs/domain/mcp.md` 严格对齐；CI 校验 Skill 中引用的工具名都存在。
@@ -19,9 +19,9 @@
 - **传输**：`POST /mcp`，`Authorization: Bearer <PAT>`，streamable HTTP。
 - **工具清单**（见 [mcp.md](../domain/mcp.md)，发布后工具名不可改名）：
 
-  读：`whoami` / `list_products` / `get_product` / `list_iterations` / `list_tasks` / `get_task` / `get_next_action` / `get_workflow` / `list_workflows` / `get_pending_reviews` / `list_product_members`（+ `list` 系分页工具）。
+  读：`whoami` / `list_products` / `get_product` / `list_iterations` / `list_tasks` / `get_task` / `get_next_action` / `get_workflow` / `list_workflows` / `get_pending_reviews` / `list_product_members` / `get_iteration_providers`（+ `list` 系分页工具）。
 
-  写：`create_iteration` / `create_task` / `decompose_task` / `assign_task` / `link_module` / `start_step` / `submit_step` / `attach_artifact` / `review_step` / `upsert_product_member` / `remove_product_member`。
+  写：`create_iteration` / `create_task` / `decompose_task` / `assign_task` / `link_module` / `update_module` / `start_step` / `submit_step` / `attach_artifact` / `review_step` / `set_iteration_providers` / `set_iteration_provider_credential` / `upsert_product_member` / `remove_product_member`。
 
 - **返回契约**：`get_next_action` 的 `workItem` / `currentNodes` / `status` / `nextActions[].blockers` / `allowedActions` 结构与 mcp.md 示例一致；并行分支返回多条目。
 - **M3 参数扩展**（只加可选参数，不改名，不破坏既有调用）：`list_products` 支持 `q` / `status` / `limit` / `offset`；`get_pending_reviews` 条目新增 `awaitingSince` / `overdue`。
@@ -60,7 +60,7 @@ Agent 请求 POST /mcp
 
 ## 验收标准
 
-- [ ] 24 个工具全部注册，`tools/list` 返回与 mcp.md 一致。
+- [ ] 25 个工具全部注册，`tools/list` 返回与 mcp.md 一致。
 - [ ] 每个工具有协议层测试：入参校验、正常出参结构、错误码映射。
 - [ ] PAT 鉴权：有效 PAT 通过，无效/过期/吊销返回 401。
 - [ ] `get_next_action` 并行分支返回多节点；`blocked` 返回 blockers 明细。
@@ -74,8 +74,8 @@ Agent 请求 POST /mcp
 2. PAT 鉴权接入：复用 `internal/auth` 中间件，MCP 路径强制 PAT。
 3. 工具注册表骨架 + 错误映射器（app 错误 → mcp 错误码 + HTTP 状态）。
 4. 逐工具实现（协议转换 + 调 app），建议按依赖顺序：
-   - 读工具：`whoami` / `list_products` / `get_product` / `list_iterations` / `list_tasks` / `get_task` / `get_workflow` / `list_workflows` / `get_next_action` / `get_pending_reviews` / `list_product_members`。
-   - 写工具：`create_iteration` / `create_task` / `decompose_task` / `assign_task` / `link_module` / `start_step` / `submit_step` / `attach_artifact` / `review_step` / `upsert_product_member` / `remove_product_member`。
+   - 读工具：`whoami` / `list_products` / `get_product` / `list_iterations` / `list_tasks` / `get_task` / `get_workflow` / `list_workflows` / `get_next_action` / `get_pending_reviews` / `list_product_members` / `get_iteration_providers`。
+   - 写工具：`create_iteration` / `create_task` / `decompose_task` / `assign_task` / `link_module` / `update_module` / `start_step` / `submit_step` / `attach_artifact` / `review_step` / `set_iteration_providers` / `set_iteration_provider_credential` / `upsert_product_member` / `remove_product_member`。
 5. 与 app 各模块约定用例接口（每个工具对应一个 app 函数）。
 6. 测试：handler 层参数与错误映射测试；端到端集成测试（真实 PG + 起 MCP server 发请求）。
 7. CI：加工具名一致性校验脚本（mcp.md ↔ agent skill ↔ 注册表）。

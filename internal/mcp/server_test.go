@@ -19,11 +19,16 @@ import (
 
 type fakeSvc struct {
 	app.API
-	whoamiFn func(ctx context.Context, actor app.Actor) (app.WhoamiView, error)
+	whoamiFn       func(ctx context.Context, actor app.Actor) (app.WhoamiView, error)
+	updateModuleFn func(ctx context.Context, actor app.Actor, productID, moduleID string, in app.UpdateModuleInput) (app.ModuleView, error)
 }
 
 func (f fakeSvc) Whoami(ctx context.Context, actor app.Actor) (app.WhoamiView, error) {
 	return f.whoamiFn(ctx, actor)
+}
+
+func (f fakeSvc) UpdateModule(ctx context.Context, actor app.Actor, productID, moduleID string, in app.UpdateModuleInput) (app.ModuleView, error) {
+	return f.updateModuleFn(ctx, actor, productID, moduleID, in)
 }
 
 func newTestHandler(whoamiFn func(context.Context, app.Actor) (app.WhoamiView, error)) http.Handler {
@@ -36,6 +41,20 @@ func newTestHandler(whoamiFn func(context.Context, app.Actor) (app.WhoamiView, e
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			next.ServeHTTP(w, r.WithContext(auth.WithActor(r.Context(),
 				app.Actor{UserID: "usr_1", Username: "agent", Roles: identity.Roles{identity.RoleDev}, ViaPAT: true})))
+		})
+	}(NewHandler(d))
+}
+
+// newModuleTestHandler 注入可观测的 UpdateModule 实现。
+func newModuleTestHandler(fn func(context.Context, app.Actor, string, string, app.UpdateModuleInput) (app.ModuleView, error)) http.Handler {
+	d := Deps{
+		Logger: platform.NewLogger("error"),
+		Svc:    func() app.API { return fakeSvc{updateModuleFn: fn} },
+	}
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			next.ServeHTTP(w, r.WithContext(auth.WithActor(r.Context(),
+				app.Actor{UserID: "usr_1", Username: "agent", Roles: identity.Roles{identity.RolePM}, ViaPAT: true})))
 		})
 	}(NewHandler(d))
 }
@@ -97,15 +116,16 @@ func TestToolsListContract(t *testing.T) {
 		"chalkline_get_next_action": false, "chalkline_get_workflow": false,
 		"chalkline_list_workflows": false, "chalkline_get_pending_reviews": false,
 		"chalkline_list_product_members": false, "chalkline_get_iteration_providers": false,
-		// 写（13）
+		// 写（14）
 		"chalkline_create_iteration": false, "chalkline_create_task": false,
 		"chalkline_decompose_task": false, "chalkline_assign_task": false,
-		"chalkline_link_module": false, "chalkline_start_step": false,
+		"chalkline_link_module": false, "chalkline_update_module": false,
+		"chalkline_start_step":  false,
 		"chalkline_submit_step": false, "chalkline_attach_artifact": false,
 		"chalkline_review_step": false, "chalkline_set_iteration_providers": false,
 		"chalkline_set_iteration_provider_credential": false,
-		"chalkline_upsert_product_member": false,
-		"chalkline_remove_product_member": false,
+		"chalkline_upsert_product_member":             false,
+		"chalkline_remove_product_member":             false,
 	}
 	for _, tv := range tools {
 		m, _ := tv.(map[string]any)
@@ -173,6 +193,61 @@ func TestErrorEnvelopeFromAppError(t *testing.T) {
 		!strings.Contains(text, `"code":"NOT_FOUND"`) ||
 		!strings.Contains(text, "成员不存在") {
 		t.Fatalf("错误应为统一包络文本，实际: %s", text)
+	}
+}
+
+// TestUpdateModuleToolCall 覆盖模块基本信息写入：入参透传 + 整组替换语义 + 结果回包。
+func TestUpdateModuleToolCall(t *testing.T) {
+	var gotProductID, gotModuleID string
+	var gotInfo app.ModuleInfoInput
+	h := newModuleTestHandler(func(_ context.Context, _ app.Actor, productID, moduleID string, in app.UpdateModuleInput) (app.ModuleView, error) {
+		gotProductID, gotModuleID = productID, moduleID
+		if in.Info != nil {
+			gotInfo = *in.Info
+		}
+		return app.ModuleView{ID: moduleID, ProductID: productID, Name: "catalog",
+			Description: gotInfo.Description, TechStack: gotInfo.TechStack}, nil
+	})
+	code, out := callMCP(t, h, "tools/call", map[string]any{
+		"name": "chalkline_update_module",
+		"arguments": map[string]any{
+			"productId":   "prd_1",
+			"moduleId":    "mod_1",
+			"description": "产品与模块树",
+			"techStack":   []string{"Go", "PostgreSQL"},
+		},
+	})
+	if code != http.StatusOK {
+		t.Fatalf("tools/call 应 200，实际 %d: %v", code, out)
+	}
+	result := unwrapResult(t, out)
+	if result["isError"] == true {
+		t.Fatalf("update_module 不应报错: %v", out)
+	}
+	if gotProductID != "prd_1" || gotModuleID != "mod_1" {
+		t.Fatalf("模块定位参数未透传: %s / %s", gotProductID, gotModuleID)
+	}
+	if gotInfo.Description != "产品与模块树" || len(gotInfo.TechStack) != 2 {
+		t.Fatalf("基本信息未透传: %+v", gotInfo)
+	}
+	if body := rawJSON(result); !strings.Contains(body, "产品与模块树") {
+		t.Fatalf("结果应含更新后的模块视图: %s", body)
+	}
+}
+
+// TestUpdateModuleErrorEnvelope 校验权限/校验错误按统一包络返回。
+func TestUpdateModuleErrorEnvelope(t *testing.T) {
+	h := newModuleTestHandler(func(context.Context, app.Actor, string, string, app.UpdateModuleInput) (app.ModuleView, error) {
+		return app.ModuleView{}, app.RoleRequired("需要产品 owner 或 admin")
+	})
+	_, out := callMCP(t, h, "tools/call", map[string]any{
+		"name":      "chalkline_update_module",
+		"arguments": map[string]any{"productId": "prd_1", "moduleId": "mod_1", "description": "x"},
+	})
+	result := unwrapResult(t, out)
+	body := rawJSON(result)
+	if result["isError"] != true || !strings.Contains(body, "ROLE_REQUIRED") {
+		t.Fatalf("越权应为 ROLE_REQUIRED 包络: %s", body)
 	}
 }
 

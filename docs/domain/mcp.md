@@ -48,6 +48,7 @@ Agent 每轮先调 `chalkline_get_next_action`，服务端返回结构化结论�
 | `chalkline_decompose_task` | 拆解为子任务（批量），返回 `CHK-12.3` 形式的编号 | 任务负责人 / pm |
 | `chalkline_assign_task` | 指派负责人 | pm / 任务负责人 |
 | `chalkline_link_module` | 增删任务与模块的关联 | pm / 任务负责人 |
+| `chalkline_update_module` | 更新模块基本信息：功能简介、技术栈、责任人、开发者、测试者（整组替换语义，不改名/不移动） | pm 产品成员 / 产品 owner / admin |
 | `chalkline_start_step` | 开始当前可执行节点 | 任务负责人 |
 | `chalkline_submit_step` | 提交节点，携带材料与说明 | 任务负责人 |
 | `chalkline_attach_artifact` | 挂接材料引用：`provider` + `url`/`externalId`，或 `inline` 内容 | 任务负责人 |
