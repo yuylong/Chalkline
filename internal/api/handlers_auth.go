@@ -99,6 +99,8 @@ type createUserReq struct {
 	Email       string   `json:"email"`
 	Password    string   `json:"password"`
 	Roles       []string `json:"roles"`
+	// AuthSource：local（默认）/ ldap / both；ldap 可不设初始密码。
+	AuthSource string `json:"authSource"`
 }
 
 func (h *handlers) createUser(w http.ResponseWriter, r *http.Request) {
@@ -119,7 +121,7 @@ func (h *handlers) createUser(w http.ResponseWriter, r *http.Request) {
 	}
 	view, err := h.svc().CreateUser(r.Context(), actor, app.CreateUserInput{
 		Username: req.Username, DisplayName: req.DisplayName, Email: req.Email,
-		Password: req.Password, Roles: roles,
+		Password: req.Password, Roles: roles, AuthSource: identity.AuthSource(req.AuthSource),
 	})
 	if err != nil {
 		writeAppError(w, err)
@@ -161,6 +163,8 @@ type updateUserReq struct {
 	Email       string   `json:"email"`
 	Roles       []string `json:"roles"`
 	Status      string   `json:"status"`
+	// AuthSource：local / ldap / both；空串按 local 处理。
+	AuthSource string `json:"authSource"`
 }
 
 func (h *handlers) updateUser(w http.ResponseWriter, r *http.Request) {
@@ -186,6 +190,7 @@ func (h *handlers) updateUser(w http.ResponseWriter, r *http.Request) {
 	}
 	view, err := h.svc().UpdateUser(r.Context(), actor, pathParam(r, "id"), app.UpdateUserInput{
 		DisplayName: req.DisplayName, Email: req.Email, Roles: roles, Status: status,
+		AuthSource: identity.AuthSource(req.AuthSource),
 	})
 	if err != nil {
 		writeAppError(w, err)

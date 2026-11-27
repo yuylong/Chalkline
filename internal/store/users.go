@@ -14,10 +14,13 @@ import (
 func scanUser(row rowScanner) (identity.User, error) {
 	var u identity.User
 	var roles []string
-	if err := row.Scan(&u.ID, &u.Username, &u.DisplayName, &u.Email, &u.PasswordHash, &roles, &u.Status); err != nil {
+	if err := row.Scan(&u.ID, &u.Username, &u.DisplayName, &u.Email, &u.PasswordHash, &roles, &u.Status, &u.AuthSource); err != nil {
 		return identity.User{}, err
 	}
 	u.Roles = ToRoles(roles)
+	if u.AuthSource == "" {
+		u.AuthSource = identity.AuthLocal
+	}
 	return u, nil
 }
 
@@ -39,14 +42,14 @@ func FromRoles(rs identity.Roles) []string {
 	return out
 }
 
-const userCols = "id, username, display_name, email, password_hash, roles, status"
+const userCols = "id, username, display_name, email, password_hash, roles, status, auth_source"
 
 // InsertUser 写入成员；用户名/邮箱唯一冲突返回可判定的 duplicate 错误。
 func InsertUser(ctx context.Context, q Querier, u identity.User) error {
 	_, err := q.Exec(ctx,
-		`INSERT INTO users (id, username, display_name, email, password_hash, roles, status)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-		u.ID, u.Username, u.DisplayName, u.Email, u.PasswordHash, FromRoles(u.Roles), string(u.Status))
+		`INSERT INTO users (id, username, display_name, email, password_hash, roles, status, auth_source)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+		u.ID, u.Username, u.DisplayName, u.Email, u.PasswordHash, FromRoles(u.Roles), string(u.Status), string(u.AuthSource))
 	return err
 }
 
@@ -126,11 +129,11 @@ func compactIDs(ids []string) []string {
 	return out
 }
 
-// UpdateUser 更新显示名、邮箱、角色与状态（不变量由 app 校验）。
-func UpdateUser(ctx context.Context, q Querier, id, displayName, email string, roles identity.Roles, status identity.UserStatus) error {
+// UpdateUser 更新显示名、邮箱、角色、状态与认证来源（不变量由 app 校验）。
+func UpdateUser(ctx context.Context, q Querier, id, displayName, email string, roles identity.Roles, status identity.UserStatus, authSource identity.AuthSource) error {
 	tag, err := q.Exec(ctx,
-		`UPDATE users SET display_name = $2, email = $3, roles = $4, status = $5, updated_at = now() WHERE id = $1`,
-		id, displayName, email, FromRoles(roles), string(status))
+		`UPDATE users SET display_name = $2, email = $3, roles = $4, status = $5, auth_source = $6, updated_at = now() WHERE id = $1`,
+		id, displayName, email, FromRoles(roles), string(status), string(authSource))
 	if err != nil {
 		return err
 	}

@@ -34,6 +34,36 @@ func TestUserValidate(t *testing.T) {
 	}
 }
 
+func TestUserAuthSource(t *testing.T) {
+	if err := validUser().Validate(); err != nil {
+		t.Fatalf("空认证来源应按 local 通过: %v", err)
+	}
+	for _, a := range []AuthSource{AuthLocal, AuthLDAP, AuthBoth} {
+		u := validUser()
+		u.AuthSource = a
+		if err := u.Validate(); err != nil {
+			t.Errorf("认证来源 %q 应通过: %v", a, err)
+		}
+	}
+	u := validUser()
+	u.AuthSource = AuthSource("oauth")
+	if err := u.Validate(); err == nil {
+		t.Error("未知认证来源应拒绝")
+	}
+	if AuthLDAP.UsesLDAP() != true || AuthBoth.UsesLDAP() != true || AuthLocal.UsesLDAP() != false {
+		t.Error("UsesLDAP 判定不符")
+	}
+	// NewUser 应把空认证来源归一化为 local。
+	nu, err := NewUser("usr_1", "alice", "Alice", "a@example.com", "$argon2id$v=19$mock",
+		Roles{RoleDev}, UserActive)
+	if err != nil {
+		t.Fatalf("NewUser: %v", err)
+	}
+	if nu.AuthSource != AuthLocal {
+		t.Fatalf("空认证来源应归一化为 local，实际 %q", nu.AuthSource)
+	}
+}
+
 func TestParseRoles(t *testing.T) {
 	rs, err := ParseRoles("pm, dev")
 	if err != nil || len(rs) != 2 {

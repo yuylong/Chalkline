@@ -102,6 +102,12 @@ type API interface {
 	UpdateSMTPConfig(ctx context.Context, actor Actor, in SMTPConfigInput) (SMTPConfigView, error)
 	// TestSMTPConfig 用当前生效配置发送测试邮件（admin）。
 	TestSMTPConfig(ctx context.Context, actor Actor) error
+
+	// LDAP 认证配置（admin；绑定密码加密落库，永不回显）
+	GetLDAPConfig(ctx context.Context, actor Actor) (LDAPConfigView, error)
+	UpdateLDAPConfig(ctx context.Context, actor Actor, in LDAPConfigInput) (LDAPConfigView, error)
+	// TestLDAPConfig 测试 LDAP 连通性；带用户名/密码时做完整登录验证（admin）。
+	TestLDAPConfig(ctx context.Context, actor Actor, username, password string) (LDAPTestResult, error)
 }
 
 // 编译期保证 *Service 实现 API。

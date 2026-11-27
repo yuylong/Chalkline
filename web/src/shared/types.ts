@@ -11,6 +11,8 @@ export interface UserView {
   email: string
   roles: string[]
   status: string
+  /** 认证来源：local（仅本地密码）/ ldap（仅 LDAP）/ both（双认证，任一密码通过即可）。 */
+  authSource: string
 }
 
 export interface LoginResult {
@@ -46,21 +48,23 @@ export interface PATCreated extends PATView {
   token: string // chkpat_…
 }
 
-/** 管理台：建成员入参（admin）。 */
+/** 管理台：建成员入参（admin）。authSource 为 ldap 时可不设初始密码。 */
 export interface CreateUserInput {
   username: string
   displayName: string
   email: string
   password: string
   roles: string[]
+  authSource: string // local | ldap | both
 }
 
-/** 管理台：改显示名 / 邮箱 / 角色 / 启禁用（admin）。 */
+/** 管理台：改显示名 / 邮箱 / 角色 / 启禁用 / 认证来源（admin）。 */
 export interface UpdateUserInput {
   displayName: string
   email: string
   roles: string[]
   status: string // active | disabled
+  authSource: string // local | ldap | both
 }
 
 // ---- catalog ----
@@ -424,6 +428,49 @@ export interface SMTPConfigUpdate {
   tlsSkipVerify?: boolean
   /** 留空 = 不修改；提交空串 = 清除已存密码（回退环境变量）。 */
   password?: string
+}
+
+// ---- LDAP 认证配置（admin；绑定密码加密落库，永不回显）----
+
+export interface LDAPConfigView {
+  enabled: boolean
+  host: string
+  port: number
+  /** TLS 模式：none（明文，389 常用）/ starttls / tls（隐式，636 常用）。 */
+  tlsMode: string
+  /** 跳过 TLS 证书校验（仅内网自签场景）。 */
+  tlsSkipVerify: boolean
+  /** 服务账号 DN；空 = 匿名检索。 */
+  bindDn: string
+  /** 库内密文已配置（视图永不携带绑定密码明文/密文）。 */
+  bindPasswordConfigured: boolean
+  userSearchBase: string
+  /** 含 %s 占位登录名的检索过滤器，如 (uid=%s) 或 (sAMAccountName=%s)。 */
+  userSearchFilter: string
+  timeoutSeconds: number
+  updatedBy?: string
+  updatedAt?: string
+}
+
+export interface LDAPConfigUpdate {
+  enabled?: boolean
+  host?: string
+  port?: number
+  tlsMode?: string
+  tlsSkipVerify?: boolean
+  bindDn?: string
+  /** 留空 = 不修改；提交空串 = 清除已存密码（回退匿名绑定）。 */
+  bindPassword?: string
+  userSearchBase?: string
+  userSearchFilter?: string
+  timeoutSeconds?: number
+}
+
+/** 「测试连接」结果：connectivity（拨号+绑定+试检索）| bind（完整登录验证）。 */
+export interface LDAPTestResult {
+  ok: boolean
+  mode: string
+  username: string
 }
 
 // ---- M3：SSE 事件流 ----

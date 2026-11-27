@@ -71,6 +71,8 @@ export default function Layout() {
         ? '/mcpconfig'
       : location.pathname.startsWith('/smtp')
         ? '/smtp'
+        : location.pathname.startsWith('/ldap')
+        ? '/ldap'
         : location.pathname.startsWith('/webhooks')
         ? '/webhooks'
         : location.pathname.startsWith('/users')
@@ -124,6 +126,7 @@ export default function Layout() {
             ...(isAdmin
               ? [
                   { key: '/smtp', label: '邮箱配置' },
+                  { key: '/ldap', label: 'LDAP 认证' },
                   { key: '/webhooks', label: 'Webhook 订阅' },
                 ]
               : []),

@@ -139,6 +139,11 @@ func NewRouter(d Deps) http.Handler {
 				admin.Patch("/users/{id}", h.updateUser)
 				admin.Post("/users/{id}/password", h.setUserPassword)
 
+				// LDAP 认证配置（admin；绑定密码 AES-GCM 加密落库，永不回显）
+				admin.Get("/auth/ldap", h.getLDAPConfig)
+				admin.Patch("/auth/ldap", h.updateLDAPConfig)
+				admin.Post("/auth/ldap/test", h.testLDAPConfig)
+
 				// M3：审计全局检索与 Webhook 订阅管理（admin）
 				admin.Get("/audit-logs", h.auditLogs)
 				admin.Get("/webhooks", h.listWebhooks)

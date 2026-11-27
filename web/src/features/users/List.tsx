@@ -23,6 +23,24 @@ const ROLE_COLORS: Record<string, string> = {
   qa: 'orange',
 }
 
+const AUTH_SOURCE_OPTIONS = [
+  { value: 'local', label: '本地认证（仅平台密码）' },
+  { value: 'ldap', label: 'LDAP 认证（仅目录密码）' },
+  { value: 'both', label: '双认证（本地或 LDAP 任一通过）' },
+]
+
+const AUTH_SOURCE_LABELS: Record<string, string> = {
+  local: '本地',
+  ldap: 'LDAP',
+  both: '双认证',
+}
+
+const AUTH_SOURCE_COLORS: Record<string, string> = {
+  local: 'default',
+  ldap: 'geekblue',
+  both: 'cyan',
+}
+
 export default function UserList() {
   const queryClient = useQueryClient()
   const { message } = App.useApp()
@@ -32,6 +50,7 @@ export default function UserList() {
   const [createForm] = Form.useForm<CreateUserInput>()
   const [editForm] = Form.useForm<UpdateUserInput>()
   const [resetForm] = Form.useForm<{ password: string }>()
+  const createAuthSource = Form.useWatch('authSource', createForm) ?? 'local'
 
   const { data, isPending, isError, error } = useQuery({
     queryKey: ['users'],
@@ -80,6 +99,7 @@ export default function UserList() {
       email: u.email,
       roles: u.roles,
       status: u.status,
+      authSource: u.authSource || 'local',
     })
   }
 
@@ -136,6 +156,16 @@ export default function UserList() {
                 v === 'active' ? <Tag color="green">启用</Tag> : <Tag color="red">停用</Tag>,
             },
             {
+              title: '认证',
+              dataIndex: 'authSource',
+              width: 100,
+              render: (v: string) => (
+                <Tag color={AUTH_SOURCE_COLORS[v ?? 'local'] ?? 'default'}>
+                  {AUTH_SOURCE_LABELS[v ?? 'local'] ?? v}
+                </Tag>
+              ),
+            },
+            {
               title: '操作',
               key: 'op',
               width: 200,
@@ -144,9 +174,12 @@ export default function UserList() {
                   <Button size="small" onClick={() => openEdit(r)}>
                     编辑
                   </Button>
-                  <Button size="small" onClick={() => setResetTarget(r)}>
-                    重置密码
-                  </Button>
+                  {/* ldap-only 成员本地密码为随机占位，重置无意义。 */}
+                  {(r.authSource ?? 'local') !== 'ldap' && (
+                    <Button size="small" onClick={() => setResetTarget(r)}>
+                      重置密码
+                    </Button>
+                  )}
                 </Space>
               ),
             },
@@ -165,7 +198,7 @@ export default function UserList() {
         <Form<CreateUserInput>
           form={createForm}
           layout="vertical"
-          initialValues={{ roles: ['dev'] }}
+          initialValues={{ roles: ['dev'], authSource: 'local' }}
           onFinish={(v) => createMut.mutate(v)}
           style={{ marginTop: 16 }}
         >
@@ -193,12 +226,21 @@ export default function UserList() {
             <Input placeholder="name@example.com" />
           </Form.Item>
           <Form.Item
-            name="password"
-            label="初始密码"
-            rules={[{ required: true, min: 8, message: '至少 8 位' }]}
+            name="authSource"
+            label="认证方式"
+            extra="LDAP 需先在「LDAP 认证」页配置并启用；双认证成员本地或 LDAP 任一密码通过即可登录"
           >
-            <Input.Password autoComplete="new-password" />
+            <Select options={AUTH_SOURCE_OPTIONS} />
           </Form.Item>
+          {createAuthSource !== 'ldap' && (
+            <Form.Item
+              name="password"
+              label="初始密码"
+              rules={[{ required: true, min: 8, message: '至少 8 位' }]}
+            >
+              <Input.Password autoComplete="new-password" />
+            </Form.Item>
+          )}
           <Form.Item name="roles" label="角色" rules={[{ required: true, message: '至少选择一个角色' }]}>
             <Select mode="multiple" options={ROLE_OPTIONS} placeholder="选择全局角色" />
           </Form.Item>
@@ -242,6 +284,13 @@ export default function UserList() {
                 { value: 'disabled', label: '停用' },
               ]}
             />
+          </Form.Item>
+          <Form.Item
+            name="authSource"
+            label="认证方式"
+            extra="改为 LDAP/双认证后，该成员下次登录即按新来源校验"
+          >
+            <Select options={AUTH_SOURCE_OPTIONS} />
           </Form.Item>
         </Form>
       </Modal>

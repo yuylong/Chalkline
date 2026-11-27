@@ -147,6 +147,8 @@ func Run(ctx context.Context) error {
 									TLSMode: rt.TLSMode, TLSSkipVerify: rt.TLSSkipVerify,
 								}, recipients)
 							},
+							// LDAP 认证通道（依赖倒置：app 只依赖接口，实现在 auth 包）。
+							LDAP: auth.NewLDAPClient(),
 						})
 						created, berr := s.BootstrapAdmin(ctx, cfg.AdminUsername, cfg.AdminPassword)
 						if berr != nil {

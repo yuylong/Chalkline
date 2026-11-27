@@ -28,14 +28,15 @@
 | `tasks` | 任务树（多级拆解）、任务详情（节点状态、材料、审批） | planning + workflow |
 | `gates` | 门禁材料查看与提交、审批操作、成果物按步骤浏览（任务/迭代详情卡片 + 审批队列弹窗） | workflow |
 | `reviews` | 审批队列、审批历史 | workflow + identity |
-| `users` | 用户管理（admin）：成员列表、新建、改显示名/邮箱/角色/启禁用、重置密码 | identity |
+| `users` | 用户管理（admin）：成员列表、新建、改显示名/邮箱/角色/启禁用/认证来源（本地/LDAP/双认证）、重置密码 | identity |
+| `ldap` | LDAP 认证（admin）：服务器配置（地址/TLS/绑定账号/用户检索）、测试连接、测试用户登录 | identity |
 | `mcp` | MCP 接入（全员）：API Key（PAT）生成/吊销 + 只读连接信息 | identity |
 | `workflows` | 工作流模板：列表、YAML 编辑（新建/更新）、导入/导出、归档 | workflow |
 | `integrations` | Provider 配置（admin）：启停与 baseURL 可视化维护 | integration |
 
 ### 导航结构
 
-左侧菜单顺序固定为：**当前迭代、审批** ｜ 分割线 ｜ **产品、审计、MCP 接入** ｜ 分割线 ｜ **用户管理、Provider 管理、工作流管理、Webhook 订阅**（后四项除工作流管理外仅 admin 可见；MCP 接入对全员开放）。
+左侧菜单顺序固定为：**当前迭代、审批** ｜ 分割线 ｜ **产品、审计、MCP 接入** ｜ 分割线 ｜ **用户管理、Provider 管理、工作流管理、邮箱配置、LDAP 认证、Webhook 订阅**（除工作流管理外后五项仅 admin 可见；MCP 接入对全员开放）。
 
 - **MCP 接入**（`/mcpconfig`，与 MCP 服务端点 `POST /mcp` 区分）：只读展示 MCP 连接信息（端点 `POST /mcp`、streamable HTTP、`Authorization: Bearer <API Key>`，端点按当前 origin 拼接）；API Key（PAT）可生成多个、仅本人可见（后端按 actor 过滤），明文只在签发时展示一次，支持吊销。
 
@@ -115,5 +116,6 @@
 ### 管理能力（M3 补全）
 
 - **产品成员**（产品详情页）：添加成员用下拉选择（候选来自 `GET /products/{id}/member-candidates`，仅列出启用且尚未加入的成员），不再要求手填 `usr_` id；角色可在成员表中直接改（复用 upsert 接口）。非产品 `owner` / `admin` 时入口禁用，避免无效请求。
-- **用户管理**（admin，`/users`）：成员列表、新建（用户名不可改）、改显示名/邮箱/全局角色/启禁用、重置密码；权限判定在后端（非 admin 403）。- **工作流模板**（`/workflows`）：列表（按 scope 过滤）、YAML 新建/更新（服务端 DAG 与门禁校验，更新自动升版本）、导入（冲突换 id/升版本）、导出下载、归档。
+- **用户管理**（admin，`/users`）：成员列表、新建（用户名不可改）、改显示名/邮箱/全局角色/启禁用/认证来源（`local` 仅本地密码、`ldap` 仅 LDAP、`both` 双认证任一通过；ldap 成员可不设初始密码，重置密码入口隐藏）、重置密码；权限判定在后端（非 admin 403）。
+- **LDAP 认证**（admin，`/ldap`）：LDAP 服务器可视化维护（host/port/TLS 模式/跳过证书校验/超时/绑定账号/用户检索 Base 与过滤器），绑定密码加密落库、只报「已配置/未配置」；「测试连接」做拨号+绑定+试检索，「测试用户登录」做完整登录验证（密码只用于当次验证）。- **工作流模板**（`/workflows`）：列表（按 scope 过滤）、YAML 新建/更新（服务端 DAG 与门禁校验，更新自动升版本）、导入（冲突换 id/升版本）、导出下载、归档。
 - **Provider 配置**（admin，`/integrations`）：`enabled` 与 `baseURL` 可视化维护并持久化（`integration_provider_configs`），保存后 `integration.Registry` 运行时生效；**凭据仍只读环境变量**，页面仅展示「是否已配置」，不显示/编辑 token。
