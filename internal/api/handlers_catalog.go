@@ -86,10 +86,10 @@ func (h *handlers) getProduct(w http.ResponseWriter, r *http.Request) {
 }
 
 type updateProductReq struct {
-	Name                       *string           `json:"name"`
-	Description                *string           `json:"description"`
-	DefaultIterationWorkflowID *string           `json:"defaultIterationWorkflowId"`
-	DefaultTaskWorkflowID      *string           `json:"defaultTaskWorkflowId"`
+	Name                       *string `json:"name"`
+	Description                *string `json:"description"`
+	DefaultIterationWorkflowID *string `json:"defaultIterationWorkflowId"`
+	DefaultTaskWorkflowID      *string `json:"defaultTaskWorkflowId"`
 	// TaskWorkflowDefaults 按任务类型的默认任务流模板（kind → workflowId）；
 	// 非 nil 即整组替换，空对象 = 清空（全部回退产品默认）。
 	TaskWorkflowDefaults map[string]string `json:"taskWorkflowDefaults"`
@@ -210,9 +210,29 @@ func (h *handlers) listModules(w http.ResponseWriter, r *http.Request) {
 }
 
 type createModuleReq struct {
-	ParentID  string `json:"parentId"`
-	Name      string `json:"name"`
-	SortOrder int    `json:"sortOrder"`
+	ParentID  string         `json:"parentId"`
+	Name      string         `json:"name"`
+	SortOrder int            `json:"sortOrder"`
+	Info      *moduleInfoReq `json:"info"`
+}
+
+// moduleInfoReq 是模块基本信息入参（建/改共用）。
+type moduleInfoReq struct {
+	Description string   `json:"description"`
+	TechStack   []string `json:"techStack"`
+	OwnerID     string   `json:"ownerId"`
+	Developers  []string `json:"developers"`
+	Testers     []string `json:"testers"`
+}
+
+func (r *moduleInfoReq) toInput() app.ModuleInfoInput {
+	if r == nil {
+		return app.ModuleInfoInput{}
+	}
+	return app.ModuleInfoInput{
+		Description: r.Description, TechStack: r.TechStack,
+		OwnerID: r.OwnerID, Developers: r.Developers, Testers: r.Testers,
+	}
 }
 
 func (h *handlers) createModule(w http.ResponseWriter, r *http.Request) {
@@ -226,7 +246,7 @@ func (h *handlers) createModule(w http.ResponseWriter, r *http.Request) {
 		writeAppError(w, err)
 		return
 	}
-	view, err := h.svc().CreateModule(r.Context(), actor, pathParam(r, "id"), req.ParentID, req.Name, req.SortOrder)
+	view, err := h.svc().CreateModule(r.Context(), actor, pathParam(r, "id"), req.ParentID, req.Name, req.SortOrder, req.Info.toInput())
 	if err != nil {
 		writeAppError(w, err)
 		return
@@ -235,8 +255,9 @@ func (h *handlers) createModule(w http.ResponseWriter, r *http.Request) {
 }
 
 type updateModuleReq struct {
-	Name     *string `json:"name"`
-	ParentID *string `json:"parentId"`
+	Name     *string        `json:"name"`
+	ParentID *string        `json:"parentId"`
+	Info     *moduleInfoReq `json:"info"`
 }
 
 func (h *handlers) updateModule(w http.ResponseWriter, r *http.Request) {
@@ -250,13 +271,33 @@ func (h *handlers) updateModule(w http.ResponseWriter, r *http.Request) {
 		writeAppError(w, err)
 		return
 	}
+	var info *app.ModuleInfoInput
+	if req.Info != nil {
+		in := req.Info.toInput()
+		info = &in
+	}
 	view, err := h.svc().UpdateModule(r.Context(), actor, pathParam(r, "id"), pathParam(r, "mid"),
-		app.UpdateModuleInput{Name: req.Name, ParentID: req.ParentID})
+		app.UpdateModuleInput{Name: req.Name, ParentID: req.ParentID, Info: info})
 	if err != nil {
 		writeAppError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, view)
+}
+
+// deleteModule 删除模块子树；force=true 才会删除有任务挂靠的模块。
+func (h *handlers) deleteModule(w http.ResponseWriter, r *http.Request) {
+	actor, err := h.actor(r)
+	if err != nil {
+		writeAppError(w, err)
+		return
+	}
+	force := r.URL.Query().Get("force") == "true"
+	if err := h.svc().DeleteModule(r.Context(), actor, pathParam(r, "id"), pathParam(r, "mid"), force); err != nil {
+		writeAppError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
 type upsertDocumentReq struct {

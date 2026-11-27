@@ -113,6 +113,16 @@ export interface ModuleView {
   name: string
   path: string
   sortOrder: number
+  /** 功能简介。 */
+  description: string
+  /** 技术栈标签（多选）。 */
+  techStack: string[]
+  /** 主要责任人 userId；空即未指定。 */
+  ownerId: string
+  /** 开发者 userId 集合。 */
+  developers: string[]
+  /** 测试者 userId 集合。 */
+  testers: string[]
   children?: ModuleView[]
 }
 

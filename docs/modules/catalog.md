@@ -27,9 +27,10 @@ REST（M1）：
 | `GET /api/v1/products/{id}/member-candidates` | 可加入本产品的成员候选（启用且尚未加入），供控制台下拉选择 | 产品 `owner` / `admin` |
 | `POST /api/v1/products/{id}/members` | 加入成员 / 调角色 | 产品 `owner` / `admin` |
 | `DELETE /api/v1/products/{id}/members/{uid}` | 移除成员（未终结任务须先转派） | 产品 `owner` / `admin` |
-| `POST /api/v1/products/{id}/modules` | 建模块 | 产品 `owner` / `pm` / `admin` |
-| `PATCH /api/v1/products/{id}/modules/{mid}` | 改名 / 移动子树（重算 `path`） | 同上 |
-| `GET /api/v1/products/{id}/modules` | 模块树 | 该产品成员 |
+| `POST /api/v1/products/{id}/modules` | 建模块（含基本信息：简介/技术栈/责任人/开发者/测试者） | 产品 `owner` / `pm` / `admin` |
+| `PATCH /api/v1/products/{id}/modules/{mid}` | 改名 / 移动子树（重算 `path`）/ 改基本信息 | 同上 |
+| `DELETE /api/v1/products/{id}/modules/{mid}` | 删除模块子树；`?force=true` 强删有任务挂靠的模块，否则 `409 MODULE_HAS_TASKS` | 同上 |
+| `GET /api/v1/products/{id}/modules` | 模块树（含基本信息） | 该产品成员 |
 
 MCP：`chalkline_list_products` / `get_product` / `list_product_members` / `upsert_product_member` / `remove_product_member`，权限与 REST 一致（见 [mcp.md](../domain/mcp.md)）。
 
@@ -40,6 +41,7 @@ Go（被其他模块调用）：`catalog.IsMember(productID, userID)` / `MemberR
 - **建产品**：事务内写 `products` + 写一条 `owner` 成员记录（创建人）+ 审计；默认迭代/任务模板取内置模板 id。
 - **产品隔离**：所有列表/详情 SQL 必须先过成员关系（`JOIN product_members` 或 `admin` 放行），禁止先查全量再内存过滤（[tech.md](../tech.md) 硬性约束 11）。非成员访问返回 `404`。
 - **模块树操作**：移动模块时整棵子树重算 `path`；同级名唯一性在事务内校验（不变量 1）；深度 > 5 返回 `TREE_DEPTH_EXCEEDED`（422）。
+- **模块删除**：删除即删除整棵子树（`parent_id` 级联）；子树内有任务挂靠时先返回 `409 MODULE_HAS_TASKS`（附任务数），`?force=true` 才执行——挂靠关系随 `task_modules` 级联解除，任务本身保留。
 - **移除成员**：先查该用户在本产品下是否有未终结任务，有则拒绝并要求转派（不变量 17，与 planning 协作）；保证产品至少保留一个 `owner`。
 
 ## 数据
@@ -48,7 +50,7 @@ M1 新建迁移（表名遵循复数 `snake_case`）：
 
 - `products`：`id` / `key`（2–8 大写，唯一）/ `name` / `description` / `status` / `default_iteration_workflow_id` / `default_task_workflow_id` / `task_workflow_defaults`（按类型默认任务流，kind → workflow_id）/ `created_by` / 时间戳。`key` 不可改。
 - `product_members`：`product_id` + `user_id` 联合主键 / `member_role` / `created_at` / `created_by`。
-- `modules`：`id` / `product_id` / `parent_id` / `name` / `path`（物化，如 `/catalog/task-tree`）/ `sort_order` / 时间戳；`(product_id, parent_id, name)` 唯一。
+- `modules`：`id` / `product_id` / `parent_id` / `name` / `path`（物化，如 `/catalog/task-tree`）/ `sort_order` / `description`（功能简介）/ `tech_stack`（技术栈标签 `TEXT[]`）/ `owner_id`（主要责任人）/ `developers` / `testers`（人员 `user_id` 集合）/ 时间戳；`(product_id, parent_id, name)` 唯一。
 - `documents`：`id` / `owner_type` / `owner_id` / `content`（Markdown）/ `version` / 时间戳。
 
 > 字段定义来自 [model.md](../domain/model.md)；表结构在迁移时定稿，此处为建议。
