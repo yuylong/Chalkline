@@ -42,21 +42,22 @@
 - 加密密钥 `CHALKLINE_SECRET_KEY`（未设置回退 `CHALKLINE_JWT_SECRET`）；密钥变更导致解密失败时按「未配置」降级并告警，不阻断流程。
 - 轮换时可只提交新 Key（用户名保持不变）；留空 Secret 表示保持库内已有密文。
 
-全局的 `integration_provider_configs`（`baseUrl` / 启停 / 凭据是否存在）只回答「这套部署能连哪些外部系统」，管理台保留它是为了创建迭代时预填连接地址，不承载业务语义。成员可经 `GET /api/v1/integration/provider-options` 读取这些默认地址（只含地址，不含凭据），迭代配置弹窗以下拉建议的形式提供快速填写。
+全局 provider 配置只有一张**服务器列表**（`provider_endpoints`）：每条记录一个服务器的类型、名称与地址，没有「默认 git / 默认 svn / 默认 outline / 默认 redmine」的概念（按 kind 的默认配置表 `integration_provider_configs` 已随迁移 0018 移除）。任何选择 provider 的地方都从列表取下拉建议，也可手填任意地址。
 
-### 连接目录（多套外部系统）
+### 服务器列表（全局 Provider 配置）
 
-`integration_provider_configs` 每 kind 只有一行，无法表达「多个 git / 多个 svn / 多个 redmine / 多个 outline」。因此引入**连接目录**（`provider_endpoints`，迁移 0017）：
+**服务器列表**（`provider_endpoints`，迁移 0017）回答「这套部署能连哪些外部系统」：
 
-- **admin 增删改查**（`GET/POST /api/v1/integration/endpoints`、`PATCH/DELETE /api/v1/integration/endpoints/{id}`）：`kind` + 展示名 `label` + `baseUrl` + 备注 + 启停；同一 `(kind, baseUrl)` 不重复；目录**只存地址与展示名，不存任何凭据**。
-- **成员可读已启用项**（`GET /api/v1/integration/endpoints`，admin 看全部含停用）：迭代创建 / 配置弹窗把目录项作为 baseURL 下拉建议（带展示名），**也可自行填写额外地址**——目录是建议清单，不是白名单。
-- 删除目录项不影响已保存的迭代绑定（连接信息随迭代固化），只是不再出现在选择列表。
+- **admin 增删改查**（`GET/POST /api/v1/integration/endpoints`、`PATCH/DELETE /api/v1/integration/endpoints/{id}`）：`kind` + 展示名 `label` + `baseUrl` + 备注 + 启停；同一 `(kind, baseUrl)` 不重复；列表**只存地址与展示名，不存任何凭据**。
+- **成员可读已启用项**（`GET /api/v1/integration/endpoints`，admin 看全部含停用）：迭代创建 / 配置弹窗、我的凭据页把列表项作为 baseURL 下拉建议（带展示名），**也可手填任意地址**——列表是建议清单，不是白名单。
+- **管理台**：`/integrations`（admin）即服务器列表，列表上方是类型按钮条（「所有」+ 各类型，带数量），一键筛选。
+- 删除列表项不影响已保存的迭代绑定（连接信息随迭代固化），只是不再出现在选择列表。
 
 ### 个人凭据（以员工身份出站）
 
 外部系统里的成果物 / 流程记录若都以公共 Key 提交，就看不到「对应员工」。因此引入**个人凭据**（`user_provider_credentials`，迁移 0017）：
 
-- **成员自助维护**（`GET/PUT /api/v1/me/credentials`、`DELETE /api/v1/me/credentials/{provider}?baseUrl=…`）：按 `(provider, baseUrl)` 配置自己的 Key（`baseUrl` 空 = 适用于该 provider 的默认地址）；`authType` 为 `token` / `basic`，Secret **AES-GCM 加密落库**（`platform.Seal`），API 永不回显，只报「已配置 / 未配置」；留空 Secret 表示保持库内已有密文。
+- **成员自助维护**（`GET/PUT /api/v1/me/credentials`、`DELETE /api/v1/me/credentials/{provider}?baseUrl=…`）：按 `(provider, baseUrl)` 配置自己的 Key（`baseUrl` 必填——凭据按具体服务器地址生效，没有「默认地址」；地址从服务器列表选择或手填）；`authType` 为 `token` / `basic`，Secret **AES-GCM 加密落库**（`platform.Seal`），API 永不回显，只报「已配置 / 未配置」；留空 Secret 表示保持库内已有密文。
 - **出站优先级**：提交人个人凭据 → 迭代绑定凭据 → 服务端环境变量（`CHALKLINE_*_TOKEN`）。成果物分发与流程记录（建票 / 回复）都按此解析；个人凭据解密失败按「未配置」降级并告警，不阻断流程（不变量 15）。
 - **界面告警**：迭代绑定视图（`GET /api/v1/iterations/{id}/providers` 与迭代详情）为每条外部绑定标注 `personalSecretConfigured`——当前查看人未配置个人 Key 时，迭代详情页提示「将以公共凭据出站」，并引导到控制台「我的凭据」页维护。
 - **入口分层**：迭代级公共 Key 在**迭代详情页最下方** Provider 卡片（按钮为「更新公共凭据」，需产品成员 + `pm` 或 admin；视图以 `canManageCredential` / `canManageBinding` 告知前端是否显示，普通成员不会点到 403）；个人 Key 在左侧菜单**「我的凭据」**（全员可读写自己的）。材料提交 / 补挂表单顶部也提示本次将以谁的 Key 出站，缺个人 Key 时给出跳转入口。

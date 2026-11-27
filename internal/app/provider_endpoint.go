@@ -42,10 +42,25 @@ type ProviderEndpointUpdateInput struct {
 	Enabled *bool
 }
 
-// providerKindLabels 与 server 组装的 ProviderDefaults 对齐（找不到时退化为 kind 本身）。
+// providerKindLabels 是平台认识的外部系统类型与展示名（与 workitem.ArtifactProvider
+// 对齐，不含 inline——inline 是平台内置存储，不是外部服务器）。
+var providerKindLabels = map[string]string{
+	"git":     "Git / GitLab / Gitea",
+	"svn":     "SVN",
+	"outline": "Outline",
+	"redmine": "Redmine",
+}
+
+// knownProviderKind 报告 kind 是否为已知外部系统类型。
+func knownProviderKind(kind string) bool {
+	_, ok := providerKindLabels[kind]
+	return ok
+}
+
+// providerKindLabel 取类型展示名（找不到时退化为 kind 本身）。
 func (s *Service) providerKindLabel(kind string) string {
-	if def, ok := s.providerDefault(kind); ok {
-		return def.Label
+	if label, ok := providerKindLabels[kind]; ok {
+		return label
 	}
 	return kind
 }
@@ -83,7 +98,7 @@ func (s *Service) providerEndpointView(r store.ProviderEndpointRow) ProviderEndp
 // validateProviderEndpoint 校验目录入参：kind 必须是已知 provider，
 // baseURL 必须为 http(s) 绝对地址且不得内嵌凭据。
 func (s *Service) validateProviderEndpoint(kind, baseURL string) error {
-	if _, ok := s.providerDefault(kind); !ok {
+	if !knownProviderKind(kind) {
 		return Invalid("未知 provider %q（可选：git / svn / outline / redmine）", kind)
 	}
 	v, err := normalizeBaseURL(baseURL)

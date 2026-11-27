@@ -24,7 +24,7 @@ type UserCredentialView struct {
 	ID            string `json:"id"`
 	Provider      string `json:"provider"`
 	ProviderLabel string `json:"providerLabel"`
-	BaseURL       string `json:"baseUrl,omitempty"` // 空 = 适用于该 provider 的默认地址
+	BaseURL       string `json:"baseUrl,omitempty"` // 空 = 历史行（未指定地址，不再产生新行）
 	AuthType      string `json:"authType,omitempty"`
 	AuthUsername  string `json:"authUsername,omitempty"`
 	// SecretConfigured 表示本人已保存 Key（密文）。
@@ -69,14 +69,18 @@ func (s *Service) userCredentialView(r store.UserProviderCredentialRow) UserCred
 
 // SetMyCredential 保存（或轮换）本人的一条个人凭据。
 // authType 留空 = 清除认证方式（回退公共凭据）；Secret 留空 = 保持库内已有密文。
+// baseURL 必填：凭据按 (provider, baseUrl) 生效，没有「默认地址」概念。
 func (s *Service) SetMyCredential(ctx context.Context, actor Actor, in UserCredentialInput) (UserCredentialView, error) {
 	provider := strings.TrimSpace(in.Provider)
-	if _, ok := s.providerDefault(provider); !ok {
+	if !knownProviderKind(provider) {
 		return UserCredentialView{}, Invalid("未知 provider %q", provider)
 	}
 	baseURL, err := normalizeBaseURL(in.BaseURL)
 	if err != nil {
 		return UserCredentialView{}, err
+	}
+	if baseURL == "" {
+		return UserCredentialView{}, Invalid("连接地址不可为空（凭据按具体服务器地址生效）")
 	}
 	auth := workitem.ProviderAuth{
 		Type:     workitem.ProviderAuthType(strings.TrimSpace(in.AuthType)),
@@ -120,9 +124,10 @@ func (s *Service) SetMyCredential(ctx context.Context, actor Actor, in UserCrede
 }
 
 // DeleteMyCredential 删除本人的一条个人凭据（回退公共凭据出站）。
+// baseURL 允许为空：兼容历史「未指定地址」的凭据行，便于清理。
 func (s *Service) DeleteMyCredential(ctx context.Context, actor Actor, provider, baseURL string) error {
 	provider = strings.TrimSpace(provider)
-	if _, ok := s.providerDefault(provider); !ok {
+	if !knownProviderKind(provider) {
 		return Invalid("未知 provider %q", provider)
 	}
 	baseURL, err := normalizeBaseURL(baseURL)

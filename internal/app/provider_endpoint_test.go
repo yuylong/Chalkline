@@ -11,12 +11,7 @@ import (
 )
 
 func endpointTestService() *Service {
-	return &Service{ProviderDefaults: []ProviderDefault{
-		{Kind: "git", Label: "Git / GitLab / Gitea"},
-		{Kind: "svn", Label: "SVN"},
-		{Kind: "outline", Label: "Outline", TokenRequired: true},
-		{Kind: "redmine", Label: "Redmine", TokenRequired: true},
-	}}
+	return &Service{}
 }
 
 func TestValidateProviderEndpointKind(t *testing.T) {
@@ -45,7 +40,7 @@ func TestProviderEndpointView(t *testing.T) {
 		BaseURL: "https://rm1.example.com", Note: "流程记录", Enabled: true,
 	})
 	if v.KindLabel != "Redmine" {
-		t.Fatalf("kindLabel 应取 ProviderDefaults 的展示名: %+v", v)
+		t.Fatalf("kindLabel 应取静态类型展示名: %+v", v)
 	}
 	if v.ID != "pep_1" || v.BaseURL != "https://rm1.example.com" || !v.Enabled {
 		t.Fatalf("视图字段应原样透出: %+v", v)
@@ -62,7 +57,7 @@ func TestUserCredentialViewNeverLeaksSecret(t *testing.T) {
 		t.Fatal("库内密文存在应报已配置")
 	}
 	if v.ProviderLabel != "Outline" {
-		t.Fatalf("providerLabel 应取 ProviderDefaults 的展示名: %+v", v)
+		t.Fatalf("providerLabel 应取静态类型展示名: %+v", v)
 	}
 	// 视图结构无 Secret 字段：编译期保证永不回显（本用例即结构断言）。
 }

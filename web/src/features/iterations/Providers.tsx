@@ -1,7 +1,7 @@
 // 迭代级 Provider 绑定：成果物（必选）/ 流程记录（可选）/ 代码库（可选，可多个）。
 // 连接信息随迭代固化，节点详情页据此展示可点击的跳转入口；首次提交成果物后冻结。
-// baseURL 下拉建议来自全局连接目录（admin 维护的多个 git / svn / redmine / outline），
-// 也可自行填写额外地址；未配置个人凭据时提示回退公共 Key 出站。
+// baseURL 下拉建议来自全局服务器列表（admin 维护的多个 git / svn / redmine / outline），
+// 也可手填任意地址；未配置个人凭据时提示回退公共 Key 出站。
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { Alert, App, AutoComplete, Button, Card, Form, Input, Modal, Select, Space, Tag, Typography } from 'antd'
 import { useState } from 'react'
@@ -13,7 +13,6 @@ import type {
   IterationProvidersView,
   ListEnvelope,
   ProviderEndpointView,
-  ProviderOptionView,
 } from '../../shared/types'
 
 /** 分类展示元数据。 */
@@ -218,19 +217,12 @@ function AuthFields({
 
 /** 配置表单字段：迭代创建弹窗与迭代详情配置弹窗共用。 */
 export function ProviderBindingFields() {
-  // 全局连接默认值（成员可读）：仅用于预填/提示地址，凭据仍只读环境变量。
-  const { data: options } = useQuery({
-    queryKey: ['provider-options'],
-    queryFn: () => apiGet<ListEnvelope<ProviderOptionView>>('/integration/provider-options'),
-  })
-  // 连接目录（admin 维护的多套地址）：迭代绑定的下拉建议来源，也可自行填写。
+  // 全局服务器列表（成员可读已启用项）：迭代绑定的下拉建议来源，也可手填任意地址。
   const { data: endpoints } = useQuery({
     queryKey: ['provider-endpoints'],
     queryFn: () => apiGet<ListEnvelope<ProviderEndpointView>>('/integration/endpoints'),
   })
-  const defaultBaseURL = (kind: string) =>
-    options?.items.find((o) => o.kind === kind)?.baseUrl ?? ''
-  /** 目录项 + 全局默认值合并为下拉建议（目录项带展示名，排在前）。 */
+  /** 列表中该类型的已启用服务器 → 下拉建议（带展示名）。 */
   const suggestions = (...kinds: string[]) => {
     const seen = new Set<string>()
     const out: { value: string; label: string }[] = []
@@ -239,11 +231,6 @@ export function ProviderBindingFields() {
         if (e.kind !== k || seen.has(e.baseUrl)) continue
         seen.add(e.baseUrl)
         out.push({ value: e.baseUrl, label: `${e.label}${e.note ? ` · ${e.note}` : ''}` })
-      }
-      const url = defaultBaseURL(k)
-      if (url && !seen.has(url)) {
-        seen.add(url)
-        out.push({ value: url, label: '全局默认' })
       }
     }
     return out
@@ -273,17 +260,10 @@ export function ProviderBindingFields() {
                 name="artifactBaseUrl"
                 label="连接地址 baseURL"
                 rules={[{ required: true, message: '请填写连接地址' }, httpUrlRule]}
-                extra={
-                  defaultBaseURL(p)
-                    ? `全局默认：${defaultBaseURL(p)}（可直接选用，也可覆盖）`
-                    : '可手动填写；认证信息在下方单独配置'
-                }
+                extra="从全局服务器列表选择，或手填任意地址；认证信息在下方单独配置"
               >
                 <AutoComplete options={suggestions(p)}>
-                  <Input
-                    suffix={caretIcon}
-                    placeholder={defaultBaseURL(p) || 'https://…'}
-                  />
+                  <Input suffix={caretIcon} placeholder="https://…" />
                 </AutoComplete>
               </Form.Item>
               <Form.Item
@@ -330,15 +310,10 @@ export function ProviderBindingFields() {
                 name="processBaseUrl"
                 label="Redmine 地址"
                 rules={[{ required: true, message: '请填写 Redmine 地址' }, httpUrlRule]}
-                extra={
-                  defaultBaseURL('redmine') ? `全局默认：${defaultBaseURL('redmine')}` : undefined
-                }
+                extra="从全局服务器列表选择，或手填任意地址"
               >
                 <AutoComplete options={suggestions('redmine')}>
-                  <Input
-                    suffix={caretIcon}
-                    placeholder={defaultBaseURL('redmine') || 'https://redmine.example.com'}
-                  />
+                  <Input suffix={caretIcon} placeholder="https://redmine.example.com" />
                 </AutoComplete>
               </Form.Item>
               <Form.Item
@@ -391,19 +366,10 @@ export function ProviderBindingFields() {
                   name={[field.name, 'baseUrl']}
                   label="连接地址 baseURL"
                   rules={[{ required: true, message: '请填写连接地址' }, httpUrlRule]}
-                  extra={
-                    suggestions('git', 'svn').length > 0
-                      ? `全局默认：${suggestions('git', 'svn')
-                          .map((s) => s.value)
-                          .join(' / ')}`
-                      : undefined
-                  }
+                  extra="从全局服务器列表选择，或手填任意地址"
                 >
                   <AutoComplete options={suggestions('git', 'svn')}>
-                    <Input
-                      suffix={caretIcon}
-                      placeholder={defaultBaseURL('git') || 'https://git.example.com'}
-                    />
+                    <Input suffix={caretIcon} placeholder="https://git.example.com" />
                   </AutoComplete>
                 </Form.Item>
                 <Form.Item

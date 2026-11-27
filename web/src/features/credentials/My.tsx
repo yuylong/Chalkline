@@ -1,10 +1,12 @@
 // 我的凭据：成员自助维护本人在外部系统（outline / redmine / git / svn）的
-// 写权限 Key。分发成果物 / 流程记录时优先以本人身份出站，外部系统可见
+// 写权限 Key。凭据按 (provider, 服务器地址) 生效——地址从全局服务器列表选择，
+// 也可手填。分发成果物 / 流程记录时优先以本人身份出站，外部系统可见
 // 「对应员工提交」；未配置时回退公共凭据（迭代级 → 环境变量）。
 // Key 加密保存、永不回显；留空提交表示保持已保存的凭据。
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   App,
+  AutoComplete,
   Button,
   Card,
   Form,
@@ -19,7 +21,12 @@ import {
 } from 'antd'
 import { useState } from 'react'
 import { apiDelete, apiGet, apiPut } from '../../shared/api'
-import type { ListEnvelope, UserCredentialSet, UserCredentialView } from '../../shared/types'
+import type {
+  ListEnvelope,
+  ProviderEndpointView,
+  UserCredentialSet,
+  UserCredentialView,
+} from '../../shared/types'
 import { ApiErrorBanner } from '../../shared/ui'
 import { fmtTime } from '../../shared/status'
 
@@ -71,6 +78,12 @@ export default function MyCredentials() {
   const { data, isPending, isError, error } = useQuery({
     queryKey: ['my-credentials'],
     queryFn: () => apiGet<ListEnvelope<UserCredentialView>>('/me/credentials'),
+  })
+
+  // 全局服务器列表（成员可读已启用项）：凭据适用地址的下拉建议，也可手填。
+  const { data: endpoints } = useQuery({
+    queryKey: ['provider-endpoints'],
+    queryFn: () => apiGet<ListEnvelope<ProviderEndpointView>>('/integration/endpoints'),
   })
 
   const invalidate = () => {
@@ -170,7 +183,7 @@ export default function MyCredentials() {
                 v ? (
                   <Typography.Text code>{v}</Typography.Text>
                 ) : (
-                  <Typography.Text type="secondary">默认地址（全局配置）</Typography.Text>
+                  <Typography.Text type="secondary">（历史行：未指定地址）</Typography.Text>
                 ),
             },
             {
@@ -246,17 +259,29 @@ export default function MyCredentials() {
             name="provider"
             label="Provider"
             rules={[{ required: true, message: '请选择 provider' }]}
-            extra="同一 provider 可按不同地址分别配置 Key"
+            extra="凭据按 (provider, 服务器地址) 生效；同一 provider 可按不同地址分别配置 Key"
           >
             <Select options={PROVIDER_OPTIONS} />
           </Form.Item>
-          <Form.Item
-            name="baseUrl"
-            label="适用地址（可选）"
-            extra="留空 = 适用于该 provider 的默认地址；填写后仅在该地址的迭代绑定时使用"
-            rules={[httpUrlRule]}
-          >
-            <Input placeholder="https://git.example.com" />
+          <Form.Item noStyle shouldUpdate={(a, b) => a.provider !== b.provider}>
+            {({ getFieldValue }) => {
+              const kind: string | undefined = getFieldValue('provider')
+              const options = (endpoints?.items ?? [])
+                .filter((e) => e.kind === kind)
+                .map((e) => ({ value: e.baseUrl, label: `${e.label}${e.note ? ` · ${e.note}` : ''}` }))
+              return (
+                <Form.Item
+                  name="baseUrl"
+                  label="适用地址"
+                  rules={[{ required: true, message: '请填写适用地址' }, httpUrlRule]}
+                  extra="从全局服务器列表选择，或手填任意地址"
+                >
+                  <AutoComplete options={options}>
+                    <Input suffix={<span style={{ opacity: 0.45 }}>▾</span>} placeholder="https://git.example.com" />
+                  </AutoComplete>
+                </Form.Item>
+              )
+            }}
           </Form.Item>
           <Form.Item
             name="authType"

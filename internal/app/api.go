@@ -93,13 +93,7 @@ type API interface {
 	UpdateWebhook(ctx context.Context, actor Actor, id string, in UpdateWebhookInput) (WebhookView, error)
 	DeleteWebhook(ctx context.Context, actor Actor, id string) error
 
-	// integration（M3 provider 配置，admin；凭据仍只读环境变量）
-	ListProviderConfigs(ctx context.Context, actor Actor) ([]ProviderConfigView, error)
-	UpdateProviderConfig(ctx context.Context, actor Actor, kind string, in ProviderConfigInput) (ProviderConfigView, error)
-	// ListProviderOptions 全局连接默认值（成员可读，供迭代 provider 绑定预填地址）。
-	ListProviderOptions(ctx context.Context, actor Actor) ([]ProviderOptionView, error)
-
-	// 连接目录（admin 增删改查；成员可读已启用项用于迭代绑定选择）
+	// 连接目录＝全局 provider 配置（admin 增删改查；成员可读已启用项用于选择处下拉建议）
 	ListProviderEndpoints(ctx context.Context, actor Actor) ([]ProviderEndpointView, error)
 	CreateProviderEndpoint(ctx context.Context, actor Actor, in ProviderEndpointInput) (ProviderEndpointView, error)
 	UpdateProviderEndpoint(ctx context.Context, actor Actor, id string, in ProviderEndpointUpdateInput) (ProviderEndpointView, error)
