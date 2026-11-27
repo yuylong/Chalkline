@@ -4,6 +4,7 @@
 -- 设计：人员字段存 user_id（TEXT，空即未指定），技术栈为 TEXT[] 标签集合；
 -- 旧行默认空值，行为与升级前一致。删除模块时整棵子树级联（modules.parent_id
 -- ON DELETE CASCADE），挂靠任务经 task_modules 级联解除关联。
+-- 0016 已用于 LDAP 认证，故本迁移使用当前最新版本号 0019。
 
 -- +goose Up
 ALTER TABLE modules
