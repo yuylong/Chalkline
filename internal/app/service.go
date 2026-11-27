@@ -49,6 +49,9 @@ type Service struct {
 	// SMTPTestSend 是测试邮件发送通道（依赖倒置：notify.SMTP 实现，server 组装层注入；
 	// nil 时测试发送报内部错误，不影响其余用例）。
 	SMTPTestSend func(ctx context.Context, rt SMTPRuntime, recipients []string) error
+	// LDAP 是 LDAP 认证通道（依赖倒置：auth.LDAPClient 实现，server 组装层注入；
+	// nil 时 ldap/both 成员登录只走本地密码并告警，管理台测试连接报内部错误）。
+	LDAP LDAPAuthenticator
 	// Distributor 是成果物分发通道（依赖倒置：integration.Dispatcher 实现；nil 时分发跳过）。
 	Distributor ArtifactDistributor
 	// Process 是流程记录通道（依赖倒置：integration.Dispatcher 实现；nil 时跳过）。
@@ -66,6 +69,8 @@ type Options struct {
 	SecretKey        string
 	// SMTPTestSend 注入测试邮件发送通道（server 组装层用 notify.SMTP 实现）。
 	SMTPTestSend func(ctx context.Context, rt SMTPRuntime, recipients []string) error
+	// LDAP 注入 LDAP 认证通道（server 组装层用 auth.LDAPClient 实现）。
+	LDAP LDAPAuthenticator
 	// Distributor / Process 注入成果物分发与流程记录通道（server 组装层用 integration.Dispatcher）。
 	Distributor ArtifactDistributor
 	Process     ProcessRecorder
@@ -80,6 +85,7 @@ func NewService(db *store.DB, log *slog.Logger, jwt *auth.JWTManager, gate Artif
 		ProviderDefaults: opts.ProviderDefaults,
 		SMTPDefaults:     opts.SMTPDefaults, SecretKey: opts.SecretKey,
 		SMTPTestSend: opts.SMTPTestSend,
+		LDAP:         opts.LDAP,
 		Distributor:  opts.Distributor, Process: opts.Process, Async: opts.Async}
 }
 

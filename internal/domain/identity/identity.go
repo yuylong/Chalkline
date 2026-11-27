@@ -74,6 +74,27 @@ const (
 
 func (s UserStatus) Valid() bool { return s == UserActive || s == UserDisabled }
 
+// AuthSource 是成员的认证来源（docs/modules/identity.md「LDAP 认证」）。
+// local：仅本地 argon2id 密码；ldap：仅 LDAP 服务器；both：双认证，
+// 本地或 LDAP 任一密码通过即可登录。
+type AuthSource string
+
+const (
+	AuthLocal AuthSource = "local"
+	AuthLDAP  AuthSource = "ldap"
+	AuthBoth  AuthSource = "both"
+)
+
+var authSourceSet = map[AuthSource]bool{
+	AuthLocal: true, AuthLDAP: true, AuthBoth: true,
+}
+
+// Valid 报告认证来源是否为已定义值。
+func (a AuthSource) Valid() bool { return authSourceSet[a] }
+
+// UsesLDAP 报告该认证来源是否参与 LDAP 校验（ldap 与 both）。
+func (a AuthSource) UsesLDAP() bool { return a == AuthLDAP || a == AuthBoth }
+
 // User 是平台成员。单部署 = 一个团队，用户角色为全局。
 type User struct {
 	ID           string
@@ -83,6 +104,7 @@ type User struct {
 	PasswordHash string // argon2id，由 internal/auth 负责哈希，本包只存不解析
 	Roles        Roles
 	Status       UserStatus
+	AuthSource   AuthSource // 空值按 local 处理（历史行默认 local）
 }
 
 var usernameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{1,31}$`)
@@ -90,10 +112,14 @@ var usernameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{1,31}$`)
 // ErrValidation 表示实体违反不变量，message 可直接展示。
 var ErrValidation = errors.New("identity: 实体校验失败")
 
-// NewUser 构造并校验成员。password_hash 由 auth 层生成后传入。
+// NewUser 构造并校验成员。password_hash 由 auth 层生成后传入；
+// authSource 空值归一化为 local。
 func NewUser(id, username, displayName, email, passwordHash string, roles Roles, status UserStatus) (User, error) {
 	u := User{ID: id, Username: username, DisplayName: displayName, Email: email,
 		PasswordHash: passwordHash, Roles: roles, Status: status}
+	if u.AuthSource == "" {
+		u.AuthSource = AuthLocal
+	}
 	if err := u.Validate(); err != nil {
 		return User{}, err
 	}
@@ -127,6 +153,12 @@ func (u User) Validate() error {
 	}
 	if !u.Status.Valid() {
 		return fmt.Errorf("%w: 状态非法 %q", ErrValidation, u.Status)
+	}
+	if u.AuthSource == "" {
+		u.AuthSource = AuthLocal // 历史行与直接构造的零值归一化
+	}
+	if !u.AuthSource.Valid() {
+		return fmt.Errorf("%w: 认证来源非法 %q", ErrValidation, u.AuthSource)
 	}
 	return nil
 }

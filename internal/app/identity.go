@@ -24,12 +24,13 @@ type UserView struct {
 	Email       string   `json:"email"`
 	Roles       []string `json:"roles"`
 	Status      string   `json:"status"`
+	AuthSource  string   `json:"authSource"` // local / ldap / both
 }
 
 func viewUser(u identity.User) UserView {
 	return UserView{
 		ID: u.ID, Username: u.Username, DisplayName: u.DisplayName, Email: u.Email,
-		Roles: store.FromRoles(u.Roles), Status: string(u.Status),
+		Roles: store.FromRoles(u.Roles), Status: string(u.Status), AuthSource: string(u.AuthSource),
 	}
 }
 
@@ -41,13 +42,20 @@ type LoginResult struct {
 }
 
 // Login 用户名密码换 JWT；失败统一 401（不区分用户不存在与密码错误，不暴露存在性）。
+// 认证按成员 auth_source 分支：local 仅本地 argon2id、ldap 仅 LDAP、
+// both 双认证（本地或 LDAP 任一密码通过即可，docs/modules/identity.md）。
 func (s *Service) Login(ctx context.Context, username, password string) (LoginResult, error) {
 	u, err := store.UserByUsername(ctx, s.DB.Q(), username)
 	if err != nil {
 		return LoginResult{}, Unauthorized("用户名或密码错误")
 	}
-	ok, err := auth.VerifyPassword(password, u.PasswordHash)
-	if err != nil || !ok || u.Status != identity.UserActive {
+	if u.Status != identity.UserActive {
+		return LoginResult{}, Unauthorized("用户名或密码错误")
+	}
+	ok, err := s.checkPassword(ctx, u, password, func() (bool, error) {
+		return s.ldapCheck(ctx, u.Username, password)
+	})
+	if err != nil || !ok {
 		return LoginResult{}, Unauthorized("用户名或密码错误")
 	}
 	expires := s.Now().Add(jwtTTL)
@@ -56,6 +64,49 @@ func (s *Service) Login(ctx context.Context, username, password string) (LoginRe
 		return LoginResult{}, err
 	}
 	return LoginResult{Token: token, User: viewUser(u), Expiry: expires.UTC().Format(time.RFC3339)}, nil
+}
+
+// checkPassword 按认证来源校验密码；ldap 是惰性求值的 LDAP 探针
+// （local 成员不触发 LDAP 拨号；both 成员本地失败后才尝试 LDAP）。
+// LDAP 基础设施错误一律按认证失败处理（不暴露目录状态，仅由探针侧记告警）。
+func (s *Service) checkPassword(_ context.Context, u identity.User, password string, ldap func() (bool, error)) (bool, error) {
+	if !u.AuthSource.UsesLDAP() { // local（含历史空值）
+		return auth.VerifyPassword(password, u.PasswordHash)
+	}
+	if u.AuthSource == identity.AuthBoth {
+		if ok, err := auth.VerifyPassword(password, u.PasswordHash); err == nil && ok {
+			return true, nil
+		}
+	}
+	ok, err := ldap()
+	if err != nil {
+		return false, nil
+	}
+	return ok, nil
+}
+
+// ldapCheck 解析生效 LDAP 配置并校验用户名/密码。
+// LDAP 未装配/未启用/不可达一律按认证失败处理（不暴露目录状态），仅记告警日志。
+func (s *Service) ldapCheck(ctx context.Context, username, password string) (bool, error) {
+	if s.LDAP == nil {
+		s.Log.Warn("LDAP 认证通道未装配，LDAP/双认证成员无法经 LDAP 登录")
+		return false, nil
+	}
+	rt, ok, err := s.EffectiveLDAP(ctx)
+	if err != nil {
+		s.Log.Warn("LDAP 配置读取失败", "error", err)
+		return false, nil
+	}
+	if !ok {
+		s.Log.Warn("LDAP 未启用或配置不完整，LDAP/双认证成员登录被拒")
+		return false, nil
+	}
+	passed, aerr := s.LDAP.Authenticate(ctx, rt, username, password)
+	if aerr != nil {
+		s.Log.Warn("LDAP 认证失败", "error", aerr)
+		return false, nil
+	}
+	return passed, nil
 }
 
 // PATView 是 PAT 对外视图（不含 hash 与明文）。
@@ -141,20 +192,38 @@ type CreateUserInput struct {
 	Username    string
 	DisplayName string
 	Email       string
-	Password    string
+	Password    string // local/both 必填；ldap 可留空（落随机不可匹配 hash）
 	Roles       identity.Roles
+	AuthSource  identity.AuthSource
 }
 
-// CreateUser 建成员（admin 专属）。
+// CreateUser 建成员（admin 专属）。认证来源决定登录校验路径：
+// local/both 必须提供初始密码；ldap 成员本地密码置为随机值（不可匹配）。
 func (s *Service) CreateUser(ctx context.Context, actor Actor, in CreateUserInput) (UserView, error) {
-	hash, err := auth.HashPassword(in.Password)
-	if err != nil {
+	if in.AuthSource == "" {
+		in.AuthSource = identity.AuthLocal
+	}
+	if !in.AuthSource.Valid() {
+		return UserView{}, Invalid("认证来源 %q 非法，应为 local / ldap / both", in.AuthSource)
+	}
+	var hash string
+	var err error
+	if strings.TrimSpace(in.Password) == "" {
+		if !in.AuthSource.UsesLDAP() {
+			return UserView{}, Invalid("本地/双认证成员必须设置初始密码")
+		}
+		// LDAP 成员：本地 hash 落随机值，杜绝空密码被本地路径匹配。
+		if hash, err = auth.HashPassword(s.newID("ldap")); err != nil {
+			return UserView{}, err
+		}
+	} else if hash, err = auth.HashPassword(in.Password); err != nil {
 		return UserView{}, err
 	}
 	u, err := identity.NewUser(s.newID("usr"), in.Username, in.DisplayName, in.Email, hash, in.Roles, identity.UserActive)
 	if err != nil {
 		return UserView{}, MapError(err)
 	}
+	u.AuthSource = in.AuthSource
 	err = s.DB.WithTx(ctx, func(q store.Querier) error {
 		if err := store.InsertUser(ctx, q, u); err != nil {
 			if store.IsDuplicate(err) {
@@ -163,7 +232,8 @@ func (s *Service) CreateUser(ctx context.Context, actor Actor, in CreateUserInpu
 			return err
 		}
 		return audit(ctx, q, actor, "user.create", "user", u.ID,
-			map[string]any{"username": u.Username, "roles": store.FromRoles(u.Roles)})
+			map[string]any{"username": u.Username, "roles": store.FromRoles(u.Roles),
+				"auth_source": string(u.AuthSource)})
 	})
 	if err != nil {
 		return UserView{}, err
@@ -193,15 +263,17 @@ func (s *Service) GetUser(ctx context.Context, _ Actor, id string) (UserView, er
 	return viewUser(u), nil
 }
 
-// UpdateUserInput 是改成员入参：显示名/邮箱/角色/状态。
+// UpdateUserInput 是改成员入参：显示名/邮箱/角色/状态/认证来源。
 type UpdateUserInput struct {
 	DisplayName string
 	Email       string
 	Roles       identity.Roles
 	Status      identity.UserStatus
+	AuthSource  identity.AuthSource
 }
 
-// UpdateUser 改显示名/邮箱/角色/启禁用（admin）。角色变更同时影响 JWT/PAT 生效判定（校验时查库）。
+// UpdateUser 改显示名/邮箱/角色/启禁用/认证来源（admin）。角色变更同时影响
+// JWT/PAT 生效判定（校验时查库）；认证来源变更即时影响登录路径。
 func (s *Service) UpdateUser(ctx context.Context, actor Actor, id string, in UpdateUserInput) (UserView, error) {
 	in.DisplayName = strings.TrimSpace(in.DisplayName)
 	if in.DisplayName == "" {
@@ -221,11 +293,17 @@ func (s *Service) UpdateUser(ctx context.Context, actor Actor, id string, in Upd
 	if !in.Status.Valid() {
 		return UserView{}, Invalid("状态非法")
 	}
+	if in.AuthSource == "" {
+		in.AuthSource = identity.AuthLocal
+	}
+	if !in.AuthSource.Valid() {
+		return UserView{}, Invalid("认证来源 %q 非法，应为 local / ldap / both", in.AuthSource)
+	}
 	err := s.DB.WithTx(ctx, func(q store.Querier) error {
 		if _, err := store.UserByID(ctx, q, id); err != nil {
 			return wrapNotFound(err, "成员不存在")
 		}
-		if err := store.UpdateUser(ctx, q, id, in.DisplayName, in.Email, in.Roles, in.Status); err != nil {
+		if err := store.UpdateUser(ctx, q, id, in.DisplayName, in.Email, in.Roles, in.Status, in.AuthSource); err != nil {
 			if store.IsDuplicate(err) {
 				return Invalid("邮箱已存在")
 			}
@@ -233,7 +311,8 @@ func (s *Service) UpdateUser(ctx context.Context, actor Actor, id string, in Upd
 		}
 		return audit(ctx, q, actor, "user.update", "user", id,
 			map[string]any{"displayName": in.DisplayName, "email": in.Email,
-				"roles": store.FromRoles(in.Roles), "status": string(in.Status)})
+				"roles": store.FromRoles(in.Roles), "status": string(in.Status),
+				"auth_source": string(in.AuthSource)})
 	})
 	if err != nil {
 		return UserView{}, err
