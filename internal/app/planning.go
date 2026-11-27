@@ -189,7 +189,7 @@ func (s *Service) GetIteration(ctx context.Context, actor Actor, id string) (Ite
 		return IterationDetail{}, err
 	}
 	detail := IterationDetail{IterationView: viewIteration(it)}
-	providers, err := s.iterationProvidersView(ctx, q, it)
+	providers, err := s.iterationProvidersViewFor(ctx, q, it, actor)
 	if err != nil {
 		return detail, err
 	}

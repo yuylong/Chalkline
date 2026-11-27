@@ -43,6 +43,8 @@ type Provider interface {
 - `outbox_events`（M0 `0001_platform_baseline.sql` 已建，M2 `0007_integration.sql` 增加 `next_attempt_at`）：`id` / `event_type` / `payload`（id、标题、链接、操作者，不携带正文）/ `status`（pending/sent/failed）/ `attempts` / `last_error` / `next_attempt_at` / 时间戳。
 - `external_links`（`0007_integration.sql` 已建）：`subject_type` / `subject_id` / `provider` / `external_id` / `url`，唯一键 `(subject_type, subject_id, provider, external_id)`，用于 Redmine issue 回写、Outline 文档归属等稳定关联（见 model.md「ExternalLink」）；store 提供 `UpsertExternalLink` / `ListExternalLinks`。
 - `integration_provider_configs`（`0009_provider_config.sql`）：`provider` / `enabled` / `base_url` / `updated_by` / `updated_at`。只存启停与地址覆盖，**不存凭据**；无行 = 使用环境变量默认值。
+- `provider_endpoints`（`0017_provider_endpoints.sql`）：连接目录——admin 维护的多套外部系统地址（`kind` / `label` / `base_url` / `note` / `enabled`，唯一键 `(kind, base_url)`）。迭代绑定弹窗的下拉建议来源，也可自行填写额外地址；只存地址与展示名，不存任何凭据。
+- `user_provider_credentials`（`0017_provider_endpoints.sql`）：成员个人凭据——按 `(user_id, provider, base_url)` 配置本人 Key（`auth_type` / `auth_username` / `secret_enc` AES-GCM 密文）。出站解析顺序：提交人个人凭据 → 迭代绑定凭据 → 服务端环境变量；API 永不回显，只报「已配置 / 未配置」。
 - `smtp_configs`（`0011_add_smtp_config.sql`，单行 `config_key='default'`）：`enabled` / `host` / `port` / `username` / `password_enc`（AES-GCM 密文）/ `from_addr` / `updated_by` / `updated_at`。**唯一落库凭据**：SMTP 发件密码，加密存储（`platform.Seal`，密钥 `CHALKLINE_SECRET_KEY`，回退 `CHALKLINE_JWT_SECRET`），API 永不回显。
 - 各 provider 的 `base_url` 与凭据：环境变量/密钥文件，**不入库**（base_url 可由管理台覆盖并持久化，凭据永不入库——SMTP 发件密码是唯一例外，见上）。
 
@@ -136,6 +138,17 @@ type Provider interface {
   - 流程：`redmine` 为阶段/任务建票（`POST /projects/{id}/issues.json`），节点动作追加回复（`PUT /issues/{id}.json`）；票 ID 存 `external_links`，回复幂等键为 `comment:<节点>:<状态版本>`。
   - 事务提交后执行（server 注入 `Async: go fn()`），失败只写 `integration_syncs.error`，不改变节点状态（不变量 15）。
   - 外部 provider 的成果物只落摘要：inline 正文经分发写入外部后即从平台清除，并回填 `url` / `external_id`；已带外部 URL 的引用不再外推。
-- **凭据**：迭代级 `authType`（token / basic）+ `authSecret`（AES-GCM 密文）优先；未配置时回退 `CHALKLINE_OUTLINE_TOKEN` / `CHALKLINE_REDMINE_TOKEN` / `CHALKLINE_GIT_TOKEN` / `CHALKLINE_SVN_TOKEN`。出站仍过 `CHALKLINE_OUTBOUND_ALLOWLIST`。
-- **控制台**：Provider 卡片位于迭代详情页**最下方**（初始化配置，不需要日常关注）；结构配置在冻结后只读，但「更新凭据」按钮任何时候可用；节点详情页「阶段连接」展示三类绑定并可点击跳转；材料提交表单提示本迭代绑定。
-- **测试**：`domain/workitem/provider_binding_test.go`（整套绑定校验、材料来源判定、链接与目录模板）、`integration/dispatch_test.go`（Outline 建文档、Git 已存在转 update、SVN MKCOL+PUT、Redmine 建票与回复、白名单拒绝出站）。
+- **凭据**：出站解析顺序为 **提交人个人凭据 → 迭代级 `authType`（token / basic）+ `authSecret`（AES-GCM 密文）→ `CHALKLINE_OUTLINE_TOKEN` / `CHALKLINE_REDMINE_TOKEN` / `CHALKLINE_GIT_TOKEN` / `CHALKLINE_SVN_TOKEN`**。出站仍过 `CHALKLINE_OUTBOUND_ALLOWLIST`。
+- **控制台**：Provider 卡片位于迭代详情页**最下方**（初始化配置，不需要日常关注）；结构配置在冻结后只读，但「更新凭据」按钮任何时候可用；节点详情页「阶段连接」展示三类绑定并可点击跳转；材料提交表单提示本迭代绑定。绑定视图为每条外部绑定标注查看人的 `personalSecretConfigured`，未配置个人 Key 时提示「将以公共凭据出站」并引导到「我的凭据」页。
+- **测试**：`domain/workitem/provider_binding_test.go`（整套绑定校验、材料来源判定、链接与目录模板）、`integration/dispatch_test.go`（Outline 建文档、Git 已存在转 update、SVN MKCOL+PUT、Redmine 建票与回复、白名单拒绝出站）、`app/provider_endpoint_test.go`（目录入参校验、视图组装、个人凭据视图不泄露 Secret）。
+
+## M6 增量：连接目录与个人凭据（已交付）
+
+> 策略详见 [integrations.md](../domain/integrations.md)「连接目录」与「个人凭据」。
+
+- **连接目录**（`provider_endpoints`，迁移 `0017_provider_endpoints.sql`）：admin 增删改查多套外部系统地址（多个 git / svn / redmine / outline）；REST `GET/POST /api/v1/integration/endpoints`、`PATCH/DELETE /api/v1/integration/endpoints/{id}`（写操作 admin）；成员读已启用项作迭代绑定弹窗的下拉建议，也可自行填写额外地址。审计 `integration.endpoint.create/update/delete`。
+- **个人凭据**（`user_provider_credentials`，同迁移）：成员经 `GET/PUT /api/v1/me/credentials`、`DELETE /api/v1/me/credentials/{provider}?baseUrl=…` 自助维护本人 Key；Secret AES-GCM 加密落库（`platform.Seal`），API 永不回显；审计 `user.credential.set/delete` 只记方式与「是否更换」。
+- **出站优先级**：`app.withSubmitterAuth` 在成果物分发与流程记录前解析提交人个人凭据，未配置回退迭代绑定凭据（再回退环境变量）；解密失败按「未配置」降级并告警，不阻断流程（不变量 15）。
+- **控制台**：管理台「Provider 管理」页新增「连接目录」卡片（增删改查 + 启停）；新增全员可见「我的凭据」页（`/credentials`）；迭代绑定弹窗的 baseURL 建议合并目录项（带展示名）；迭代详情页在查看人缺个人 Key 时给出告警。
+- **入口分层与权限标记**：`IterationProvidersView` 新增 `canManageCredential` / `canManageBinding`——前者决定是否显示「更新公共凭据」（产品成员 + `pm` 或 admin），后者决定是否显示「配置」（还要求未冻结）；普通成员只看到只读绑定 + 「我的凭据」引导，避免点到 403。迭代级按钮改名为「更新公共凭据」，弹窗内说明「公共 Key 与个人 Key 的区别」；材料提交 / 补挂表单顶部新增「本次将以谁的 Key 出站」提示条（缺个人 Key 为 warning 并带跳转）。
+- 代码：`internal/store/provider_endpoint.go`、`internal/store/user_provider_credential.go`、`internal/app/provider_endpoint.go`、`internal/app/user_credential.go`、`internal/app/distribute.go`（`withSubmitterAuth`）、`internal/api/handlers_provider_endpoint.go`；前端 `web/src/features/integrations/Providers.tsx`、`web/src/features/credentials/My.tsx`、`web/src/features/iterations/Providers.tsx`。

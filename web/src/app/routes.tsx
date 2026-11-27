@@ -9,6 +9,7 @@ import { getToken } from '../shared/api'
 import AuditList from '../features/audit/List'
 import Login from '../features/auth/Login'
 import McpKeys from '../features/mcp/Keys'
+import MyCredentials from '../features/credentials/My'
 import ProviderConfigs from '../features/integrations/Providers'
 import CurrentIterationPage from '../features/iterations/Current'
 import IterationCurrentNode from '../features/iterations/CurrentNode'
@@ -48,6 +49,7 @@ export default function AppRoutes() {
           <Route path="/tasks/:id" element={<TaskDetail />} />
           <Route path="/reviews" element={<ReviewQueue />} />
           <Route path="/mcpconfig" element={<McpKeys />} />
+          <Route path="/credentials" element={<MyCredentials />} />
           <Route path="/audit" element={<AuditList />} />
           <Route path="/smtp" element={<SmtpConfig />} />
           <Route path="/ldap" element={<LdapConfig />} />

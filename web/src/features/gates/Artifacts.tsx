@@ -3,6 +3,7 @@
 // 点击链接，外部系统不可达时不阻断评审（console.md 降级要求）。
 import { useQuery } from '@tanstack/react-query'
 import {
+  Alert,
   App,
   Button,
   Card,
@@ -17,6 +18,7 @@ import {
   Typography,
 } from 'antd'
 import { useState } from 'react'
+import { useNavigate } from 'react-router'
 import { apiGet, apiPost } from '../../shared/api'
 import { Markdown, MarkdownInlineSummary } from '../../shared/markdown'
 import { ARTIFACT_KINDS, ARTIFACT_PROVIDERS, memberNameMap, memberNameOf, nodeStatusMeta } from '../../shared/status'
@@ -378,6 +380,7 @@ function ArtifactFields({ prefix, bindingHint }: { prefix?: number[]; bindingHin
 
 export function ArtifactSubmitForm({ scope, workItemId, nodeId, nodeTitle, mode, onDone }: SubmitFormProps) {
   const { message } = App.useApp()
+  const navigate = useNavigate()
   const [form] = Form.useForm<SubmitValues | ArtifactFormValues>()
   const [busy, setBusy] = useState(false)
 
@@ -399,6 +402,42 @@ export function ArtifactSubmitForm({ scope, workItemId, nodeId, nodeTitle, mode,
     const parts = items.map((i) => `${i.categoryLabel}=${i.provider}`)
     return `本迭代绑定：${parts.join('，')}（材料来源须与绑定一致；附件 file/url 除外）`
   })()
+
+  // 出站身份提示：外部 provider 会以谁的 Key 提交到外部系统（个人优先，回退公共）。
+  const externalBindings = (providersQuery.data?.items ?? []).filter((i) => i.provider !== 'inline')
+  const missingPersonal = externalBindings.filter((i) => !i.personalSecretConfigured)
+
+  /** 出站身份提示：外部成果物/流程记录会写到哪个系统、以谁的 Key 提交。 */
+  const identityHint =
+    externalBindings.length === 0 ? null : (
+      <Alert
+        type={missingPersonal.length > 0 ? 'warning' : 'success'}
+        showIcon
+        message={
+          missingPersonal.length > 0
+            ? '本次提交将以公共 Key 出站'
+            : '本次提交将以你的个人 Key 出站'
+        }
+        description={
+          missingPersonal.length > 0 ? (
+            <>
+              未配置个人 Key：{[...new Set(missingPersonal.map((i) => i.provider))].join(' / ')}。
+              写入外部系统时会用公共凭据（迭代级 Key → 服务端环境变量），外部看不到是你提交的。
+            </>
+          ) : (
+            <>成果物与流程记录会以你在外部系统的身份提交（个人 Key 优先）。</>
+          )
+        }
+        action={
+          missingPersonal.length > 0 ? (
+            <Button size="small" type="link" onClick={() => navigate('/credentials')}>
+              配置个人 Key
+            </Button>
+          ) : undefined
+        }
+        style={{ marginBottom: 12 }}
+      />
+    )
 
   const submit = async () => {
     const values = await form.validateFields()
@@ -436,6 +475,7 @@ export function ArtifactSubmitForm({ scope, workItemId, nodeId, nodeTitle, mode,
         <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 8 }}>
           向节点「{nodeTitle}」补挂材料：替换已进入评审的材料会作废该节点既有审批。
         </Typography.Text>
+        {identityHint}
         <ArtifactFields bindingHint={bindingHint} />
         <Button type="primary" htmlType="submit" loading={busy}>
           补挂材料
@@ -449,6 +489,7 @@ export function ArtifactSubmitForm({ scope, workItemId, nodeId, nodeTitle, mode,
       <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 8 }}>
         提交节点「{nodeTitle}」：提交后无门禁直接通过；有门禁则进入待评审。
       </Typography.Text>
+      {identityHint}
       <Form.List name="artifacts" initialValue={[{ provider: 'inline' }]}>
         {(fields, { add, remove }) => (
           <>

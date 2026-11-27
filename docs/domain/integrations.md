@@ -37,11 +37,30 @@
 | `authSecret` | Key / 密码：**AES-GCM 加密落库**，API 永不回显，只报「已配置 / 未配置」 |
 
 - 未配置时沿用服务端环境变量（`CHALKLINE_OUTLINE_TOKEN` / `CHALKLINE_REDMINE_TOKEN` / `CHALKLINE_GIT_TOKEN` / `CHALKLINE_SVN_TOKEN`）。
+- **个人凭据优先**：提交人可在「我的凭据」维护本人 Key（AES-GCM 密文落库，永不回显）；出站解析顺序为 提交人个人凭据 → 迭代绑定凭据 → 服务端环境变量。未配置个人 Key 时界面告警并回退公共凭据，不阻断提交。
 - **凭据更新不受冻结限制**：结构配置（provider / 地址 / 目标）在首次提交成果物后冻结，但 Key 与用户名密码可随时轮换（`PUT /api/v1/iterations/{id}/providers/{providerId}/credential`）。
 - 加密密钥 `CHALKLINE_SECRET_KEY`（未设置回退 `CHALKLINE_JWT_SECRET`）；密钥变更导致解密失败时按「未配置」降级并告警，不阻断流程。
 - 轮换时可只提交新 Key（用户名保持不变）；留空 Secret 表示保持库内已有密文。
 
 全局的 `integration_provider_configs`（`baseUrl` / 启停 / 凭据是否存在）只回答「这套部署能连哪些外部系统」，管理台保留它是为了创建迭代时预填连接地址，不承载业务语义。成员可经 `GET /api/v1/integration/provider-options` 读取这些默认地址（只含地址，不含凭据），迭代配置弹窗以下拉建议的形式提供快速填写。
+
+### 连接目录（多套外部系统）
+
+`integration_provider_configs` 每 kind 只有一行，无法表达「多个 git / 多个 svn / 多个 redmine / 多个 outline」。因此引入**连接目录**（`provider_endpoints`，迁移 0017）：
+
+- **admin 增删改查**（`GET/POST /api/v1/integration/endpoints`、`PATCH/DELETE /api/v1/integration/endpoints/{id}`）：`kind` + 展示名 `label` + `baseUrl` + 备注 + 启停；同一 `(kind, baseUrl)` 不重复；目录**只存地址与展示名，不存任何凭据**。
+- **成员可读已启用项**（`GET /api/v1/integration/endpoints`，admin 看全部含停用）：迭代创建 / 配置弹窗把目录项作为 baseURL 下拉建议（带展示名），**也可自行填写额外地址**——目录是建议清单，不是白名单。
+- 删除目录项不影响已保存的迭代绑定（连接信息随迭代固化），只是不再出现在选择列表。
+
+### 个人凭据（以员工身份出站）
+
+外部系统里的成果物 / 流程记录若都以公共 Key 提交，就看不到「对应员工」。因此引入**个人凭据**（`user_provider_credentials`，迁移 0017）：
+
+- **成员自助维护**（`GET/PUT /api/v1/me/credentials`、`DELETE /api/v1/me/credentials/{provider}?baseUrl=…`）：按 `(provider, baseUrl)` 配置自己的 Key（`baseUrl` 空 = 适用于该 provider 的默认地址）；`authType` 为 `token` / `basic`，Secret **AES-GCM 加密落库**（`platform.Seal`），API 永不回显，只报「已配置 / 未配置」；留空 Secret 表示保持库内已有密文。
+- **出站优先级**：提交人个人凭据 → 迭代绑定凭据 → 服务端环境变量（`CHALKLINE_*_TOKEN`）。成果物分发与流程记录（建票 / 回复）都按此解析；个人凭据解密失败按「未配置」降级并告警，不阻断流程（不变量 15）。
+- **界面告警**：迭代绑定视图（`GET /api/v1/iterations/{id}/providers` 与迭代详情）为每条外部绑定标注 `personalSecretConfigured`——当前查看人未配置个人 Key 时，迭代详情页提示「将以公共凭据出站」，并引导到控制台「我的凭据」页维护。
+- **入口分层**：迭代级公共 Key 在**迭代详情页最下方** Provider 卡片（按钮为「更新公共凭据」，需产品成员 + `pm` 或 admin；视图以 `canManageCredential` / `canManageBinding` 告知前端是否显示，普通成员不会点到 403）；个人 Key 在左侧菜单**「我的凭据」**（全员可读写自己的）。材料提交 / 补挂表单顶部也提示本次将以谁的 Key 出站，缺个人 Key 时给出跳转入口。
+- **不强制**：未配置个人 Key 不阻断提交（回退公共凭据）；团队若要求「必须以本人身份提交」，以页面告警 + 管理约定推动，不在门禁上强制——门禁只认流程事实，不认外部系统身份。
 
 ### 数据流
 

@@ -36,6 +36,9 @@ type IterationProviderView struct {
 	// SecretConfigured 表示迭代级已保存凭据（密文）；EnvSecretConfigured 表示服务端环境变量已配置。
 	SecretConfigured    bool `json:"secretConfigured"`
 	EnvSecretConfigured bool `json:"envSecretConfigured"`
+	// PersonalSecretConfigured 表示当前查看人已为该 provider + baseURL 配置个人凭据；
+	// false 时出站回退公共凭据（迭代级 → 环境变量），界面据此提示。
+	PersonalSecretConfigured bool `json:"personalSecretConfigured"`
 }
 
 // IterationProviderInput 是绑定入参。
@@ -66,9 +69,15 @@ type IterationProvidersView struct {
 	Locked       bool                    `json:"locked"`
 	Editable     bool                    `json:"editable"`
 	LockedReason string                  `json:"lockedReason,omitempty"`
+	// CanManageCredential 表示查看人可维护本迭代的公共 Key（产品成员 + pm，或 admin）。
+	// false 时控制台隐藏「更新公共凭据」入口，只引导到「我的凭据」页。
+	CanManageCredential bool `json:"canManageCredential"`
+	// CanManageBinding 表示查看人可修改绑定结构（未冻结时同 CanManageCredential 权限）。
+	CanManageBinding bool `json:"canManageBinding"`
 }
 
 // GetIterationProviders 读取迭代绑定（成员或 admin）。
+// 视图附带「当前查看人是否已配置个人凭据」，供界面提示回退公共 Key 出站。
 func (s *Service) GetIterationProviders(ctx context.Context, actor Actor, iterationID string) (IterationProvidersView, error) {
 	q := s.DB.Q()
 	it, err := store.IterationByID(ctx, q, iterationID)
@@ -78,7 +87,7 @@ func (s *Service) GetIterationProviders(ctx context.Context, actor Actor, iterat
 	if _, err := s.mustView(ctx, q, actor, it.ProductID); err != nil {
 		return IterationProvidersView{}, err
 	}
-	return s.iterationProvidersView(ctx, q, it)
+	return s.iterationProvidersViewFor(ctx, q, it, actor)
 }
 
 // SetIterationProviders 整组替换迭代绑定（产品成员持 pm / 产品 owner / admin）。
@@ -122,7 +131,7 @@ func (s *Service) SetIterationProviders(ctx context.Context, actor Actor, iterat
 			map[string]any{"count": len(bindings)}); err != nil {
 			return err
 		}
-		out, err = s.iterationProvidersView(ctx, q, it)
+		out, err = s.iterationProvidersViewFor(ctx, q, it, actor)
 		return err
 	})
 	return out, err
@@ -144,8 +153,14 @@ func ensureProvidersMutable(ctx context.Context, q store.Querier, it store.Itera
 }
 
 // iterationProvidersView 组装视图：绑定 + 冻结/可编辑状态。
+// actor 用于标注「当前查看人是否已配置该 provider 的个人凭据」（界面告警依据）。
 func (s *Service) iterationProvidersView(ctx context.Context, q store.Querier,
 	it store.IterationRow) (IterationProvidersView, error) {
+	return s.iterationProvidersViewFor(ctx, q, it, Actor{})
+}
+
+func (s *Service) iterationProvidersViewFor(ctx context.Context, q store.Querier,
+	it store.IterationRow, viewer Actor) (IterationProvidersView, error) {
 	rows, err := store.ListIterationProviders(ctx, q, it.ID)
 	if err != nil {
 		return IterationProvidersView{}, err
@@ -156,9 +171,17 @@ func (s *Service) iterationProvidersView(ctx context.Context, q store.Querier,
 	}
 	view := IterationProvidersView{
 		IterationID: it.ID,
-		Items:       s.providerViews(rows),
+		Items:       s.providerViewsFor(ctx, q, rows, viewer),
 		Locked:      submitted || it.Status.Terminal(),
 		Editable:    !submitted && !it.Status.Terminal(),
+	}
+	// 权限标记：成员没有 pm 时只能维护「我的凭据」，界面据此隐藏公共 Key 入口。
+	if viewer.UserID != "" {
+		if mc, merr := s.memberCtx(ctx, q, viewer, it.ProductID); merr == nil {
+			canManage := canCreateInProduct(mc, viewer) == nil
+			view.CanManageCredential = canManage
+			view.CanManageBinding = canManage && view.Editable
+		}
 	}
 	switch {
 	case it.Status.Terminal():
@@ -291,6 +314,12 @@ func invalidSecretKey(err error) error {
 
 // providerViews 把存储行转成视图（凭据只报是否已配置，永不回显）。
 func (s *Service) providerViews(rows []store.IterationProviderRow) []IterationProviderView {
+	return s.providerViewsFor(context.Background(), nil, rows, Actor{})
+}
+
+// providerViewsFor 转成视图并标注查看人的个人凭据状态（q 为 nil 时跳过个人凭据查询）。
+func (s *Service) providerViewsFor(ctx context.Context, q store.Querier,
+	rows []store.IterationProviderRow, viewer Actor) []IterationProviderView {
 	out := make([]IterationProviderView, 0, len(rows))
 	for _, r := range rows {
 		b := workitem.ProviderBinding{
@@ -305,20 +334,25 @@ func (s *Service) providerViews(rows []store.IterationProviderRow) []IterationPr
 		if def, ok := s.providerDefault(r.Provider); ok {
 			envConfigured = def.TokenConfigured
 		}
+		personal := false
+		if q != nil && viewer.UserID != "" {
+			personal, _ = s.personalCredentialConfigured(ctx, q, viewer.UserID, b)
+		}
 		out = append(out, IterationProviderView{
-			ID:                  r.ID,
-			Category:            r.Category,
-			CategoryLabel:       b.Category.Label(),
-			Provider:            r.Provider,
-			BaseURL:             r.BaseURL,
-			Target:              r.Target,
-			DirTemplate:         r.DirTemplate,
-			Branch:              r.Branch,
-			LinkURL:             b.LinkURL(),
-			AuthType:            r.AuthType,
-			AuthUsername:        r.AuthUsername,
-			SecretConfigured:    r.AuthSecretEnc != "",
-			EnvSecretConfigured: envConfigured,
+			ID:                       r.ID,
+			Category:                 r.Category,
+			CategoryLabel:            b.Category.Label(),
+			Provider:                 r.Provider,
+			BaseURL:                  r.BaseURL,
+			Target:                   r.Target,
+			DirTemplate:              r.DirTemplate,
+			Branch:                   r.Branch,
+			LinkURL:                  b.LinkURL(),
+			AuthType:                 r.AuthType,
+			AuthUsername:             r.AuthUsername,
+			SecretConfigured:         r.AuthSecretEnc != "",
+			EnvSecretConfigured:      envConfigured,
+			PersonalSecretConfigured: personal,
 		})
 	}
 	return out
@@ -378,7 +412,7 @@ func (s *Service) SetIterationProviderCredential(ctx context.Context, actor Acto
 			}); err != nil {
 			return err
 		}
-		out, err = s.iterationProvidersView(ctx, q, it)
+		out, err = s.iterationProvidersViewFor(ctx, q, it, actor)
 		return err
 	})
 	return out, err

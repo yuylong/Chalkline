@@ -69,7 +69,9 @@ export default function Layout() {
       ? '/audit'
       : location.pathname.startsWith('/mcpconfig')
         ? '/mcpconfig'
-      : location.pathname.startsWith('/smtp')
+        : location.pathname.startsWith('/credentials')
+          ? '/credentials'
+          : location.pathname.startsWith('/smtp')
         ? '/smtp'
         : location.pathname.startsWith('/ldap')
         ? '/ldap'
@@ -120,6 +122,7 @@ export default function Layout() {
             { key: '/products', label: '产品' },
             ...(isAdmin ? [{ key: '/audit', label: '审计' }] : []),
             { key: '/mcpconfig', label: 'MCP 接入' },
+            { key: '/credentials', label: '我的凭据' },
             { type: 'divider' },
             ...adminItems,
             { key: '/workflows', label: '工作流管理' },

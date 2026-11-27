@@ -176,6 +176,8 @@ export interface IterationProviderView {
   secretConfigured: boolean
   /** 服务端环境变量已配置凭据。 */
   envSecretConfigured: boolean
+  /** 当前查看人已为该 provider + baseUrl 配置个人凭据；false 时出站回退公共凭据。 */
+  personalSecretConfigured: boolean
 }
 
 export interface IterationProviderInput {
@@ -206,6 +208,10 @@ export interface IterationProvidersView {
   locked: boolean
   editable: boolean
   lockedReason?: string
+  /** 查看人可维护本迭代公共 Key（产品成员 + pm，或 admin）。 */
+  canManageCredential: boolean
+  /** 查看人可修改绑定结构（未冻结时与 canManageCredential 同权限）。 */
+  canManageBinding: boolean
 }
 
 export interface IterationDetail extends IterationView {
@@ -389,6 +395,57 @@ export interface ProviderOptionView {
   label: string
   baseUrl: string
   enabled: boolean
+}
+
+// ---- 连接目录（admin 增删改查；成员可读已启用项）----
+
+export interface ProviderEndpointView {
+  id: string
+  kind: string
+  kindLabel: string
+  label: string
+  baseUrl: string
+  note?: string
+  enabled: boolean
+  updatedAt?: string
+}
+
+export interface ProviderEndpointCreate {
+  kind: string
+  label: string
+  baseUrl: string
+  note?: string
+}
+
+export interface ProviderEndpointUpdate {
+  label?: string
+  baseUrl?: string
+  note?: string
+  enabled?: boolean
+}
+
+// ---- 个人 provider 凭据（成员自助维护；只报是否已配置，永不回显）----
+
+export interface UserCredentialView {
+  id: string
+  provider: string
+  providerLabel: string
+  baseUrl?: string
+  authType?: string
+  authUsername?: string
+  /** 本人已保存 Key（密文）。 */
+  secretConfigured: boolean
+  updatedAt?: string
+}
+
+export interface UserCredentialSet {
+  provider: string
+  /** 空 = 适用于该 provider 的默认地址。 */
+  baseUrl?: string
+  authType?: string
+  authUsername?: string
+  /** 只写不读：留空 = 保持库内已有密文。 */
+  authSecret?: string
 }
 
 // ---- 邮箱配置（admin；密码加密落库，永不回显）----
