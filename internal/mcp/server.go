@@ -192,6 +192,54 @@ func (d Deps) registerReadTools(s *mcp.Server) {
 	})
 
 	mcp.AddTool[struct {
+		IterationID string `json:"iterationId"`
+	}, any](s, &mcp.Tool{
+		Name: "chalkline_get_iteration",
+		Description: "迭代详情：当前节点、provider 绑定、材料清单（含 inline 正文与快照）与审批时间线（含驳回理由 comment）。" +
+			"修订被驳回的材料时先用它读上一版正文与驳回原因，不必让人转述。",
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in struct {
+		IterationID string `json:"iterationId"`
+	}) (*mcp.CallToolResult, any, error) {
+		svc, actor, err := d.svc(ctx)
+		if err != nil {
+			return fail(err)
+		}
+		out, err := svc.GetIteration(ctx, actor, in.IterationID)
+		if err != nil {
+			return fail(err)
+		}
+		return nil, out, nil
+	})
+
+	mcp.AddTool[struct {
+		workItemRef
+		NodeID string `json:"nodeId"`
+		Kind   string `json:"kind,omitempty"`
+	}, any](s, &mcp.Tool{
+		Name: "chalkline_get_artifact",
+		Description: "读取某节点当前生效的材料：inline 返回正文，git/outline 等返回 URL 与提交时快照。" +
+			"省略 kind 时返回该节点的全部材料。",
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in struct {
+		workItemRef
+		NodeID string `json:"nodeId"`
+		Kind   string `json:"kind,omitempty"`
+	}) (*mcp.CallToolResult, any, error) {
+		svc, actor, err := d.svc(ctx)
+		if err != nil {
+			return fail(err)
+		}
+		scope, err := in.scope()
+		if err != nil {
+			return fail(err)
+		}
+		out, err := svc.GetArtifact(ctx, actor, scope, in.WorkItemID, in.NodeID, in.Kind)
+		if err != nil {
+			return fail(err)
+		}
+		return nil, out, nil
+	})
+
+	mcp.AddTool[struct {
 		ProductID string `json:"productId"`
 		Status    string `json:"status,omitempty"`
 	}, any](s, &mcp.Tool{

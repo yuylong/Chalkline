@@ -109,10 +109,12 @@ func TestToolsListContract(t *testing.T) {
 		t.Fatalf("响应缺 tools: %v", out)
 	}
 	want := map[string]bool{
-		// 读（12）
+		// 读（14）
 		"chalkline_whoami": false, "chalkline_list_products": false,
 		"chalkline_get_product": false, "chalkline_list_iterations": false,
-		"chalkline_list_tasks": false, "chalkline_get_task": false,
+		"chalkline_get_iteration": false,
+		"chalkline_list_tasks":    false, "chalkline_get_task": false,
+		"chalkline_get_artifact":    false,
 		"chalkline_get_next_action": false, "chalkline_get_workflow": false,
 		"chalkline_list_workflows": false, "chalkline_get_pending_reviews": false,
 		"chalkline_list_product_members": false, "chalkline_get_iteration_providers": false,

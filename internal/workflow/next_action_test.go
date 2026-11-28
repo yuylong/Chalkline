@@ -100,6 +100,57 @@ func TestNextActionStatuses(t *testing.T) {
 	}
 }
 
+// pending_reject blocker 必须带驳回理由原文：Agent 靠它在无人转述下做针对性修订。
+func TestNextActionPendingRejectCarriesComment(t *testing.T) {
+	inst := stdInstance(t)
+	ref := WorkItemRef{Type: "task", ID: "tsk_reject", Title: "驳回理由透出"}
+
+	mustStart(t, inst, "clarify", 1)
+	mustSubmit(t, inst, "clarify", 2, NodeInput{})
+	mustStart(t, inst, "spec", 1)
+	mustSubmit(t, inst, "spec", 2, NodeInput{Artifacts: []workitem.ArtifactRef{specArtifact()}})
+
+	reject := workitem.ReviewDecision{
+		NodeID: "spec", ReviewerID: "usr_rv", Decision: workitem.DecisionReject,
+		Comment: "跟 Jira 的对比还需要加强", Roles: identity.Roles{identity.RoleReviewer}, CreatedAt: now,
+	}
+	res, _, err := inst.Review("spec", 3, reject,
+		nil, NodeInput{Artifacts: []workitem.ArtifactRef{specArtifact()}}, now)
+	if err != nil {
+		t.Fatalf("review spec: %v", err)
+	}
+	if len(res.PendingRejectDetails) != 1 || res.PendingRejectDetails[0].Comment != reject.Comment {
+		t.Fatalf("GateResult 应携带驳回理由: %+v", res.PendingRejectDetails)
+	}
+
+	rep, err := NextAction(inst, NextActionInputs{
+		WorkItem: ref,
+		Inputs: map[string]NodeInput{"spec": {
+			Artifacts: []workitem.ArtifactRef{specArtifact()},
+			Decisions: []workitem.ReviewDecision{reject},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("投影失败: %v", err)
+	}
+	var found bool
+	for _, b := range rep.NextActions[0].Blockers {
+		if b.Type != "pending_reject" {
+			continue
+		}
+		found = true
+		if b.Comment != reject.Comment {
+			t.Errorf("blocker.comment 应为驳回原文，得到 %q", b.Comment)
+		}
+		if b.RejectedAt == "" {
+			t.Error("blocker.rejectedAt 应回填驳回时间")
+		}
+	}
+	if !found {
+		t.Fatalf("应存在 pending_reject blocker: %+v", rep.NextActions[0].Blockers)
+	}
+}
+
 func TestNextActionParallelReportsMultipleNodes(t *testing.T) {
 	// 并行分支时 currentNodes 与 nextActions 返回多个条目（mcp.md 返回契约）。
 	def := mustParse(t, `

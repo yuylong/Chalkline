@@ -7,7 +7,7 @@
 负责：
 
 - **MCP 服务端**：`POST /mcp`（streamable HTTP transport），用 `modelcontextprotocol/go-sdk` 暴露工具。
-- **工具注册与协议转换**：把 26 个工具（12 读 + 14 写）的入参/出参转换为 app 层调用，**不写任何业务规则**（AGENT 红线 3）。
+- **工具注册与协议转换**：把 28 个工具（14 读 + 14 写）的入参/出参转换为 app 层调用，**不写任何业务规则**（AGENT 红线 3）。
 - **鉴权接入**：MCP 路径走 PAT（与 identity 协作），注入 `actor_id`。
 - **错误包络**：把 app 层错误翻译为 mcp.md 定义的错误码与 HTTP 状态（401/403/404/409/422/503），`message` 可直接展示。
 - **契约一致性**：工具名、参数、错误码与 `docs/domain/mcp.md` 严格对齐；CI 校验 Skill 中引用的工具名都存在。
@@ -60,7 +60,7 @@ Agent 请求 POST /mcp
 
 ## 验收标准
 
-- [ ] 26 个工具全部注册，`tools/list` 返回与 mcp.md 一致。
+- [ ] 28 个工具全部注册，`tools/list` 返回与 mcp.md 一致。
 - [ ] 每个工具有协议层测试：入参校验、正常出参结构、错误码映射。
 - [ ] PAT 鉴权：有效 PAT 通过，无效/过期/吊销返回 401。
 - [ ] `get_next_action` 并行分支返回多节点；`blocked` 返回 blockers 明细。

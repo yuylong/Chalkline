@@ -291,6 +291,15 @@ type GateResultView struct {
 	ChildrenBlocked   bool     `json:"childrenBlocked,omitempty"`
 	IterationBlocked  bool     `json:"iterationBlocked,omitempty"`
 	EligibleReviewers []string `json:"eligibleReviewers,omitempty"`
+	// PendingRejectDetails 与 PendingRejects 同序，携带驳回理由与时间。
+	PendingRejectDetails []RejectDetailView `json:"pendingRejectDetails,omitempty"`
+}
+
+// RejectDetailView 是未决驳回明细视图。
+type RejectDetailView struct {
+	ReviewerID string `json:"reviewerId"`
+	Comment    string `json:"comment,omitempty"`
+	At         string `json:"at,omitempty"`
 }
 
 // StartStep 开始当前可执行节点（任务负责人 / owner / pm / admin；迭代为成员+pm 或 owner/admin）。
@@ -825,6 +834,13 @@ func (s *Service) fillNodeOpResultWithGate(ctx context.Context, q store.Querier,
 					out.Gate.MissingArtifacts = append(out.Gate.MissingArtifacts, string(m))
 				}
 				out.Gate.PendingRejects = res.PendingRejects
+				for _, rd := range res.PendingRejectDetails {
+					v := RejectDetailView{ReviewerID: rd.ReviewerID, Comment: rd.Comment}
+					if !rd.At.IsZero() {
+						v.At = rd.At.UTC().Format(time.RFC3339)
+					}
+					out.Gate.PendingRejectDetails = append(out.Gate.PendingRejectDetails, v)
+				}
 				out.Gate.ChildrenBlocked = res.ChildrenBlocked
 				out.Gate.IterationBlocked = res.IterationBlocked
 			}

@@ -28,6 +28,8 @@ Agent 每轮先调 `chalkline_get_next_action`，服务端返回结构化结论�
 | `chalkline_list_products` | 产品列表（含迭代数、任务统计），支持 `q` 搜索 / `status` 过滤 / `limit`+`offset` 分页（M3） |
 | `chalkline_get_product` | 产品详情：模块树、产品文档、默认工作流 |
 | `chalkline_list_iterations` | 迭代列表，可按产品与状态过滤 |
+| `chalkline_get_iteration` | 迭代详情：当前节点、provider 绑定、**材料清单（inline 含正文）与审批时间线（含驳回理由）** |
+| `chalkline_get_artifact` | 读取某节点当前生效的材料：inline 返回正文，外部 provider 返回 URL 与提交时快照 |
 | `chalkline_list_tasks` | 任务列表，可按迭代、模块、负责人、状态过滤 |
 | `chalkline_get_task` | 任务详情：子树、关联模块、工作流节点状态、材料、审批 |
 | `chalkline_get_next_action` | **当前工作项下一步与阻塞原因** |
@@ -77,7 +79,14 @@ Agent 每轮先调 `chalkline_get_next_action`，服务端返回结构化结论�
       "tool": "chalkline_submit_step",
       "blockers": [
         { "type": "artifact_missing", "kind": "spec", "message": "需上传规格文档" },
-        { "type": "approval_missing", "required": 1, "current": 0, "roles": ["reviewer"] }
+        { "type": "approval_missing", "required": 1, "current": 0, "roles": ["reviewer"] },
+        {
+          "type": "pending_reject",
+          "reviewer_id": "u_31",
+          "comment": "跟 Jira 的对比还需要加强",
+          "rejected_at": "2026-11-28T03:12:44Z",
+          "message": "评审人 u_31 驳回：跟 Jira 的对比还需要加强"
+        }
       ]
     }
   ],
@@ -86,6 +95,8 @@ Agent 每轮先调 `chalkline_get_next_action`，服务端返回结构化结论�
 ```
 
 `status` 为 `ready` 时各 `nextActions[].blockers` 为空数组，Agent 可直接调用对应的 `tool`。**并行分支时 `currentNodes` 与 `nextActions` 返回多个条目**：先向用户逐条报告分支状态，由人选择推进哪条，不替人排序；串行模板时数组长度恒为 1。
+
+`pending_reject` blocker 携带 `comment`（驳回理由原文）与 `rejected_at`：Agent 直接据此修订，**不需要人转述驳回原因**。
 
 ### 门禁未通过
 

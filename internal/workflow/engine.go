@@ -336,6 +336,14 @@ type evalSettings struct {
 	requireIterationTasksDone bool
 }
 
+// RejectDetail 是未决驳回明细：理由与时间随评审人一并透出，
+// 让 Agent 不必人工转述就能读到驳回原因（mcp.md blocker.comment）。
+type RejectDetail struct {
+	ReviewerID string    `json:"reviewer_id"`
+	Comment    string    `json:"comment,omitempty"`
+	At         time.Time `json:"at,omitempty"`
+}
+
 // GateResult 是门禁裁决结论：Passed 即准出；
 // 各缺失项与阻塞人供 get_next_action 组装 blockers 明细。
 type GateResult struct {
@@ -346,6 +354,8 @@ type GateResult struct {
 	MissingArtifacts []workitem.ArtifactKind `json:"missing_artifacts"`
 	ChildrenBlocked  bool                    `json:"children_blocked"`  // 子任务未全部 done
 	IterationBlocked bool                    `json:"iteration_blocked"` // 迭代下存在未终结任务
+	// PendingRejectDetails 与 PendingRejects 一一对应（同序），携带驳回理由与时间。
+	PendingRejectDetails []RejectDetail `json:"pending_reject_details,omitempty"`
 }
 
 // Evaluate 是门禁准出判定（纯函数，docs/domain/workflow.md「状态与判定算法」）：
@@ -377,6 +387,9 @@ func Evaluate(gate workitem.Gate, in NodeInput, s evalSettings) GateResult {
 			approved[rid] = true
 		case workitem.DecisionReject:
 			res.PendingRejects = append(res.PendingRejects, rid)
+			res.PendingRejectDetails = append(res.PendingRejectDetails, RejectDetail{
+				ReviewerID: rid, Comment: d.Comment, At: d.CreatedAt,
+			})
 		}
 	}
 	res.Approvals = len(approved)

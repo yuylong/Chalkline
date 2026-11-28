@@ -2,6 +2,7 @@ package workflow
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/yuylong/Chalkline/internal/domain/identity"
 	"github.com/yuylong/Chalkline/internal/domain/workitem"
@@ -34,7 +35,12 @@ type Blocker struct {
 	Current    int                   `json:"current,omitempty"`
 	Roles      []identity.Role       `json:"roles,omitempty"`
 	ReviewerID string                `json:"reviewer_id,omitempty"`
-	Message    string                `json:"message"`
+	// Comment 是评审人最近一次驳回的理由原文（pending_reject 专用）。
+	// Agent 靠它做针对性修订，不必由人转述（mcp.md blocker 表）。
+	Comment string `json:"comment,omitempty"`
+	// RejectedAt 是驳回时间（RFC3339，pending_reject 专用）。
+	RejectedAt string `json:"rejected_at,omitempty"`
+	Message    string `json:"message"`
 }
 
 // ActionView 是单个节点的下一步动作。
@@ -172,12 +178,21 @@ func submitAction(inst *Instance, nodeID string, node Node, in NextActionInputs)
 				res.ApprovalsNeeded, roleNames(node.Gate.Roles), res.Approvals),
 		})
 	}
-	for _, rid := range res.PendingRejects {
-		action.Blockers = append(action.Blockers, Blocker{
+	for _, rd := range res.PendingRejectDetails {
+		msg := fmt.Sprintf("评审人 %s 最近一次决策为驳回，需其重新表态", rd.ReviewerID)
+		if rd.Comment != "" {
+			msg = fmt.Sprintf("评审人 %s 驳回：%s", rd.ReviewerID, rd.Comment)
+		}
+		b := Blocker{
 			Type:       "pending_reject",
-			ReviewerID: rid,
-			Message:    fmt.Sprintf("评审人 %s 最近一次决策为驳回，需其重新表态", rid),
-		})
+			ReviewerID: rd.ReviewerID,
+			Comment:    rd.Comment,
+			Message:    msg,
+		}
+		if !rd.At.IsZero() {
+			b.RejectedAt = rd.At.UTC().Format(time.RFC3339)
+		}
+		action.Blockers = append(action.Blockers, b)
 	}
 	if res.ChildrenBlocked {
 		action.Blockers = append(action.Blockers, Blocker{

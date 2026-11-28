@@ -63,6 +63,8 @@ type API interface {
 	CreateTask(ctx context.Context, actor Actor, in CreateTaskInput) (TaskView, error)
 	DecomposeTask(ctx context.Context, actor Actor, parentTaskID string, children []CreateTaskInput) ([]TaskView, error)
 	GetTask(ctx context.Context, actor Actor, id string) (TaskDetail, error)
+	// GetArtifact 读取节点当前生效的材料（inline 含正文；外部 provider 只回引用与快照）。
+	GetArtifact(ctx context.Context, actor Actor, wtype workitem.Scope, workItemID, nodeID, kind string) (ArtifactView, error)
 	ListTasks(ctx context.Context, actor Actor, f TaskFilter) ([]TaskView, error)
 	UpdateTask(ctx context.Context, actor Actor, id string, in TaskUpdateInput) (TaskView, error)
 	DeleteTask(ctx context.Context, actor Actor, id string) error

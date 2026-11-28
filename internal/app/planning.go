@@ -158,7 +158,9 @@ func (s *Service) ListIterations(ctx context.Context, actor Actor, productID str
 	return out, nil
 }
 
-// IterationDetail 是迭代详情：当前阶段 + 进度 + provider 绑定。
+// IterationDetail 是迭代详情：当前阶段 + 进度 + provider 绑定 + 工作流实例投影。
+// Workflow 携带材料与审批时间线（含 inline 正文与驳回理由），
+// 是 chalkline_get_iteration 的数据来源——Agent 靠它读到评审现场，不必人工转述。
 type IterationDetail struct {
 	IterationView
 	CurrentNodes []NodeStateView        `json:"currentNodes"`
@@ -166,6 +168,7 @@ type IterationDetail struct {
 	OpenTasks    int64                  `json:"openTasks"`
 	WorkflowName string                 `json:"workflowName"`
 	Providers    IterationProvidersView `json:"providers"`
+	Workflow     *InstanceView          `json:"workflow,omitempty"`
 }
 
 // NodeStateView 是节点状态视图（含乐观锁版本）。
@@ -217,7 +220,60 @@ func (s *Service) GetIteration(ctx context.Context, actor Actor, id string) (Ite
 	if total > 0 {
 		detail.ProgressPct = passed * 100 / total
 	}
+	if iv, err := s.instanceView(ctx, q, instRow); err == nil {
+		detail.Workflow = &iv
+	}
 	return detail, nil
+}
+
+// GetArtifact 读取某个节点当前生效的材料（每节点每 kind 一份，替换即覆盖）。
+// workType 区分迭代与任务（两者的实例都挂在 artifacts 表上）。
+// 仅返回当前版本：历史版本不在契约内（Agent 修订场景只需要最新一版对照组）。
+func (s *Service) GetArtifact(ctx context.Context, actor Actor, wtype workitem.Scope,
+	workItemID, nodeID, kind string) (ArtifactView, error) {
+	q := s.DB.Q()
+	productID, err := s.productOf(ctx, q, wtype, workItemID)
+	if err != nil {
+		return ArtifactView{}, wrapNotFound(err, "工作项不存在或不可见")
+	}
+	if _, err := s.mustView(ctx, q, actor, productID); err != nil {
+		return ArtifactView{}, err
+	}
+	instRow, err := store.InstanceByWorkItem(ctx, q, wtype, workItemID)
+	if err != nil {
+		return ArtifactView{}, wrapNotFound(err, "工作流实例不存在")
+	}
+	all, err := store.ListArtifacts(ctx, q, instRow.ID)
+	if err != nil {
+		return ArtifactView{}, err
+	}
+	for _, a := range all {
+		if a.Ref.NodeID != nodeID || (kind != "" && string(a.Ref.Kind) != kind) {
+			continue
+		}
+		return artifactViewOf(a), nil
+	}
+	return ArtifactView{}, wrapNotFound(nil, "该节点没有指定材料")
+}
+
+// artifactViewOf 把材料行投影为视图：inline 带正文；外部 provider 带 URL 与提交时快照。
+func artifactViewOf(a store.ArtifactRow) ArtifactView {
+	av := ArtifactView{
+		Kind: string(a.Ref.Kind), Provider: string(a.Ref.Provider),
+		URL: a.Ref.URL, ExternalID: a.Ref.ExternalID, Title: a.Ref.Title,
+		Content: a.Ref.Content, NodeID: a.Ref.NodeID, SubmittedBy: a.Ref.SubmittedBy,
+	}
+	if !a.CreatedAt.IsZero() {
+		av.CreatedAt = a.CreatedAt.UTC().Format(time.RFC3339)
+	}
+	if len(a.Snapshot) > 0 {
+		// 快照是提交时点固化的外部事实（M3），原样透传给控制台与 Agent。
+		var snap map[string]any
+		if json.Unmarshal(a.Snapshot, &snap) == nil {
+			av.Snapshot = snap
+		}
+	}
+	return av
 }
 
 // currentNodesView 把实例「当前节点」投影为视图（含版本，供并发操作回传）。
@@ -718,22 +774,7 @@ func (s *Service) instanceView(ctx context.Context, q store.Querier, instRow sto
 		return InstanceView{}, err
 	}
 	for _, a := range artifacts {
-		av := ArtifactView{
-			Kind: string(a.Ref.Kind), Provider: string(a.Ref.Provider),
-			URL: a.Ref.URL, ExternalID: a.Ref.ExternalID, Title: a.Ref.Title,
-			Content: a.Ref.Content, NodeID: a.Ref.NodeID, SubmittedBy: a.Ref.SubmittedBy,
-		}
-		if !a.CreatedAt.IsZero() {
-			av.CreatedAt = a.CreatedAt.UTC().Format(time.RFC3339)
-		}
-		if len(a.Snapshot) > 0 {
-			// 快照是提交时点固化的外部事实（M3），原样透传给控制台与 Agent。
-			var snap map[string]any
-			if json.Unmarshal(a.Snapshot, &snap) == nil {
-				av.Snapshot = snap
-			}
-		}
-		view.Artifacts = append(view.Artifacts, av)
+		view.Artifacts = append(view.Artifacts, artifactViewOf(a))
 	}
 	approvals, err := store.ListApprovals(ctx, q, instRow.ID)
 	if err != nil {
