@@ -62,6 +62,13 @@ func TestPushArtifactOutline(t *testing.T) {
 	if got["parentDocumentId"] != "parent-1" {
 		t.Errorf("parentDocumentId = %v", got["parentDocumentId"])
 	}
+	// 路径是「容器 / 文档」的面包屑，供控制台直接展示文档落在哪里。
+	if res.Path != "CHK-IT1 / 设计 / 需求规格 · spec · v2" {
+		t.Errorf("Path = %q", res.Path)
+	}
+	if !strings.HasSuffix(res.ParentURL, "/doc/parent-1") {
+		t.Errorf("ParentURL = %q", res.ParentURL)
+	}
 	text, _ := got["text"].(string)
 	if !strings.Contains(text, "# 正文") || !strings.Contains(text, "CHK-IT1 / 设计") ||
 		!strings.Contains(text, "第 2 版") {
@@ -197,8 +204,15 @@ func TestPushArtifactGitRetriesWithUpdate(t *testing.T) {
 	if first["action"] != "update" || first["file_path"] != "chalkline/CHK-IT1/设计/design.md" {
 		t.Fatalf("第二次请求 = %+v", first)
 	}
+	// 历史由 git 自己的 commit 历史表达：回执必须带该 sha 的 permalink + 文件路径。
 	if res.ExternalID != "abc123" {
 		t.Fatalf("回执 = %+v", res)
+	}
+	if res.Path != "chalkline/CHK-IT1/设计/design.md" {
+		t.Errorf("Path = %q", res.Path)
+	}
+	if !strings.Contains(res.URL, "/-/blob/abc123/") {
+		t.Errorf("URL 应为该 sha 的 permalink：%q", res.URL)
 	}
 }
 

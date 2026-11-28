@@ -262,6 +262,7 @@ func artifactViewOf(a store.ArtifactRow) ArtifactView {
 		Kind: string(a.Ref.Kind), Provider: string(a.Ref.Provider),
 		URL: a.Ref.URL, ExternalID: a.Ref.ExternalID, Title: a.Ref.Title,
 		Content: a.Ref.Content, NodeID: a.Ref.NodeID, SubmittedBy: a.Ref.SubmittedBy,
+		ExternalPath: a.ExternalPath,
 	}
 	if !a.CreatedAt.IsZero() {
 		av.CreatedAt = a.CreatedAt.UTC().Format(time.RFC3339)
@@ -694,6 +695,11 @@ type ArtifactView struct {
 	NodeID      string         `json:"nodeId"`
 	SubmittedBy string         `json:"submittedBy"`
 	Snapshot    map[string]any `json:"snapshot,omitempty"`
+	// ExternalPath 是材料在外部系统里的可读路径（面包屑），控制台直接展示：
+	//   outline → "CHK-IT1 / 竞品调研 / 报告 v2 · research_report · v2"
+	//   git/svn → "chalkline/CHK-IT1/竞品调研/research_report.md"
+	// 未分发（inline）时为空。
+	ExternalPath string `json:"externalPath,omitempty"`
 	// CreatedAt 提交时间（控制台判定「最新成果物」与历史倒序，RFC3339）。
 	CreatedAt string `json:"createdAt,omitempty"`
 }
@@ -816,7 +822,7 @@ func artifactVersionViews(rows []store.ArtifactVersionRow) []ArtifactVersionView
 		vv := ArtifactVersionView{
 			ArtifactView: artifactViewOf(store.ArtifactRow{
 				ID: v.ArtifactID, InstanceID: v.InstanceID, Ref: v.Ref,
-				Snapshot: v.Snapshot, CreatedAt: v.CreatedAt,
+				Snapshot: v.Snapshot, CreatedAt: v.CreatedAt, ExternalPath: v.ExternalPath,
 			}),
 			ArtifactID: v.ArtifactID,
 			ReplacedBy: v.ReplacedBy,

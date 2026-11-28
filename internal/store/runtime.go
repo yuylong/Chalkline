@@ -199,6 +199,8 @@ type ArtifactRow struct {
 	Ref        workitem.ArtifactRef
 	Snapshot   json.RawMessage
 	CreatedAt  time.Time
+	// ExternalPath 是材料在外部系统里的可读路径（面包屑），仅分发后非空。
+	ExternalPath string
 	// ArchiveID 是替换时给被覆盖旧行分配的归档 id（artv_ 前缀，由 app 层生成）；
 	// 为空表示不归档（如首次挂接没有旧行）。
 	ArchiveID string
@@ -206,27 +208,29 @@ type ArtifactRow struct {
 
 // ArtifactVersionRow 是被替换下来的历史材料（artifact_versions 行）。
 type ArtifactVersionRow struct {
-	ID         string
-	ArtifactID string
-	InstanceID string
-	Ref        workitem.ArtifactRef
-	Snapshot   json.RawMessage
-	CreatedAt  time.Time // 原提交时间
-	ReplacedAt time.Time // 被替换时间
-	ReplacedBy string    // 触发替换的提交人
+	ID           string
+	ArtifactID   string
+	InstanceID   string
+	Ref          workitem.ArtifactRef
+	Snapshot     json.RawMessage
+	CreatedAt    time.Time // 原提交时间
+	ReplacedAt   time.Time // 被替换时间
+	ReplacedBy   string    // 触发替换的提交人
+	ExternalPath string
 }
 
 // ListArtifactVersions 取实例内被替换过的材料版本（按替换时间倒序）。
 func ListArtifactVersions(ctx context.Context, q Querier, instanceID string) ([]ArtifactVersionRow, error) {
 	return scanAll(ctx, q,
 		`SELECT id, artifact_id, instance_id, node_id, kind, provider, url, external_id,
-		     title, content, snapshot, submitted_by, created_at, replaced_at, replaced_by
+		     external_path, title, content, snapshot, submitted_by, created_at, replaced_at, replaced_by
 		 FROM artifact_versions WHERE instance_id = $1 ORDER BY replaced_at DESC`,
 		func(row rowScanner) (ArtifactVersionRow, error) {
 			var v ArtifactVersionRow
 			if err := row.Scan(&v.ID, &v.ArtifactID, &v.InstanceID, &v.Ref.NodeID, &v.Ref.Kind,
-				&v.Ref.Provider, &v.Ref.URL, &v.Ref.ExternalID, &v.Ref.Title, &v.Ref.Content,
-				&v.Snapshot, &v.Ref.SubmittedBy, &v.CreatedAt, &v.ReplacedAt, &v.ReplacedBy); err != nil {
+				&v.Ref.Provider, &v.Ref.URL, &v.Ref.ExternalID, &v.ExternalPath, &v.Ref.Title,
+				&v.Ref.Content, &v.Snapshot, &v.Ref.SubmittedBy, &v.CreatedAt, &v.ReplacedAt,
+				&v.ReplacedBy); err != nil {
 				return v, err
 			}
 			return v, nil
@@ -247,12 +251,12 @@ func ArtifactVersionCount(ctx context.Context, q Querier, instanceID, nodeID, ki
 // ListArtifacts 取实例全部材料。
 func ListArtifacts(ctx context.Context, q Querier, instanceID string) ([]ArtifactRow, error) {
 	return scanAll(ctx, q,
-		`SELECT id, instance_id, node_id, kind, provider, url, external_id, title, content, submitted_by, snapshot, created_at
+		`SELECT id, instance_id, node_id, kind, provider, url, external_id, external_path, title, content, submitted_by, snapshot, created_at
 		 FROM artifacts WHERE instance_id = $1 ORDER BY node_id, kind`,
 		func(row rowScanner) (ArtifactRow, error) {
 			var a ArtifactRow
 			if err := row.Scan(&a.ID, &a.InstanceID, &a.Ref.NodeID, &a.Ref.Kind, &a.Ref.Provider,
-				&a.Ref.URL, &a.Ref.ExternalID, &a.Ref.Title, &a.Ref.Content, &a.Ref.SubmittedBy,
+				&a.Ref.URL, &a.Ref.ExternalID, &a.ExternalPath, &a.Ref.Title, &a.Ref.Content, &a.Ref.SubmittedBy,
 				&a.Snapshot, &a.CreatedAt); err != nil {
 				return a, err
 			}
@@ -317,9 +321,9 @@ func ReplaceArtifact(ctx context.Context, q Querier, art ArtifactRow, resetAppro
 	if art.ArchiveID != "" {
 		if _, err := q.Exec(ctx,
 			`INSERT INTO artifact_versions (id, artifact_id, instance_id, node_id, kind, provider,
-			     url, external_id, title, content, snapshot, submitted_by, created_at, replaced_by)
+			     url, external_id, external_path, title, content, snapshot, submitted_by, created_at, replaced_by)
 			 SELECT $1::text, id, instance_id, node_id, kind, provider,
-			     url, external_id, title, content, snapshot, submitted_by, created_at, $2::text
+			     url, external_id, external_path, title, content, snapshot, submitted_by, created_at, $2::text
 			 FROM artifacts WHERE instance_id = $3::text AND node_id = $4::text AND kind = $5::text`,
 			art.ArchiveID, art.Ref.SubmittedBy, art.InstanceID, art.Ref.NodeID,
 			string(art.Ref.Kind)); err != nil {
@@ -334,10 +338,11 @@ func ReplaceArtifact(ctx context.Context, q Querier, art ArtifactRow, resetAppro
 		return err
 	}
 	_, err := q.Exec(ctx,
-		`INSERT INTO artifacts (id, instance_id, node_id, kind, provider, url, external_id, title, content, snapshot, submitted_by)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+		`INSERT INTO artifacts (id, instance_id, node_id, kind, provider, url, external_id, external_path, title, content, snapshot, submitted_by)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
 		art.ID, art.InstanceID, art.Ref.NodeID, string(art.Ref.Kind), string(art.Ref.Provider),
-		art.Ref.URL, art.Ref.ExternalID, art.Ref.Title, art.Ref.Content, art.Snapshot, art.Ref.SubmittedBy)
+		art.Ref.URL, art.Ref.ExternalID, art.ExternalPath, art.Ref.Title, art.Ref.Content,
+		art.Snapshot, art.Ref.SubmittedBy)
 	if err != nil {
 		return err
 	}

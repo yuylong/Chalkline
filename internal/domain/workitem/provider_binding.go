@@ -370,6 +370,12 @@ type PushedArtifact struct {
 	// ParentExternalID 是该材料所属容器（Outline 的「迭代/节点」父文档）在外部系统的
 	// 标识；由调用方持久化后回传，后续版本直接复用，避免每次重新按标题查找。
 	ParentExternalID string
+	// ParentURL 是容器文档的可点击地址（Outline 的 /doc/<id>）。
+	ParentURL string
+	// Path 是材料在外部系统里的可读路径（面包屑），控制台直接展示：
+	//   outline → "CHK-IT1 / 竞品调研 / 报告 v2 · research_report · v2"
+	//   git/svn → "chalkline/CHK-IT1/竞品调研/research_report.md"
+	Path string
 }
 
 // DispatchTarget 是分发到外部系统时的落点参数。

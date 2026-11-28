@@ -292,6 +292,8 @@ export interface ArtifactRef {
   snapshot?: Record<string, unknown>
   /** 提交时间（RFC3339）。控制台据此判定「最新成果物」与历史倒序。 */
   createdAt?: string
+  /** 外部系统里的可读路径（面包屑）；未分发（inline）时为空。 */
+  externalPath?: string
 }
 
 /** 审批记录（ReviewDecision 投影）。M2 起随实例视图返回（InstanceView.approvals）。 */

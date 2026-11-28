@@ -137,9 +137,11 @@ func IterationArtifactsSubmitted(ctx context.Context, q Querier, iterationID str
 }
 
 // SetArtifactDispatch 记录成果物分发结果：外部 provider 只保留摘要与链接，正文不复制进平台。
-func SetArtifactDispatch(ctx context.Context, q Querier, artifactID, provider, url, externalID string) error {
+// SetArtifactDispatch 回填分发回执：provider / url / external_id 与外部可读路径。
+// content 清空——正文已落到外部系统，平台只保留引用（不变量 15）。
+func SetArtifactDispatch(ctx context.Context, q Querier, artifactID, provider, url, externalID, externalPath string) error {
 	_, err := q.Exec(ctx, `
-		UPDATE artifacts SET provider = $2, url = $3, external_id = $4, content = ''
-		WHERE id = $1`, artifactID, provider, url, externalID)
+		UPDATE artifacts SET provider = $2, url = $3, external_id = $4, external_path = $5, content = ''
+		WHERE id = $1`, artifactID, provider, url, externalID, externalPath)
 	return err
 }

@@ -30,7 +30,7 @@ function sortByTimeDesc(list: ArtifactRef[]): ArtifactRef[] {
   })
 }
 
-/** 单条成果物正文：inline 走 Markdown 渲染，其余给外链。 */
+/** 单条成果物正文：inline 走 Markdown 渲染，其余给外链与外部路径。 */
 function ArtifactBody({ artifact, memberNames }: { artifact: ArtifactRef; memberNames?: Record<string, string> }) {
   return (
     <Space direction="vertical" size={8} style={{ width: '100%' }}>
@@ -48,6 +48,8 @@ function ArtifactBody({ artifact, memberNames }: { artifact: ArtifactRef; member
           </Typography.Text>
         )}
       </Space>
+      {/* 外部落点路径：让「这篇文档在哪」一眼可见，不必点开链接再找。 */}
+      {artifact.externalPath && <ExternalPathBar path={artifact.externalPath} url={artifact.url} />}
       {artifact.url && (
         <a href={artifact.url} target="_blank" rel="noreferrer">
           {artifact.url}
@@ -66,6 +68,44 @@ function ArtifactBody({ artifact, memberNames }: { artifact: ArtifactRef; member
         </Typography.Text>
       )}
     </Space>
+  )
+}
+
+/**
+ * 外部落点路径条：以面包屑形式展示材料在外部系统里的位置。
+ * outline 是「迭代 / 节点 / 文档标题」，git/svn 是仓库内文件路径。
+ */
+function ExternalPathBar({ path, url }: { path: string; url?: string }) {
+  const segments = path.split(' / ').filter((s) => s.trim() !== '')
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 6,
+        flexWrap: 'wrap',
+        background: '#fafafa',
+        border: '1px solid #f0f0f0',
+        borderRadius: 4,
+        padding: '4px 8px',
+        fontSize: 12,
+      }}
+    >
+      <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+        外部路径
+      </Typography.Text>
+      {segments.map((seg, i) => (
+        <span key={`${seg}-${i}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          {i > 0 && <Typography.Text type="secondary">/</Typography.Text>}
+          <Typography.Text style={{ fontSize: 12 }}>{seg}</Typography.Text>
+        </span>
+      ))}
+      {url && (
+        <a href={url} target="_blank" rel="noreferrer" style={{ fontSize: 12 }}>
+          打开
+        </a>
+      )}
+    </div>
   )
 }
 
@@ -328,6 +368,10 @@ export function CurrentNodeDetail({
                         </Typography.Text>
                         {a.content ? (
                           <MarkdownInlineSummary text={a.content} max={60} />
+                        ) : a.externalPath ? (
+                          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                            {a.externalPath}
+                          </Typography.Text>
                         ) : (
                           <Typography.Text type="secondary" style={{ fontSize: 12 }}>
                             {a.title || a.url || '外部引用'}
@@ -377,7 +421,7 @@ export function CurrentNodeDetail({
                 key: `${h.artifactId}-${i}`,
                 label: (
                   <Space wrap size={[6, 2]}>
-                    <Tag color="default">{h.kind}</Tag>
+                    <Tag color="orange">{h.kind}</Tag>
                     <Typography.Text style={{ fontSize: 12 }}>
                       提交 {fmtTime(h.createdAt)}
                     </Typography.Text>
@@ -391,7 +435,13 @@ export function CurrentNodeDetail({
                         · 替换人 {memberNameOf(memberNames ?? {}, h.replacedBy)}
                       </Typography.Text>
                     )}
-                    {h.content && <MarkdownInlineSummary text={h.content} max={40} />}
+                    {h.content ? (
+                      <MarkdownInlineSummary text={h.content} max={40} />
+                    ) : h.externalPath ? (
+                      <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                        {h.externalPath}
+                      </Typography.Text>
+                    ) : null}
                   </Space>
                 ),
                 children: <ArtifactBody artifact={h} memberNames={memberNames} />,
@@ -403,7 +453,6 @@ export function CurrentNodeDetail({
     </Space>
   )
 }
-
 /** 判定节点是否处于「当前可操作」状态（与 ACTIONABLE_STATUSES 一致，供父组件筛选）。 */
 export function isCurrentNode(node: NodeStateView): boolean {
   return ACTIONABLE_STATUSES.has(node.status)

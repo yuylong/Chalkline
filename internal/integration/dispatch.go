@@ -109,9 +109,28 @@ func (d *Dispatcher) pushOutline(ctx context.Context, b workitem.ProviderBinding
 	if strings.HasPrefix(link, "/") {
 		link = joinURL(b.BaseURL, link)
 	}
-	// ParentExternalID 由 app 层持久化，后续版本直接复用，避免每次重新解析。
-	return workitem.PushedArtifact{ExternalID: out.Data.ID, URL: link, Summary: title,
-		ParentExternalID: parentID}, nil
+	if link == "" {
+		// 部分版本只回 id：按 Outline 的路由约定拼出可点击地址。
+		link = joinURL(b.BaseURL, "/doc/"+out.Data.ID)
+	}
+	parentURL := ""
+	if parentID != "" {
+		parentURL = joinURL(b.BaseURL, "/doc/"+parentID)
+	}
+	// 路径即面包屑：容器标题 + 本文档标题，控制台直接展示文档落在哪里。
+	pathParts := make([]string, 0, 2)
+	if t := outlineNodeTitle(target); t != "" {
+		pathParts = append(pathParts, t)
+	}
+	pathParts = append(pathParts, title)
+	return workitem.PushedArtifact{
+		ExternalID:       out.Data.ID,
+		URL:              link,
+		Summary:          title,
+		ParentExternalID: parentID,
+		ParentURL:        parentURL,
+		Path:             strings.Join(pathParts, " / "),
+	}, nil
 }
 
 // ensureOutlineNodeDoc 保证「迭代 / 节点」容器文档存在：
@@ -238,7 +257,14 @@ func outlineText(art workitem.ArtifactRef, target workitem.DispatchTarget) strin
 
 // ---- Git（GitLab 兼容 commits API）----
 
-// pushGit 提交单个文件到仓库约定路径（文件已存在时自动改用 update）。
+// pushGit 提交单个文件到仓库约定路径。
+//
+// 历史用 git 自己的 commit 历史表达，不改写文件名：
+// 写的是固定的 <dir>/<kind>.md，每次提交产生一个新 sha；回执里带
+//   - URL：指向该 sha 的 permalink（这一版永远可读，不随后续覆盖而变）
+//   - Path：仓库内文件路径
+//
+// 上一版的 permalink 由调用方回填到 artifact_versions，控制台据此跳转。
 func (d *Dispatcher) pushGit(ctx context.Context, b workitem.ProviderBinding,
 	art workitem.ArtifactRef, meta workitem.ArtifactMeta, dir string) (workitem.PushedArtifact, error) {
 	header, err := d.authHeaders(b)
@@ -278,10 +304,18 @@ func (d *Dispatcher) pushGit(ctx context.Context, b workitem.ProviderBinding,
 		ID string `json:"id"`
 	}
 	_ = json.Unmarshal(raw, &out)
+	// permalink 优先用 sha（这一版永久可读）；无 sha 时退回分支上该文件的地址。
+	var link string
+	if out.ID != "" {
+		link = joinURL(b.BaseURL, strings.TrimSuffix(b.Target, "/")+"/-/blob/"+out.ID+"/"+filePath)
+	} else {
+		link = joinURL(b.BaseURL, strings.TrimSuffix(b.Target, "/")+"/-/blob/"+branch+"/"+filePath)
+	}
 	return workitem.PushedArtifact{
 		ExternalID: out.ID,
-		URL:        joinURL(b.BaseURL, b.Target),
+		URL:        link,
 		Summary:    filePath,
+		Path:       filePath,
 	}, nil
 }
 
@@ -329,6 +363,7 @@ func (d *Dispatcher) pushSVN(ctx context.Context, b workitem.ProviderBinding,
 		ExternalID: filePath,
 		URL:        joinURL(b.BaseURL, filePath),
 		Summary:    filePath,
+		Path:       filePath,
 	}, nil
 }
 

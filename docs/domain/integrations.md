@@ -77,6 +77,13 @@ Agent ──MCP──> Chalkline（成果物 + 节点/任务事件）
 
 `git` / `svn` 的成果物按 `dirTemplate` 落到仓库，默认 `chalkline/{iteration}/{node}`，文件名 `<kind>.md`，支持 `{iteration}` / `{node}` / `{kind}` 占位符。
 
+**历史轮次不靠文件名区分，靠外部系统自身的版本历史**：文件名保持 `<kind>.md` 不变（避免路径膨胀、与 `pr` 引用习惯一致），每次提交产生新 commit。
+- 回执里的 `url` 指向该 **commit sha 的 permalink**（`<repo>/-/blob/<sha>/<path>`），这一版永久可读，不随后续覆盖而变；
+- `externalPath` 记录仓库内文件路径，控制台直接展示；
+- 归档行（`artifact_versions`）随替换复制 `external_path`，历史轮次也能显示「这一版在哪」。
+
+SVN 走 WebDAV `PUT`，行为与 git 一致（路径 + 该 URL）；SVN 服务端的版本历史同样保留每一版。
+
 #### Outline 文档结构
 
 `outline` 没有目录概念，用「集合 + 标题层级 + 父子关系」表达，**每版独立成篇**（Outline 没有 git 那样的版本历史，覆盖会让上一轮评审依据消失）：
@@ -90,6 +97,7 @@ collection（迭代绑定的 target）
 
 - **容器文档**标题 `<迭代编号> / <节点名>`，首次分发时按标题在集合内查找，缺失才新建；找到的 id 记入 `external_links`（`subject_type=artifact_node`，`subject_id=<实例>:<节点>`），后续版本直接复用，不再查找。
 - **材料文档**标题 `<材料标题> · <kind> · v<n>`，`parentDocumentId` 指向容器。**版本号由服务端写入**（= 该 `(实例, 节点, kind)` 的历史归档数 + 1），不依赖人写进标题。
+- **回执带可读路径**：`externalPath` = `<容器标题> / <文档标题>`（如 `CHK-IT1 / 竞品调研 / 报告 v2 · research_report · v2`），`url` 指向该文档，`parentUrl` 指向容器。控制台的成果物卡片与历史轮次都直接展示这条面包屑，点「打开」跳到 Outline。
 - 正文末尾附来源标注（迭代 / 节点 / 第 n 版 / 单向推送声明），便于在 Outline 侧看清出处。
 - 容器建立失败不阻断材料分发，退回集合内平铺（不变量 15）。
 

@@ -168,7 +168,8 @@ func (s *Service) dispatchOne(ctx context.Context, iterationID, iterationNumber 
 		return
 	}
 	_ = store.FinishIntegrationSync(ctx, q, syncID, "ok", pushed.ExternalID, pushed.URL, pushed.Summary, "")
-	if err := store.SetArtifactDispatch(ctx, q, item.ID, string(binding.Provider), pushed.URL, pushed.ExternalID); err != nil {
+	if err := store.SetArtifactDispatch(ctx, q, item.ID, string(binding.Provider),
+		pushed.URL, pushed.ExternalID, pushed.Path); err != nil {
 		s.Log.Warn("成果物回执写入失败", "artifact", item.ID, "error", err)
 	}
 	_, _ = store.UpsertExternalLink(ctx, q, store.ExternalLinkRow{
@@ -176,11 +177,16 @@ func (s *Service) dispatchOne(ctx context.Context, iterationID, iterationNumber 
 		ExternalID: pushed.ExternalID, URL: pushed.URL, CreatedBy: item.Ref.SubmittedBy,
 	})
 	// 容器（迭代/节点）指认：同节点后续版本复用该父文档，避免每次重新查找。
+	// URL 记父文档地址，控制台可一键跳到「这个节点在 Outline 上的目录页」。
 	if pushed.ParentExternalID != "" {
+		parentURL := pushed.ParentURL
+		if parentURL == "" {
+			parentURL = pushed.URL
+		}
 		_, _ = store.UpsertExternalLink(ctx, q, store.ExternalLinkRow{
 			SubjectType: "artifact_node", SubjectID: artifactNodeKey(item.InstanceID, item.Ref.NodeID),
 			Provider: string(binding.Provider), ExternalID: pushed.ParentExternalID,
-			URL: pushed.URL, CreatedBy: item.Ref.SubmittedBy,
+			URL: parentURL, CreatedBy: item.Ref.SubmittedBy,
 		})
 	}
 }

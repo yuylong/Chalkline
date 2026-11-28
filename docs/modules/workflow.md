@@ -69,7 +69,7 @@ MCP：`get_next_action` / `start_step` / `submit_step` / `attach_artifact` / `re
   - `workflow_instances`：`id` / `workflow_id` / `workflow_version`（实例化时固定）/ `work_item_type` / `work_item_id` / `terminal_node_id` / `created_at`。
   - `node_states`：`instance_id` + `node_id` 联合主键 / `status` / `version`（乐观锁）/ `entered_at` / `completed_at`。
   - `gate_approvals`：`instance_id` / `node_id` / `reviewer_id` / `decision` / `comment` / `created_at`；同评审人 upsert 最近决策。
-  - `artifacts`：`instance_id` / `node_id` / `kind` / `provider` / `url` / `external_id` / `snapshot` / `content`（inline）/ `submitted_by` / `created_at`。
+  - `artifacts`：`instance_id` / `node_id` / `kind` / `provider` / `url` / `external_id` / `external_path` / `snapshot` / `content`（inline）/ `submitted_by` / `created_at`。
   - `artifact_versions`（`0020_artifact_versions.sql`）：被替换材料的归档——`artifact_id` / 同 `artifacts` 的全部字段 + `replaced_at` / `replaced_by`；只增不删。
 
 ## 不变量（本模块保证）
