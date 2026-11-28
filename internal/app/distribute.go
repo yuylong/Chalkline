@@ -22,7 +22,7 @@ import (
 // 由 integration.Dispatcher 实现，server 组装层注入（app 不 import integration）。
 type ArtifactDistributor interface {
 	PushArtifact(ctx context.Context, b workitem.ProviderBinding, art workitem.ArtifactRef,
-		meta workitem.ArtifactMeta, dir string) (workitem.PushedArtifact, error)
+		meta workitem.ArtifactMeta, target workitem.DispatchTarget) (workitem.PushedArtifact, error)
 }
 
 // ProcessRecorder 把节点/任务动作记录到流程记录 provider（如 Redmine）。
@@ -45,9 +45,10 @@ func (s *Service) async(fn func()) {
 
 // artifactToDistribute 是待分发的成果物（事务内收集，事务后推送）。
 type artifactToDistribute struct {
-	ID       string
-	Ref      workitem.ArtifactRef
-	NodeName string
+	ID         string
+	InstanceID string // 版本号与容器键需要（按 (实例, 节点, 类型) 数历史）
+	Ref        workitem.ArtifactRef
+	NodeName   string
 }
 
 // dispatchActor 是本次出站的提交人：优先以其个人凭据出站（外部系统可见
@@ -145,7 +146,21 @@ func (s *Service) dispatchOne(ctx context.Context, iterationID, iterationNumber 
 		"node":      item.NodeName,
 		"kind":      string(item.Ref.Kind),
 	})
-	pushed, err := s.Distributor.PushArtifact(ctx, binding, item.Ref, workitem.ArtifactMeta{}, dir)
+	// 版本号 = 该 (节点, 类型) 已归档的历史条数 + 1（首次提交为 1）。
+	// 版本号由机器写入外部系统，不依赖人写进标题（integrations.md「Outline 文档结构」）。
+	version := int(store.ArtifactVersionCount(ctx, q, item.InstanceID, item.Ref.NodeID,
+		string(item.Ref.Kind))) + 1
+	// 容器文档（Outline 的「迭代/节点」父文档）已建立时直接复用，避免每次按标题查找。
+	parentExternalID := store.ExternalLinkExternalID(ctx, q, "artifact_node",
+		artifactNodeKey(item.InstanceID, item.Ref.NodeID), string(binding.Provider))
+	target := workitem.DispatchTarget{
+		IterationNumber:  iterationNumber,
+		NodeName:         item.NodeName,
+		Version:          version,
+		Dir:              dir,
+		ParentExternalID: parentExternalID,
+	}
+	pushed, err := s.Distributor.PushArtifact(ctx, binding, item.Ref, workitem.ArtifactMeta{}, target)
 	if err != nil {
 		_ = store.FinishIntegrationSync(ctx, q, syncID, "failed", "", "", "", err.Error())
 		s.Log.Warn("成果物分发失败（不阻断流程）", "artifact", item.ID,
@@ -160,6 +175,19 @@ func (s *Service) dispatchOne(ctx context.Context, iterationID, iterationNumber 
 		SubjectType: "artifact", SubjectID: item.ID, Provider: string(binding.Provider),
 		ExternalID: pushed.ExternalID, URL: pushed.URL, CreatedBy: item.Ref.SubmittedBy,
 	})
+	// 容器（迭代/节点）指认：同节点后续版本复用该父文档，避免每次重新查找。
+	if pushed.ParentExternalID != "" {
+		_, _ = store.UpsertExternalLink(ctx, q, store.ExternalLinkRow{
+			SubjectType: "artifact_node", SubjectID: artifactNodeKey(item.InstanceID, item.Ref.NodeID),
+			Provider: string(binding.Provider), ExternalID: pushed.ParentExternalID,
+			URL: pushed.URL, CreatedBy: item.Ref.SubmittedBy,
+		})
+	}
+}
+
+// artifactNodeKey 是「实例 + 节点」的容器键（external_links 的 subject_id）。
+func artifactNodeKey(instanceID, nodeID string) string {
+	return instanceID + ":" + nodeID
 }
 
 // ---- 流程记录 ----

@@ -75,7 +75,23 @@ Agent ──MCP──> Chalkline（成果物 + 节点/任务事件）
 
 ### 目录结构约定
 
-`git` / `svn` 的成果物按 `dirTemplate` 落到仓库，默认 `chalkline/{iteration}/{node}`，文件名 `<kind>.md`，支持 `{iteration}` / `{node}` / `{kind}` 占位符。`outline` 没有目录概念，以「集合 + 标题约定」组织。
+`git` / `svn` 的成果物按 `dirTemplate` 落到仓库，默认 `chalkline/{iteration}/{node}`，文件名 `<kind>.md`，支持 `{iteration}` / `{node}` / `{kind}` 占位符。
+
+#### Outline 文档结构
+
+`outline` 没有目录概念，用「集合 + 标题层级 + 父子关系」表达，**每版独立成篇**（Outline 没有 git 那样的版本历史，覆盖会让上一轮评审依据消失）：
+
+```
+collection（迭代绑定的 target）
+└── CHK-IT1 / 竞品调研                      ← 容器文档，一个节点一篇（parentDocumentId 的父）
+    ├── Chalkline 竞品调研报告 v1 · research_report · v1
+    └── Chalkline 竞品调研报告 v2 · research_report · v2
+```
+
+- **容器文档**标题 `<迭代编号> / <节点名>`，首次分发时按标题在集合内查找，缺失才新建；找到的 id 记入 `external_links`（`subject_type=artifact_node`，`subject_id=<实例>:<节点>`），后续版本直接复用，不再查找。
+- **材料文档**标题 `<材料标题> · <kind> · v<n>`，`parentDocumentId` 指向容器。**版本号由服务端写入**（= 该 `(实例, 节点, kind)` 的历史归档数 + 1），不依赖人写进标题。
+- 正文末尾附来源标注（迭代 / 节点 / 第 n 版 / 单向推送声明），便于在 Outline 侧看清出处。
+- 容器建立失败不阻断材料分发，退回集合内平铺（不变量 15）。
 
 Node 详情页按迭代绑定展示三类连接，可直接点击跳转（`linkUrl`）。
 
@@ -143,7 +159,7 @@ type ProcessRecorder interface {
 
 | 集成 | 方向 | 说明 |
 | --- | --- | --- |
-| Outline | 出站写入 + 出站链接 | 绑定时把成果物建成文档（集合 + 标题约定），门禁材料指向该文档；不拉取正文 |
+| Outline | 出站写入 + 出站链接 | 绑定时把成果物建成文档（`<迭代>/<节点>` 容器下每版一篇，标题带 `v<n>`），门禁材料指向该文档；不拉取正文 |
 | Redmine | 出站写入 | 阶段/任务建票并追加动作回复；只回写 `issueId` 与链接，**不反向回写状态** |
 | Git / SVN | 出站引用 + 出站写入 | `pr` 只存链接不克隆仓库；成果物按目录模板提交文件（Git 走 commits API，SVN 走 WebDAV） |
 | 邮件 | 出站通知 | 门禁待办、驳回、超期提醒、节点/迭代进展 |

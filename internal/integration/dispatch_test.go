@@ -36,17 +36,111 @@ func TestPushArtifactOutline(t *testing.T) {
 	d := newTestDispatcher(DispatchCredentials{OutlineToken: "tok"})
 	b := workitem.ProviderBinding{Category: workitem.CategoryArtifact, Provider: workitem.ProviderOutline,
 		BaseURL: srv.URL, Target: "col-1"}
+	// 有 ParentExternalID：复用已建好的「迭代/节点」父文档，不再新建容器。
 	res, err := d.PushArtifact(t.Context(), b,
 		workitem.ArtifactRef{Kind: workitem.KindSpec, Title: "需求规格", Content: "# 正文"},
-		workitem.ArtifactMeta{}, "chalkline/CHK-IT1/设计")
+		workitem.ArtifactMeta{}, workitem.DispatchTarget{
+			IterationNumber: "CHK-IT1", NodeName: "设计", Version: 2, ParentExternalID: "parent-1",
+		})
 	if err != nil {
 		t.Fatalf("推送失败：%v", err)
 	}
 	if res.ExternalID != "doc-1" || res.URL != srv.URL+"/doc/doc-1" {
 		t.Fatalf("回执 = %+v", res)
 	}
-	if got["collectionId"] != "col-1" || got["text"] != "# 正文" || got["publish"] != true {
+	if res.ParentExternalID != "parent-1" {
+		t.Errorf("回执应带回父文档 id：%+v", res)
+	}
+	if got["collectionId"] != "col-1" || got["publish"] != true {
 		t.Fatalf("请求体 = %+v", got)
+	}
+	// 标题必须由机器写入版本号，历史轮次才分得清。
+	if got["title"] != "需求规格 · spec · v2" {
+		t.Errorf("标题 = %q，期望带版本号", got["title"])
+	}
+	// 父文档必须是「迭代 / 节点」容器。
+	if got["parentDocumentId"] != "parent-1" {
+		t.Errorf("parentDocumentId = %v", got["parentDocumentId"])
+	}
+	text, _ := got["text"].(string)
+	if !strings.Contains(text, "# 正文") || !strings.Contains(text, "CHK-IT1 / 设计") ||
+		!strings.Contains(text, "第 2 版") {
+		t.Errorf("正文应含原内容与来源标注：%q", text)
+	}
+}
+
+// 无 ParentExternalID 时先按标题在 collection 内找容器；找不到就建一篇。
+func TestPushArtifactOutlineCreatesNodeContainer(t *testing.T) {
+	var created []map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw, _ := io.ReadAll(r.Body)
+		var body map[string]any
+		_ = json.Unmarshal(raw, &body)
+		switch r.URL.Path {
+		case "/api/documents.list":
+			// 空集合：容器不存在，需要新建。
+			_, _ = io.WriteString(w, `{"data":[]}`)
+		case "/api/documents.create":
+			created = append(created, body)
+			_, _ = io.WriteString(w, `{"data":{"id":"new-doc","url":"/doc/new-doc"}}`)
+		default:
+			t.Errorf("未预期路径 %q", r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+
+	d := newTestDispatcher(DispatchCredentials{OutlineToken: "tok"})
+	b := workitem.ProviderBinding{Provider: workitem.ProviderOutline, BaseURL: srv.URL, Target: "col-1"}
+	res, err := d.PushArtifact(t.Context(), b,
+		workitem.ArtifactRef{Kind: workitem.KindSpec, Title: "需求规格", Content: "# 正文"},
+		workitem.ArtifactMeta{}, workitem.DispatchTarget{IterationNumber: "CHK-IT1", NodeName: "设计", Version: 1})
+	if err != nil {
+		t.Fatalf("推送失败：%v", err)
+	}
+	if len(created) != 2 {
+		t.Fatalf("应依次建容器与材料两篇文档，实际 %d 次", len(created))
+	}
+	if created[0]["title"] != "CHK-IT1 / 设计" || created[0]["parentDocumentId"] != nil {
+		t.Errorf("容器文档 = %+v", created[0])
+	}
+	if created[1]["parentDocumentId"] != "new-doc" {
+		t.Errorf("材料文档应挂在容器下：%+v", created[1])
+	}
+	if created[1]["title"] != "需求规格 · spec · v1" {
+		t.Errorf("材料标题 = %q", created[1]["title"])
+	}
+	if res.ParentExternalID != "new-doc" {
+		t.Errorf("回执应返回新建的容器 id：%+v", res)
+	}
+}
+
+// 容器已存在时复用，不重复建。
+func TestPushArtifactOutlineReusesNodeContainer(t *testing.T) {
+	var creates int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/documents.list":
+			_, _ = io.WriteString(w, `{"data":[{"id":"exist-1","title":"CHK-IT1 / 设计","parentDocumentId":null}]}`)
+		case "/api/documents.create":
+			creates++
+			_, _ = io.WriteString(w, `{"data":{"id":"child-1","url":"/doc/child-1"}}`)
+		}
+	}))
+	defer srv.Close()
+
+	d := newTestDispatcher(DispatchCredentials{OutlineToken: "tok"})
+	b := workitem.ProviderBinding{Provider: workitem.ProviderOutline, BaseURL: srv.URL, Target: "col-1"}
+	res, err := d.PushArtifact(t.Context(), b,
+		workitem.ArtifactRef{Kind: workitem.KindSpec, Content: "# 正文"},
+		workitem.ArtifactMeta{}, workitem.DispatchTarget{IterationNumber: "CHK-IT1", NodeName: "设计", Version: 3})
+	if err != nil {
+		t.Fatalf("推送失败：%v", err)
+	}
+	if creates != 1 {
+		t.Errorf("只应创建材料文档（复用已有容器），实际 create %d 次", creates)
+	}
+	if res.ParentExternalID != "exist-1" {
+		t.Errorf("应复用已有容器：%+v", res)
 	}
 }
 
@@ -54,7 +148,7 @@ func TestPushArtifactOutlineWithoutToken(t *testing.T) {
 	d := newTestDispatcher(DispatchCredentials{})
 	_, err := d.PushArtifact(t.Context(),
 		workitem.ProviderBinding{Provider: workitem.ProviderOutline, BaseURL: "https://x.example.com", Target: "c"},
-		workitem.ArtifactRef{Kind: workitem.KindSpec}, workitem.ArtifactMeta{}, "")
+		workitem.ArtifactRef{Kind: workitem.KindSpec}, workitem.ArtifactMeta{}, workitem.DispatchTarget{})
 	if err == nil {
 		t.Fatal("未配置凭据时应失败")
 	}
@@ -88,7 +182,7 @@ func TestPushArtifactGitRetriesWithUpdate(t *testing.T) {
 		Target: "team/repo", DirTemplate: "chalkline/{iteration}/{node}"}
 	res, err := d.PushArtifact(t.Context(), b,
 		workitem.ArtifactRef{Kind: workitem.KindDesign, NodeID: "design", Content: "# 设计"},
-		workitem.ArtifactMeta{}, "chalkline/CHK-IT1/设计")
+		workitem.ArtifactMeta{}, workitem.DispatchTarget{Dir: "chalkline/CHK-IT1/设计"})
 	if err != nil {
 		t.Fatalf("推送失败：%v", err)
 	}
@@ -133,7 +227,7 @@ func TestPushArtifactSVN(t *testing.T) {
 		Target: "repo/trunk", DirTemplate: "chalkline/{iteration}"}
 	res, err := d.PushArtifact(t.Context(), b,
 		workitem.ArtifactRef{Kind: workitem.KindTestCases, Content: "# 用例"},
-		workitem.ArtifactMeta{}, "chalkline/CHK-IT1")
+		workitem.ArtifactMeta{}, workitem.DispatchTarget{Dir: "chalkline/CHK-IT1"})
 	if err != nil {
 		t.Fatalf("推送失败：%v", err)
 	}
@@ -204,7 +298,7 @@ func TestPushArtifactBlockedByAllowlist(t *testing.T) {
 	d := NewDispatcher(NewSafeClient(nil), DispatchCredentials{OutlineToken: "tok"})
 	_, err := d.PushArtifact(t.Context(),
 		workitem.ProviderBinding{Provider: workitem.ProviderOutline, BaseURL: "https://outline.example.com", Target: "c"},
-		workitem.ArtifactRef{Kind: workitem.KindSpec, Content: "x"}, workitem.ArtifactMeta{}, "")
+		workitem.ArtifactRef{Kind: workitem.KindSpec, Content: "x"}, workitem.ArtifactMeta{}, workitem.DispatchTarget{})
 	if err == nil {
 		t.Fatal("白名单为空时应拒绝出站")
 	}
@@ -226,7 +320,7 @@ func TestPushArtifactUsesBindingToken(t *testing.T) {
 		Auth: workitem.ProviderAuth{Type: workitem.AuthToken, Secret: "iter-token"},
 	}
 	if _, err := d.PushArtifact(t.Context(), b,
-		workitem.ArtifactRef{Kind: workitem.KindSpec, Content: "# 正文"}, workitem.ArtifactMeta{}, "dir"); err != nil {
+		workitem.ArtifactRef{Kind: workitem.KindSpec, Content: "# 正文"}, workitem.ArtifactMeta{}, workitem.DispatchTarget{Dir: "dir"}); err != nil {
 		t.Fatalf("推送失败：%v", err)
 	}
 	if gotAuth != "Bearer iter-token" {
@@ -248,7 +342,7 @@ func TestPushArtifactUsesBasicAuth(t *testing.T) {
 		Auth: workitem.ProviderAuth{Type: workitem.AuthBasic, Username: "alice", Secret: "s3cret"},
 	}
 	if _, err := d.PushArtifact(t.Context(), b,
-		workitem.ArtifactRef{Kind: workitem.KindTestCases, Content: "x"}, workitem.ArtifactMeta{}, "dir"); err != nil {
+		workitem.ArtifactRef{Kind: workitem.KindTestCases, Content: "x"}, workitem.ArtifactMeta{}, workitem.DispatchTarget{Dir: "dir"}); err != nil {
 		t.Fatalf("推送失败：%v", err)
 	}
 	want := "Basic " + base64.StdEncoding.EncodeToString([]byte("alice:s3cret"))

@@ -1,4 +1,4 @@
-package app
+﻿package app
 
 // workflowsvc.go：工作流模板管理与实例操作用例（docs/modules/workflow.md）。
 // 引擎判定已在 M0 交付且不改；本文件做「加载 → 引擎 → 写回」的持久化编排：
@@ -466,7 +466,7 @@ func (s *Service) SubmitStep(ctx context.Context, actor Actor, wtype workitem.Sc
 			if err := store.ReplaceArtifact(ctx, q, row, replaced); err != nil {
 				return err
 			}
-			toDistribute = append(toDistribute, artifactToDistribute{ID: row.ID, Ref: ref, NodeName: nodeName})
+			toDistribute = append(toDistribute, artifactToDistribute{ID: row.ID, InstanceID: row.InstanceID, Ref: ref, NodeName: nodeName})
 		}
 
 		if err := store.SaveNodeStates(ctx, q, li.Row.ID, li.Inst); err != nil {
@@ -559,7 +559,7 @@ func (s *Service) AttachArtifact(ctx context.Context, actor Actor, wtype workite
 		if err := store.ReplaceArtifact(ctx, q, row, reset); err != nil {
 			return err
 		}
-		toDistribute = append(toDistribute, artifactToDistribute{ID: row.ID, Ref: ref, NodeName: nodeName})
+		toDistribute = append(toDistribute, artifactToDistribute{ID: row.ID, InstanceID: row.InstanceID, Ref: ref, NodeName: nodeName})
 		if err := audit(ctx, q, actor, "workflow.attach_artifact", string(wtype), workItemID,
 			map[string]any{"node": nodeID, "kind": in.Kind, "provider": in.Provider, "replaced": reset}); err != nil {
 			return err

@@ -104,6 +104,20 @@ func UpsertExternalLink(ctx context.Context, q Querier, r ExternalLinkRow) (Exte
 	return out, err
 }
 
+// ExternalLinkExternalID 取某容器在外部系统的标识（不存在时返回空串）。
+// 用于复用「迭代/节点」父文档，避免每次分发都按标题重新查找。
+func ExternalLinkExternalID(ctx context.Context, q Querier, subjectType, subjectID, provider string) string {
+	var id string
+	err := q.QueryRow(ctx, `
+		SELECT external_id FROM external_links
+		WHERE subject_type = $1 AND subject_id = $2 AND provider = $3
+		ORDER BY id DESC LIMIT 1`, subjectType, subjectID, provider).Scan(&id)
+	if err != nil {
+		return ""
+	}
+	return id
+}
+
 // ListExternalLinks 列某工作项的全部外部关联。
 func ListExternalLinks(ctx context.Context, q Querier, subjectType, subjectID string) ([]ExternalLinkRow, error) {
 	return scanAll(ctx, q, `

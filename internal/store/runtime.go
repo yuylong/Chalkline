@@ -233,6 +233,17 @@ func ListArtifactVersions(ctx context.Context, q Querier, instanceID string) ([]
 		}, instanceID)
 }
 
+// ArtifactVersionCount 返回某 (节点, 类型) 已归档的历史版本数。
+// 分发时用它推导版本号（第 n 版 = 历史数 + 1），让外部系统能区分轮次。
+func ArtifactVersionCount(ctx context.Context, q Querier, instanceID, nodeID, kind string) int64 {
+	var n int64
+	_ = q.QueryRow(ctx,
+		`SELECT count(*) FROM artifact_versions
+		 WHERE instance_id = $1 AND node_id = $2 AND kind = $3`,
+		instanceID, nodeID, kind).Scan(&n)
+	return n
+}
+
 // ListArtifacts 取实例全部材料。
 func ListArtifacts(ctx context.Context, q Querier, instanceID string) ([]ArtifactRow, error) {
 	return scanAll(ctx, q,

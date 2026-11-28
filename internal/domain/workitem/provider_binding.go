@@ -362,10 +362,31 @@ func sanitizePathSegment(s string) string {
 }
 
 // PushedArtifact 是成果物分发到外部 provider 后的回执（只保留摘要，不复制内容）。
+// PushedArtifact 是分发回执。
 type PushedArtifact struct {
 	ExternalID string
 	URL        string
 	Summary    string
+	// ParentExternalID 是该材料所属容器（Outline 的「迭代/节点」父文档）在外部系统的
+	// 标识；由调用方持久化后回传，后续版本直接复用，避免每次重新按标题查找。
+	ParentExternalID string
+}
+
+// DispatchTarget 是分发到外部系统时的落点参数。
+// git/svn 用 Dir 表达目录（<dir>/<kind>.md 覆盖写）；
+// outline 没有目录概念，用 IterationNumber + NodeName + Version 拼标题，
+// 并用 ParentExternalID 把同一节点的各版本挂成一个父子结构。
+type DispatchTarget struct {
+	IterationNumber string
+	NodeName        string
+	// Version 是该 (节点, 类型) 的第几版（1 起）。用于让外部系统区分历史轮次，
+	// 而不是靠人写进标题。
+	Version int
+	// Dir 是 git/svn 的目录（已由 DirPath 展开占位符）。
+	Dir string
+	// ParentExternalID 是「迭代/节点」容器在外部系统的标识（Outline 父文档）；
+	// 空表示不支持或尚未建立。
+	ParentExternalID string
 }
 
 // ProcessTicket 是流程记录 provider 上的票。

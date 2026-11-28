@@ -43,38 +43,48 @@ func NewDispatcher(c *safeClient, cred DispatchCredentials) *Dispatcher {
 
 // PushArtifact 把成果物写到迭代绑定的外部 provider，只返回摘要与链接。
 func (d *Dispatcher) PushArtifact(ctx context.Context, b workitem.ProviderBinding,
-	art workitem.ArtifactRef, meta workitem.ArtifactMeta, dir string) (workitem.PushedArtifact, error) {
+	art workitem.ArtifactRef, meta workitem.ArtifactMeta, target workitem.DispatchTarget) (workitem.PushedArtifact, error) {
 	switch b.Provider {
 	case workitem.ProviderOutline:
-		return d.pushOutline(ctx, b, art, meta)
+		return d.pushOutline(ctx, b, art, meta, target)
 	case workitem.ProviderGit:
-		return d.pushGit(ctx, b, art, meta, dir)
+		return d.pushGit(ctx, b, art, meta, target.Dir)
 	case workitem.ProviderSVN:
-		return d.pushSVN(ctx, b, art, meta, dir)
+		return d.pushSVN(ctx, b, art, meta, target.Dir)
 	}
 	return workitem.PushedArtifact{}, errRef("provider %q 不支持成果物分发", b.Provider)
 }
 
 // ---- Outline ----
 
-// pushOutline 在绑定的 collection 下建文档；标题用「迭代 / 节点 / 类型」表达目录层级
-// （Outline 没有目录概念，集合 + 标题约定即其组织方式）。
+// pushOutline 在绑定的 collection 下建文档，用「标题层级 + 父子关系」表达目录结构
+// （Outline 没有目录概念）。
+//
+// 存储约定（docs/domain/integrations.md「Outline 文档结构」）：
+//
+//	collection（b.Target）
+//	  └─ <迭代编号> / <节点名>                         ← 父文档，一个节点一篇
+//	       ├─ <材料标题> · <kind> · v1                 ← 每版一篇，历史轮次天然保留
+//	       └─ <材料标题> · <kind> · v2
+//
+// 每版独立成篇而不是覆盖：Outline 没有 git 那样的版本历史，覆盖会让上一轮评审依据消失。
 func (d *Dispatcher) pushOutline(ctx context.Context, b workitem.ProviderBinding,
-	art workitem.ArtifactRef, meta workitem.ArtifactMeta) (workitem.PushedArtifact, error) {
+	art workitem.ArtifactRef, meta workitem.ArtifactMeta, target workitem.DispatchTarget) (workitem.PushedArtifact, error) {
 	header, err := d.authHeaders(b)
 	if err != nil {
 		return workitem.PushedArtifact{}, err
 	}
-	title := outlineTitle(art, meta)
-	text := art.Content
-	if strings.TrimSpace(text) == "" {
-		text = fmt.Sprintf("外部成果物引用：%s", art.URL)
-		if art.URL == "" {
-			text = "（无正文，详见 Chalkline 材料记录）"
-		}
+	parentID, err := d.ensureOutlineNodeDoc(ctx, b, header, target)
+	if err != nil {
+		return workitem.PushedArtifact{}, err
 	}
+	title := outlineTitle(art, meta, target)
+	text := outlineText(art, target)
 	body := map[string]any{
 		"title": title, "text": text, "publish": true, "collectionId": b.Target,
+	}
+	if parentID != "" {
+		body["parentDocumentId"] = parentID
 	}
 	status, raw, err := d.send(ctx, http.MethodPost, joinURL(b.BaseURL, "api/documents.create"), header, body)
 	if err != nil {
@@ -92,15 +102,104 @@ func (d *Dispatcher) pushOutline(ctx context.Context, b workitem.ProviderBinding
 	if err := json.Unmarshal(raw, &out); err != nil {
 		return workitem.PushedArtifact{}, errRef("Outline 响应无法解析：%s", snippet(raw))
 	}
+	if out.Data.ID == "" {
+		return workitem.PushedArtifact{}, errRef("Outline 未返回文档 id：%s", snippet(raw))
+	}
 	link := out.Data.URL
 	if strings.HasPrefix(link, "/") {
 		link = joinURL(b.BaseURL, link)
 	}
-	return workitem.PushedArtifact{ExternalID: out.Data.ID, URL: link, Summary: title}, nil
+	// ParentExternalID 由 app 层持久化，后续版本直接复用，避免每次重新解析。
+	return workitem.PushedArtifact{ExternalID: out.Data.ID, URL: link, Summary: title,
+		ParentExternalID: parentID}, nil
 }
 
-// outlineTitle 生成文档标题：<前缀>/<类型>，前缀取材料标题或快照标题。
-func outlineTitle(art workitem.ArtifactRef, meta workitem.ArtifactMeta) string {
+// ensureOutlineNodeDoc 保证「迭代 / 节点」容器文档存在：
+// 有 ParentExternalID 就直接用；否则按标题在 collection 内查一次，缺失则新建。
+func (d *Dispatcher) ensureOutlineNodeDoc(ctx context.Context, b workitem.ProviderBinding,
+	header map[string]string, target workitem.DispatchTarget) (string, error) {
+	if target.ParentExternalID != "" {
+		return target.ParentExternalID, nil
+	}
+	title := outlineNodeTitle(target)
+	if title == "" {
+		return "", nil // 缺迭代/节点信息：退化为平铺（不阻断分发）
+	}
+	if id := d.findOutlineDocByTitle(ctx, b, header, title); id != "" {
+		return id, nil
+	}
+	body := map[string]any{
+		"title": title, "text": outlineNodeIntro(target), "publish": true, "collectionId": b.Target,
+	}
+	status, raw, err := d.send(ctx, http.MethodPost, joinURL(b.BaseURL, "api/documents.create"), header, body)
+	if err != nil {
+		return "", err
+	}
+	if status != http.StatusOK && status != http.StatusCreated {
+		// 容器建不出来不阻断材料分发：退回平铺。
+		return "", nil
+	}
+	var out struct {
+		Data struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return "", nil
+	}
+	return out.Data.ID, nil
+}
+
+// findOutlineDocByTitle 在绑定的 collection 内按标题查文档（分页取前 100 条）。
+func (d *Dispatcher) findOutlineDocByTitle(ctx context.Context, b workitem.ProviderBinding,
+	header map[string]string, title string) string {
+	target := joinURL(b.BaseURL, "api/documents.list") + "?" + url.Values{
+		"collectionId": {b.Target}, "limit": {"100"},
+	}.Encode()
+	status, raw, err := d.send(ctx, http.MethodPost, target, header, map[string]any{})
+	if err != nil || status != http.StatusOK {
+		return ""
+	}
+	var out struct {
+		Data []struct {
+			ID        string  `json:"id"`
+			Title     string  `json:"title"`
+			ParentDoc *string `json:"parentDocumentId"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return ""
+	}
+	for _, doc := range out.Data {
+		// 只认顶层文档作为容器，避免把同名子文档误当父。
+		if doc.Title == title && (doc.ParentDoc == nil || *doc.ParentDoc == "") {
+			return doc.ID
+		}
+	}
+	return ""
+}
+
+// outlineNodeTitle 是容器文档标题：<迭代编号> / <节点名>。
+func outlineNodeTitle(target workitem.DispatchTarget) string {
+	var parts []string
+	if v := strings.TrimSpace(target.IterationNumber); v != "" {
+		parts = append(parts, v)
+	}
+	if v := strings.TrimSpace(target.NodeName); v != "" {
+		parts = append(parts, v)
+	}
+	return strings.Join(parts, " / ")
+}
+
+func outlineNodeIntro(target workitem.DispatchTarget) string {
+	return fmt.Sprintf("# %s\n\n本阶段的成果物按提交轮次排列在下方子文档中。"+
+		"每次替换材料会新增一版，历史轮次保留不动（由 Chalkline 单向推送，状态以 Chalkline 为准）。",
+		outlineNodeTitle(target))
+}
+
+// outlineTitle 生成文档标题：<材料标题> · <kind> · v<n>。
+// 版本号由机器写入，不依赖人写进标题。
+func outlineTitle(art workitem.ArtifactRef, meta workitem.ArtifactMeta, target workitem.DispatchTarget) string {
 	name := strings.TrimSpace(art.Title)
 	if name == "" {
 		name = strings.TrimSpace(meta.Title)
@@ -108,7 +207,33 @@ func outlineTitle(art workitem.ArtifactRef, meta workitem.ArtifactMeta) string {
 	if name == "" {
 		name = string(art.Kind)
 	}
-	return fmt.Sprintf("%s · %s", name, art.Kind)
+	title := fmt.Sprintf("%s · %s", name, art.Kind)
+	if target.Version > 0 {
+		title = fmt.Sprintf("%s · v%d", title, target.Version)
+	}
+	return title
+}
+
+// outlineText 是文档正文：inline 原文 + 来源标注（便于在 Outline 侧看清出处）。
+func outlineText(art workitem.ArtifactRef, target workitem.DispatchTarget) string {
+	text := art.Content
+	if strings.TrimSpace(text) == "" {
+		text = fmt.Sprintf("外部成果物引用：%s", art.URL)
+		if art.URL == "" {
+			text = "（无正文，详见 Chalkline 材料记录）"
+		}
+	}
+	var b strings.Builder
+	b.WriteString(text)
+	b.WriteString("\n\n---\n\n> 来源：Chalkline")
+	if t := outlineNodeTitle(target); t != "" {
+		b.WriteString(" · " + t)
+	}
+	if target.Version > 0 {
+		b.WriteString(fmt.Sprintf(" · 第 %d 版", target.Version))
+	}
+	b.WriteString("\n> 由 Chalkline 单向推送，状态以 Chalkline 为准。\n")
+	return b.String()
 }
 
 // ---- Git（GitLab 兼容 commits API）----
