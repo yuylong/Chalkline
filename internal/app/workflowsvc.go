@@ -462,7 +462,7 @@ func (s *Service) SubmitStep(ctx context.Context, actor Actor, wtype workitem.Sc
 		// 材料落库（每节点每 kind 一份，替换即作废审批）。外部 provider 只落摘要。
 		for i, ref := range inRefs {
 			row := store.ArtifactRow{ID: s.newID("art"), InstanceID: li.Row.ID, Ref: summarizeRef(ref),
-				Snapshot: snapshots[i]}
+				Snapshot: snapshots[i], ArchiveID: s.newID("artv")}
 			if err := store.ReplaceArtifact(ctx, q, row, replaced); err != nil {
 				return err
 			}
@@ -555,7 +555,7 @@ func (s *Service) AttachArtifact(ctx context.Context, actor Actor, wtype workite
 			}
 		}
 		row := store.ArtifactRow{ID: s.newID("art"), InstanceID: li.Row.ID, Ref: summarizeRef(ref),
-			Snapshot: snap}
+			Snapshot: snap, ArchiveID: s.newID("artv")}
 		if err := store.ReplaceArtifact(ctx, q, row, reset); err != nil {
 			return err
 		}

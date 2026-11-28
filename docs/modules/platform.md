@@ -52,6 +52,7 @@ Go 接口（被上层使用）：
 
 - `migrations/0001_platform_baseline.sql`：`audit_logs`、`outbox_events`。M1 起写入审计，M2 起 outbox 由投递器消费（`0007_integration.sql` 补 `next_attempt_at` 支撑退避）。
 - `migrations/0002_workflows.sql`：`workflows`（`scope/name/version` 唯一，`definition` jsonb 存校验后的定义）。
+- `migrations/0020_artifact_versions.sql`：`artifact_versions`——被替换材料的历史归档（节点详情页「历史轮次」数据源）。`artifacts` 仍保持每节点每 kind 一份，替换时先归档旧行再覆盖。
 - 种子：5 个内置模板 `ON CONFLICT (id) DO NOTHING`，不覆盖入库后的用户修改。
 
 ## 不变量

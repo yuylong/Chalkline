@@ -670,6 +670,17 @@ type InstanceView struct {
 	ProgressPct int             `json:"progressPct"`
 	Artifacts   []ArtifactView  `json:"artifacts,omitempty"`
 	Approvals   []ApprovalView  `json:"approvals,omitempty"`
+	// ArtifactHistory 是被替换下来的历史轮次材料（按替换时间倒序）。
+	// 节点详情页用它展示「历史轮次」，默认折叠——只在需要回看时展开。
+	ArtifactHistory []ArtifactVersionView `json:"artifactHistory,omitempty"`
+}
+
+// ArtifactVersionView 是历史材料版本：与 ArtifactView 同形，另带替换时间与替换人。
+type ArtifactVersionView struct {
+	ArtifactView
+	ArtifactID string `json:"artifactId"`
+	ReplacedAt string `json:"replacedAt,omitempty"`
+	ReplacedBy string `json:"replacedBy,omitempty"`
 }
 
 // ArtifactView 材料投影：引用元数据，inline 附带内容；snapshot 为提交时点固化的快照（M3）。
@@ -790,7 +801,32 @@ func (s *Service) instanceView(ctx context.Context, q store.Querier, instRow sto
 			Comment: d.Comment, Roles: roles, CreatedAt: d.CreatedAt.UTC().Format(time.RFC3339),
 		})
 	}
+	versions, err := store.ListArtifactVersions(ctx, q, instRow.ID)
+	if err != nil {
+		return InstanceView{}, err
+	}
+	view.ArtifactHistory = artifactVersionViews(versions)
 	return view, nil
+}
+
+// artifactVersionViews 把历史材料行投影为视图（纯函数，可单测）。
+func artifactVersionViews(rows []store.ArtifactVersionRow) []ArtifactVersionView {
+	out := make([]ArtifactVersionView, 0, len(rows))
+	for _, v := range rows {
+		vv := ArtifactVersionView{
+			ArtifactView: artifactViewOf(store.ArtifactRow{
+				ID: v.ArtifactID, InstanceID: v.InstanceID, Ref: v.Ref,
+				Snapshot: v.Snapshot, CreatedAt: v.CreatedAt,
+			}),
+			ArtifactID: v.ArtifactID,
+			ReplacedBy: v.ReplacedBy,
+		}
+		if !v.ReplacedAt.IsZero() {
+			vv.ReplacedAt = v.ReplacedAt.UTC().Format(time.RFC3339)
+		}
+		out = append(out, vv)
+	}
+	return out
 }
 
 // TaskFilter 是任务列表过滤。

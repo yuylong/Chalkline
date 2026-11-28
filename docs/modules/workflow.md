@@ -70,6 +70,7 @@ MCP：`get_next_action` / `start_step` / `submit_step` / `attach_artifact` / `re
   - `node_states`：`instance_id` + `node_id` 联合主键 / `status` / `version`（乐观锁）/ `entered_at` / `completed_at`。
   - `gate_approvals`：`instance_id` / `node_id` / `reviewer_id` / `decision` / `comment` / `created_at`；同评审人 upsert 最近决策。
   - `artifacts`：`instance_id` / `node_id` / `kind` / `provider` / `url` / `external_id` / `snapshot` / `content`（inline）/ `submitted_by` / `created_at`。
+  - `artifact_versions`（`0020_artifact_versions.sql`）：被替换材料的归档——`artifact_id` / 同 `artifacts` 的全部字段 + `replaced_at` / `replaced_by`；只增不删。
 
 ## 不变量（本模块保证）
 
@@ -92,6 +93,7 @@ MCP：`get_next_action` / `start_step` / `submit_step` / `attach_artifact` / `re
 ## 任务拆解
 
 1. `migrations/0006_workflow_runtime.sql`：建 `workflow_instances` / `node_states` / `gate_approvals` / `artifacts`。
+2. `migrations/0020_artifact_versions.sql`：建 `artifact_versions`（被替换材料的历史归档，支撑节点详情页「历史轮次」）。
 2. `internal/store`：workflow 仓储——模板 CRUD + 实例加载/保存（节点状态、审批、材料），全部 sqlc 生成。
 3. `internal/app/workflow`：实例持久化编排——`CreateInstance` / `StartStep` / `SubmitStep` / `ReviewStep` / `AttachArtifact`（事务、乐观锁、审计、outbox、错误码映射）。
 4. 材料替换重置审批的 app 逻辑（任务 3 的一部分，独立验收）。
@@ -130,4 +132,4 @@ MCP：`get_next_action` / `start_step` / `submit_step` / `attach_artifact` / `re
 
 **材料快照固化**：`submit_step` / `attach_artifact` 在挂接时把快照写入 `artifacts.snapshot`——外部 provider 记 title/version/fetchedAt，inline 记内容 sha256 与长度；实例视图（`InstanceView.artifacts[].snapshot`）透传给控制台与 Agent。评审看到的是提交时点的事实（integrations.md「同步方向」）。
 
-**成果物提交时间**：`InstanceView.artifacts[].createdAt`（RFC3339）随实例视图返回，控制台据此把节点成果物按时间倒序，判定「最新成果物」并组织历史列表。注意 `artifacts` 表对同 `(instance, node, kind)` 只保留一份（`ReplaceArtifact` 先删后插），因此**同类型材料的历史版本不在库内留存**；历史重建依据审计（`workflow.submit_step` / `workflow.attach_artifact`）与快照，控制台展示的「历史」是不同 `kind` 的材料集合。
+**成果物提交时间**：`InstanceView.artifacts[].createdAt`（RFC3339）随实例视图返回，控制台据此把节点成果物按时间倒序，判定「最新成果物」并组织历史列表。`artifacts` 表对同 `(instance, node, kind)` 只保留一份：`ReplaceArtifact` 先把旧行整条归档到 `artifact_versions`，再删后插——因此**同类型材料的历史版本可回看**（`InstanceView.artifactHistory`，按 `replaced_at` 倒序，含原提交时间与替换人）。首次挂接没有旧行，不产生历史记录。

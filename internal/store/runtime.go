@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/yuylong/Chalkline/internal/domain/workitem"
@@ -198,6 +199,38 @@ type ArtifactRow struct {
 	Ref        workitem.ArtifactRef
 	Snapshot   json.RawMessage
 	CreatedAt  time.Time
+	// ArchiveID 是替换时给被覆盖旧行分配的归档 id（artv_ 前缀，由 app 层生成）；
+	// 为空表示不归档（如首次挂接没有旧行）。
+	ArchiveID string
+}
+
+// ArtifactVersionRow 是被替换下来的历史材料（artifact_versions 行）。
+type ArtifactVersionRow struct {
+	ID         string
+	ArtifactID string
+	InstanceID string
+	Ref        workitem.ArtifactRef
+	Snapshot   json.RawMessage
+	CreatedAt  time.Time // 原提交时间
+	ReplacedAt time.Time // 被替换时间
+	ReplacedBy string    // 触发替换的提交人
+}
+
+// ListArtifactVersions 取实例内被替换过的材料版本（按替换时间倒序）。
+func ListArtifactVersions(ctx context.Context, q Querier, instanceID string) ([]ArtifactVersionRow, error) {
+	return scanAll(ctx, q,
+		`SELECT id, artifact_id, instance_id, node_id, kind, provider, url, external_id,
+		     title, content, snapshot, submitted_by, created_at, replaced_at, replaced_by
+		 FROM artifact_versions WHERE instance_id = $1 ORDER BY replaced_at DESC`,
+		func(row rowScanner) (ArtifactVersionRow, error) {
+			var v ArtifactVersionRow
+			if err := row.Scan(&v.ID, &v.ArtifactID, &v.InstanceID, &v.Ref.NodeID, &v.Ref.Kind,
+				&v.Ref.Provider, &v.Ref.URL, &v.Ref.ExternalID, &v.Ref.Title, &v.Ref.Content,
+				&v.Snapshot, &v.Ref.SubmittedBy, &v.CreatedAt, &v.ReplacedAt, &v.ReplacedBy); err != nil {
+				return v, err
+			}
+			return v, nil
+		}, instanceID)
 }
 
 // ListArtifacts 取实例全部材料。
@@ -265,7 +298,25 @@ func ResetNodeApprovals(ctx context.Context, q Querier, instanceID, nodeID strin
 
 // ReplaceArtifact 挂接/替换材料：同 (instance, node, kind) 仅一份，替换即重置审批。
 // 返回是否发生了替换（供 app 层决定是否作废审批）。
+//
+// 被替换的旧行不丢失：删除前整条归档到 artifact_versions（节点详情页「历史轮次」
+// 的数据来源）。归档失败只记日志，不阻断替换——历史回看是增强能力，不能挡住流程推进。
 func ReplaceArtifact(ctx context.Context, q Querier, art ArtifactRow, resetApprovals bool) error {
+	// 归档键由调用方生成（store 不引入 id 生成器，与其它写入路径一致）。
+	if art.ArchiveID != "" {
+		if _, err := q.Exec(ctx,
+			`INSERT INTO artifact_versions (id, artifact_id, instance_id, node_id, kind, provider,
+			     url, external_id, title, content, snapshot, submitted_by, created_at, replaced_by)
+			 SELECT $1::text, id, instance_id, node_id, kind, provider,
+			     url, external_id, title, content, snapshot, submitted_by, created_at, $2::text
+			 FROM artifacts WHERE instance_id = $3::text AND node_id = $4::text AND kind = $5::text`,
+			art.ArchiveID, art.Ref.SubmittedBy, art.InstanceID, art.Ref.NodeID,
+			string(art.Ref.Kind)); err != nil {
+			slog.Warn("材料历史归档失败（不影响替换）", "instance", art.InstanceID,
+				"node", art.Ref.NodeID, "kind", art.Ref.Kind, "error", err)
+		}
+	}
+
 	if _, err := q.Exec(ctx,
 		`DELETE FROM artifacts WHERE instance_id = $1 AND node_id = $2 AND kind = $3`,
 		art.InstanceID, art.Ref.NodeID, string(art.Ref.Kind)); err != nil {

@@ -314,6 +314,15 @@ export interface InstanceView {
   artifacts?: ArtifactRef[]
   /** 审批时间线投影（M2 起返回）。 */
   approvals?: ApprovalRecord[]
+  /** 被替换下来的历史轮次材料（按替换时间倒序）；节点详情页「历史轮次」用。 */
+  artifactHistory?: ArtifactVersionView[]
+}
+
+/** 历史材料版本：与 ArtifactRef 同形，另带替换时间与替换人。 */
+export interface ArtifactVersionView extends ArtifactRef {
+  artifactId: string
+  replacedAt?: string
+  replacedBy?: string
 }
 
 export interface GateResultView {

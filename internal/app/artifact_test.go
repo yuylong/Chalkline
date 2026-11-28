@@ -72,3 +72,40 @@ func TestRejectDetailViewPropagatesComment(t *testing.T) {
 		t.Fatalf("驳回明细必须带人与理由: %+v", v)
 	}
 }
+
+func TestArtifactVersionViewsKeepsContentAndReplacement(t *testing.T) {
+	// 历史轮次：上一版正文必须完整保留，并带上替换时间与替换人。
+	submitted := time.Date(2026, 11, 28, 3, 0, 0, 0, time.UTC)
+	replaced := time.Date(2026, 11, 28, 5, 30, 0, 0, time.UTC)
+	got := artifactVersionViews([]store.ArtifactVersionRow{{
+		ID: "artv_1", ArtifactID: "art_old", InstanceID: "win_1",
+		Ref: workitem.ArtifactRef{
+			Kind: workitem.KindResearchReport, Provider: workitem.ProviderInline,
+			Title: "竞品调研报告 v1", Content: "# v1 正文", NodeID: "research_market",
+			SubmittedBy: "usr_07c9",
+		},
+		CreatedAt: submitted, ReplacedAt: replaced, ReplacedBy: "usr_07c9",
+	}})
+	if len(got) != 1 {
+		t.Fatalf("应投影出 1 条历史版本，得到 %d", len(got))
+	}
+	v := got[0]
+	if v.Content != "# v1 正文" {
+		t.Errorf("历史版本必须保留正文（节点详情页回看上一版），得到 %q", v.Content)
+	}
+	if v.ArtifactID != "art_old" {
+		t.Errorf("artifactId 应指向被替换的原材料: %q", v.ArtifactID)
+	}
+	if v.ReplacedAt != replaced.Format(time.RFC3339) || v.ReplacedBy != "usr_07c9" {
+		t.Errorf("替换时间与替换人应透出: %+v", v)
+	}
+	if v.CreatedAt != submitted.Format(time.RFC3339) {
+		t.Errorf("createdAt 应为原提交时间（不是替换时间）: %q", v.CreatedAt)
+	}
+}
+
+func TestArtifactVersionViewsEmpty(t *testing.T) {
+	if got := artifactVersionViews(nil); len(got) != 0 {
+		t.Errorf("无历史版本应返回空切片: %+v", got)
+	}
+}

@@ -124,6 +124,7 @@ export default function IterationCurrentNodePage() {
           node={node}
           artifacts={wfQuery.data.artifacts}
           approvals={wfQuery.data.approvals}
+          artifactHistory={wfQuery.data.artifactHistory}
           blockers={blockers}
           memberNames={memberNames}
           onStart={node.status === 'ready' ? () => startMut.mutate() : undefined}

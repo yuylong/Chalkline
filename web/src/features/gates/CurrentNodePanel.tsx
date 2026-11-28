@@ -6,12 +6,18 @@
 //   渲染，不弹窗）、节点内全部成果物列表（点选后显示正文 + 评审意见）。
 //
 // 数据来源：实例视图（父组件已持有 wfQuery）与 next-action 阻塞项，均为服务端事实。
-import { Button, Empty, Space, Tag, Timeline, Typography } from 'antd'
+import { Button, Collapse, Empty, Space, Tag, Timeline, Typography } from 'antd'
 import { useMemo, useState } from 'react'
 import { Markdown, MarkdownInlineSummary } from '../../shared/markdown'
 import { ACTIONABLE_STATUSES, fmtTime, memberNameOf, nodeStatusMeta } from '../../shared/status'
 import { BlockerList } from '../../shared/ui'
-import type { ApprovalRecord, ArtifactRef, Blocker, NodeStateView } from '../../shared/types'
+import type {
+  ApprovalRecord,
+  ArtifactRef,
+  ArtifactVersionView,
+  Blocker,
+  NodeStateView,
+} from '../../shared/types'
 import { ArtifactSubmitForm } from './Artifacts'
 import { ReviewActions } from './ReviewAction'
 
@@ -178,6 +184,8 @@ export interface CurrentNodeDetailProps {
   /** 本实例全部成果物（组件内按 nodeId 过滤）。 */
   artifacts?: ArtifactRef[]
   approvals?: ApprovalRecord[]
+  /** 本实例被替换下来的历史材料（组件内按 nodeId 过滤）。 */
+  artifactHistory?: ArtifactVersionView[]
   blockers?: Blocker[]
   /** userId → 展示名（评审人与提交人显示用）。 */
   memberNames?: Record<string, string>
@@ -198,6 +206,7 @@ export function CurrentNodeDetail({
   node,
   artifacts,
   approvals,
+  artifactHistory,
   blockers,
   memberNames,
   onStart,
@@ -212,6 +221,12 @@ export function CurrentNodeDetail({
     [artifacts, node.id],
   )
   const latest = mine[0]
+
+  // 历史轮次：被替换下来的旧版材料（按 kind 分组后按替换时间倒序展示）。
+  const history = useMemo(
+    () => (artifactHistory ?? []).filter((a) => a.nodeId === node.id),
+    [artifactHistory, node.id],
+  )
 
   return (
     <Space direction="vertical" size={14} style={{ width: '100%' }}>
@@ -341,6 +356,48 @@ export function CurrentNodeDetail({
               <NodeApprovals approvals={approvals} nodeId={node.id} memberNames={memberNames} />
             </div>
           </div>
+        </div>
+      </div>
+
+      {/* 历史轮次：被替换下来的旧版材料。默认折叠，避免干扰当前轮次阅读。 */}
+      <div>
+        <Typography.Text strong>历史轮次</Typography.Text>
+        <Typography.Text type="secondary" style={{ fontSize: 12, marginLeft: 8 }}>
+          （材料被替换后自动归档，供回看上一版）
+        </Typography.Text>
+        <div style={{ marginTop: 8 }}>
+          {history.length === 0 ? (
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+              该阶段暂无历史轮次（材料首次提交或尚未被替换）。
+            </Typography.Text>
+          ) : (
+            <Collapse
+              size="small"
+              items={history.map((h, i) => ({
+                key: `${h.artifactId}-${i}`,
+                label: (
+                  <Space wrap size={[6, 2]}>
+                    <Tag color="default">{h.kind}</Tag>
+                    <Typography.Text style={{ fontSize: 12 }}>
+                      提交 {fmtTime(h.createdAt)}
+                    </Typography.Text>
+                    {h.replacedAt && (
+                      <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                        · 于 {fmtTime(h.replacedAt)} 被替换
+                      </Typography.Text>
+                    )}
+                    {h.replacedBy && (
+                      <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                        · 替换人 {memberNameOf(memberNames ?? {}, h.replacedBy)}
+                      </Typography.Text>
+                    )}
+                    {h.content && <MarkdownInlineSummary text={h.content} max={40} />}
+                  </Space>
+                ),
+                children: <ArtifactBody artifact={h} memberNames={memberNames} />,
+              }))}
+            />
+          )}
         </div>
       </div>
     </Space>
