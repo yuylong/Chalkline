@@ -5,6 +5,7 @@
 --   git/svn → chalkline/CHK-IT1/竞品调研/research_report.md
 --
 -- artifact_versions 同步加列：归档时随旧行一起复制，历史轮次也能显示路径。
+-- +goose Up
 ALTER TABLE artifacts ADD COLUMN external_path TEXT NOT NULL DEFAULT '';
 ALTER TABLE artifact_versions ADD COLUMN external_path TEXT NOT NULL DEFAULT '';
 

@@ -3,6 +3,7 @@
 --
 -- 写入时机：store.ReplaceArtifact 删除同 kind 旧行之前，把旧行整条归档到这里。
 -- 只增不删（审计语义）；查询按 node_id + kind + replaced_at 倒序。
+-- +goose Up
 CREATE TABLE artifact_versions (
     id          TEXT        PRIMARY KEY,                          -- artv_ 前缀
     artifact_id TEXT        NOT NULL,                             -- 原 artifacts.id（已删除）
