@@ -1,4 +1,4 @@
-// 产品详情：基本信息、迭代列表（跳看板）、成员表、模块树（点击查看/编辑/删除）。
+// 产品详情：基本信息、迭代列表（跳看板）、成员表、模块表（树形展开，点击查看/编辑/删除）。
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   App,
@@ -16,7 +16,6 @@ import {
   Space,
   Table,
   Tag,
-  Tree,
   TreeSelect,
   Typography,
   type FormInstance,
@@ -62,6 +61,22 @@ function flattenModules(mods: ModuleView[], out: Map<string, ModuleView> = new M
   return out
 }
 
+/** 全部模块 id（含子孙），用于表格默认全展开。 */
+function collectModuleKeys(mods: ModuleView[], out: string[] = []): string[] {
+  for (const m of mods) {
+    out.push(m.id)
+    if (m.children?.length) collectModuleKeys(m.children, out)
+  }
+  return out
+}
+
+/** 表格行：去掉空的 children 数组，避免渲染出点不开的空展开箭头。 */
+function toRows(mods: ModuleView[]): ModuleView[] {
+  return mods.map((m) =>
+    m.children?.length ? { ...m, children: toRows(m.children) } : { ...m, children: undefined },
+  )
+}
+
 /** 模块基本信息表单值（建/改共用）。 */
 type ModuleInfoFormValues = {
   parentId?: string
@@ -96,6 +111,8 @@ export default function ProductDetail() {
   // 模块详情抽屉：selectedModuleId 非空即打开；moduleEditing 为编辑态。
   const [selectedModuleId, setSelectedModuleId] = useState<string | null>(null)
   const [moduleEditing, setModuleEditing] = useState(false)
+  // 模块表格展开项：null 表示「跟随数据默认全展开」，用户手动折叠后转为显式列表。
+  const [moduleExpandedKeys, setModuleExpandedKeys] = useState<string[] | null>(null)
   const [moduleForm] = Form.useForm<ModuleInfoFormValues>()
   const [editForm] = Form.useForm<{ name: string } & Omit<ModuleInfoFormValues, 'parentId' | 'sortOrder' | 'name'>>()
   const [memberForm] = Form.useForm<{ userId: string; role: string }>()
@@ -136,6 +153,8 @@ export default function ProductDetail() {
       message.success('模块已创建')
       setModuleOpen(false)
       moduleForm.resetFields()
+      // 回到默认全展开，让新建的子模块可见。
+      setModuleExpandedKeys(null)
       queryClient.invalidateQueries({ queryKey: ['product', id] })
     },
     onError: (err: Error) => message.error(err.message),
@@ -163,6 +182,8 @@ export default function ProductDetail() {
       message.success('模块已删除')
       setSelectedModuleId(null)
       setModuleEditing(false)
+      // 子树整体消失，回到默认全展开，避免残留失效 key。
+      setModuleExpandedKeys(null)
       queryClient.invalidateQueries({ queryKey: ['product', id] })
     },
     onError: (err: Error) => {
@@ -277,6 +298,7 @@ export default function ProductDetail() {
   const p = detail.data
   const memberNames = memberNameMap(p.members)
   const moduleIndex = flattenModules(p.modules)
+  const allModuleKeys = collectModuleKeys(p.modules)
   const selectedModule = selectedModuleId ? moduleIndex.get(selectedModuleId) : undefined
   // 模块人员字段候选 = 产品成员（owner/member/guest 均可被指定为责任人/开发者/测试者）。
   const memberOptions = p.members.map((m) => ({ value: m.userId, label: userLabel(m) }))
@@ -464,22 +486,98 @@ export default function ProductDetail() {
       </Card>
 
       <Card
-        title="模块树"
+        title={`模块（${moduleIndex.size}）`}
         extra={<Button size="small" onClick={() => setModuleOpen(true)}>新建模块</Button>}
       >
         {p.modules.length ? (
-          <Tree
-            treeData={toTreeNodes(p.modules)}
-            defaultExpandAll
-            blockNode
-            onSelect={(keys) => {
-              // 取消选中（再点同一节点）不关抽屉以外的逻辑；空 key 忽略。
-              const key = keys[0]
-              if (typeof key === 'string') {
-                setSelectedModuleId(key)
-                setModuleEditing(false)
-              }
+          <Table<ModuleView>
+            rowKey="id"
+            size="small"
+            pagination={false}
+            scroll={{ x: 1000 }}
+            tableLayout="fixed"
+            dataSource={toRows(p.modules)}
+            expandable={{
+              expandedRowKeys: moduleExpandedKeys ?? allModuleKeys,
+              onExpandedRowsChange: (keys) => setModuleExpandedKeys(keys.map(String)),
             }}
+            onRow={(record) => ({
+              onClick: () => {
+                setSelectedModuleId(record.id)
+                setModuleEditing(false)
+              },
+              style: { cursor: 'pointer' },
+            })}
+            columns={[
+              {
+                title: '模块名称',
+                dataIndex: 'name',
+                width: 260,
+                render: (v: string) => <Typography.Text strong>{v}</Typography.Text>,
+              },
+              {
+                title: '主要责任人',
+                dataIndex: 'ownerId',
+                width: 140,
+                ellipsis: true,
+                render: (v: string) => memberNameOf(memberNames, v),
+              },
+              {
+                title: '技术栈',
+                dataIndex: 'techStack',
+                width: 240,
+                render: (v: string[]) =>
+                  v.length ? (
+                    // 单行裁切，避免标签换行把行高撑开；悬停看全量。
+                    <div
+                      title={v.join('、')}
+                      style={{ display: 'flex', gap: 4, overflow: 'hidden', whiteSpace: 'nowrap' }}
+                    >
+                      {v.map((t) => (
+                        <Tag key={t} color="blue" style={{ marginInlineEnd: 0 }}>
+                          {t}
+                        </Tag>
+                      ))}
+                    </div>
+                  ) : (
+                    '—'
+                  ),
+              },
+              {
+                // 说明单行展示，超长由 ellipsis 省略（悬停 title 看全文）。
+                title: '模块说明',
+                dataIndex: 'description',
+                ellipsis: true,
+                render: (v: string) => v || '—',
+              },
+              {
+                title: '操作',
+                key: 'op',
+                width: 80,
+                render: (_, record) => (
+                  <Button
+                    size="small"
+                    type="link"
+                    style={{ padding: 0 }}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setSelectedModuleId(record.id)
+                      setModuleEditing(true)
+                      editForm.setFieldsValue({
+                        name: record.name,
+                        description: record.description,
+                        techStack: record.techStack ?? [],
+                        ownerId: record.ownerId || undefined,
+                        developers: record.developers ?? [],
+                        testers: record.testers ?? [],
+                      })
+                    }}
+                  >
+                    编辑
+                  </Button>
+                ),
+              },
+            ]}
           />
         ) : (
           <Typography.Text type="secondary">暂无模块</Typography.Text>
